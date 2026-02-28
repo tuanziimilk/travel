@@ -1,0 +1,397 @@
+import * as Select from "@radix-ui/react-select";
+import { useMemo, useState } from "react";
+import { uploaderOptions } from "@about-demo/trpc";
+import { trpc } from "../lib/trpc";
+
+const uploadDemoCsv = [
+  "TermID,TermName,Domain,Country,About_online,About_ai,About_op",
+  '225262,Elite Pro Sports,eliteprosports.co.uk,UK,"sample online about","sample ai about","sample op about"',
+].join("\n");
+
+const queueStatusText: Record<string, string> = {
+  pending: "排队中",
+  running: "处理中",
+  done: "已完成",
+  cancelled: "已取消",
+  failed: "失败",
+};
+
+function formatDuration(ms?: number | null) {
+  const safe = Math.max(0, Number(ms || 0));
+  const totalSeconds = Math.round(safe / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes <= 0) return `${seconds}秒`;
+  return `${minutes}分${seconds}秒`;
+}
+
+function formatEta(seconds?: number | null) {
+  const safe = Math.max(0, Number(seconds || 0));
+  return formatDuration(safe * 1000);
+}
+
+function formatUsd(value?: number | string | null) {
+  const n = Number(value || 0);
+  return `$${n.toFixed(6)}`;
+}
+
+function formatCny(value?: number | string | null) {
+  const n = Number(value || 0) * 7;
+  return `¥${n.toFixed(4)}`;
+}
+
+export function UploadPage() {
+  const utils = trpc.useUtils();
+  const [uploader, setUploader] = useState<(typeof uploaderOptions)[number]>("Ella");
+  const [note, setNote] = useState<string>("");
+  const [file, setFile] = useState<File | null>(null);
+  const [batchId, setBatchId] = useState<string>("");
+  const [jobId, setJobId] = useState<string>("");
+  const [queuePage, setQueuePage] = useState<number>(1);
+  const queuePageSize = 20;
+
+  const createBatch = trpc.batch.create.useMutation();
+  const startIngest = trpc.batch.ingest.start.useMutation();
+  const cancelIngest = trpc.batch.ingest.cancel.useMutation();
+  const retryIngest = trpc.batch.ingest.retry.useMutation();
+
+  const statusQuery = trpc.batch.ingest.status.useQuery(
+    { jobId },
+    {
+      enabled: Boolean(jobId),
+      refetchInterval: (query) => {
+        const status = query.state.data?.status;
+        if (!status) return 1500;
+        return status === "done" || status === "failed" ? false : 1500;
+      },
+    },
+  );
+
+  const queueQuery = trpc.batch.ingest.queue.useQuery(
+    { page: queuePage, pageSize: queuePageSize },
+    {
+      refetchInterval: (query) => {
+        const list = query.state.data?.rows ?? [];
+        const hasRunning = list.some((item) => item.status !== "done" && item.status !== "failed");
+        return hasRunning ? 1500 : 4000;
+      },
+    },
+  );
+
+  const resultQuery = trpc.batch.ingest.result.useQuery(
+    { batchId, format: "json" },
+    { enabled: Boolean(batchId && statusQuery.data?.status === "done") },
+  );
+
+  const progressPercent = useMemo(() => {
+    const total = statusQuery.data?.totalRows ?? 0;
+    const done = statusQuery.data?.doneRows ?? 0;
+    if (!total) return 0;
+    return Math.max(0, Math.min(100, Math.round((done / total) * 100)));
+  }, [statusQuery.data]);
+
+  const queueTotalPages = useMemo(() => {
+    const total = queueQuery.data?.total ?? 0;
+    if (!total) return 1;
+    return Math.max(1, Math.ceil(total / queuePageSize));
+  }, [queueQuery.data?.total]);
+
+  async function toBase64(fileObj: File) {
+    const buffer = await fileObj.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary);
+  }
+
+  async function runUpload() {
+    if (!file) return;
+    const created = await createBatch.mutateAsync({ uploader, note, source: "upload" });
+    setBatchId(created.batchId);
+    const fileBase64 = await toBase64(file);
+    const started = await startIngest.mutateAsync({
+      batchId: created.batchId,
+      fileName: file.name,
+      fileBase64,
+    });
+    setJobId(started.jobId);
+    setQueuePage(1);
+    void Promise.all([statusQuery.refetch(), queueQuery.refetch()]);
+  }
+
+  async function refreshProgress() {
+    await Promise.all([statusQuery.refetch(), queueQuery.refetch()]);
+  }
+
+  async function cancelJob(jobIdValue: string) {
+    await cancelIngest.mutateAsync({ jobId: jobIdValue });
+    await queueQuery.refetch();
+    if (jobId === jobIdValue) await statusQuery.refetch();
+  }
+
+  async function retryJob(jobIdValue: string) {
+    await retryIngest.mutateAsync({ jobId: jobIdValue });
+    await queueQuery.refetch();
+    if (jobId === jobIdValue) await statusQuery.refetch();
+  }
+
+  async function downloadResultXlsx() {
+    if (!batchId) return;
+    const response = await utils.client.batch.ingest.result.query({ batchId, format: "xlsx" });
+    const xlsxBase64 = "xlsxBase64" in response ? response.xlsxBase64 || "" : "";
+    const binary = atob(xlsxBase64);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    const blob = new Blob([bytes], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `batch-${batchId}.xlsx`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function downloadDemoTemplate() {
+    const blob = new Blob([uploadDemoCsv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "about-upload-demo.csv";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="card">
+      <h2>批量上传评分</h2>
+      <p className="muted">上传 CSV/XLSX，异步评分并追踪进度，支持导出本批结果。</p>
+
+      <div className="grid">
+        <div className="field">
+          <label>上传人</label>
+          <Select.Root value={uploader} onValueChange={(value) => setUploader(value as (typeof uploaderOptions)[number])}>
+            <Select.Trigger className="select-trigger" aria-label="uploader-upload">
+              <Select.Value placeholder="选择上传人" />
+            </Select.Trigger>
+            <Select.Portal>
+              <Select.Content className="select-content" position="popper" sideOffset={8}>
+                <Select.Viewport className="select-viewport">
+                  {uploaderOptions.map((name) => (
+                    <Select.Item className="select-item" key={name} value={name}>
+                      <Select.ItemText>{name}</Select.ItemText>
+                    </Select.Item>
+                  ))}
+                </Select.Viewport>
+              </Select.Content>
+            </Select.Portal>
+          </Select.Root>
+        </div>
+
+        <div className="field">
+          <label>批次备注（可选）</label>
+          <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="例如：测试 / 新策略回归" />
+        </div>
+
+        <div className="field">
+          <label>文件（.csv 或 .xlsx）</label>
+          <input type="file" accept=".csv,.xlsx" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+        </div>
+
+        <div className="upload-actions">
+          <button className="btn-ghost" type="button" onClick={downloadDemoTemplate}>
+            下载上传模板
+          </button>
+          <button
+            className="btn-primary"
+            type="button"
+            onClick={runUpload}
+            disabled={!file || createBatch.isPending || startIngest.isPending}
+          >
+            {createBatch.isPending || startIngest.isPending ? "处理中..." : "开始上传并评分"}
+          </button>
+        </div>
+
+        {startIngest.error && (
+          <div className="field">
+            <p style={{ margin: 0, color: "#b00020", fontWeight: 900 }}>上传失败：{startIngest.error.message}</p>
+          </div>
+        )}
+      </div>
+
+      {statusQuery.data && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h3>任务进度</h3>
+          <div className="job-meta-bar">
+            <span className="job-meta-item">任务ID：{jobId}</span>
+            <span className={`job-status-pill status-${statusQuery.data.status}`}>{queueStatusText[statusQuery.data.status] ?? statusQuery.data.status}</span>
+            <span className="job-meta-item">
+              进度：{statusQuery.data.doneRows}/{statusQuery.data.totalRows} · 失败：{statusQuery.data.failedRows}
+            </span>
+          </div>
+
+          <div className="receipt-box" style={{ marginBottom: 10, marginTop: 10, padding: 16 }}>
+            <div className="receipt-item">
+              <span className="receipt-label">耗时</span>
+              <span className="receipt-val">{formatDuration(statusQuery.data.elapsedMs)}</span>
+              <div className="receipt-sub">实时累计</div>
+            </div>
+            <div className="receipt-item">
+              <span className="receipt-label">Token</span>
+              <span className="receipt-val token-blue">
+                {statusQuery.data.totalTokensSum}
+              </span>
+              <div className="receipt-sub">真实消耗</div>
+            </div>
+            <div className="receipt-item">
+              <span className="receipt-label">费用</span>
+              <span className="receipt-val token-pink">
+                {formatUsd(statusQuery.data.estimatedCostUsdSum)}
+              </span>
+              <div className="receipt-sub">≈ {formatCny(statusQuery.data.estimatedCostUsdSum)}</div>
+            </div>
+          </div>
+
+          <div className="progress-track" style={{ marginTop: 8 }}>
+            <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
+          </div>
+          <p style={{ marginTop: 6 }}>{progressPercent}%</p>
+          <button className="btn-ghost" type="button" onClick={refreshProgress}>
+            刷新进度
+          </button>
+        </div>
+      )}
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <h3>任务队列</h3>
+        <table className="history-table queue-table">
+          <thead>
+            <tr>
+              <th>任务ID</th>
+              <th>状态</th>
+              <th>进度</th>
+              <th>耗时</th>
+              <th>Token</th>
+              <th>费用</th>
+              <th>开始时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(queueQuery.data?.rows ?? []).map((item) => (
+              <tr key={item.id}>
+                <td>{item.id}</td>
+                <td>{queueStatusText[item.status] ?? item.status}</td>
+                <td>
+                  {item.doneRows}/{item.totalRows}
+                  {item.failedRows > 0 ? ` (失败 ${item.failedRows})` : ""}
+                </td>
+                <td>
+                  {formatDuration(item.elapsedMs)}
+                </td>
+                <td>
+                  {item.totalTokensSum}
+                </td>
+                <td>
+                  {formatUsd(item.estimatedCostUsdSum)}
+                </td>
+                <td>{new Date(item.startedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}</td>
+                <td>
+                  {item.status === "running" || item.status === "pending" ? (
+                    <button className="btn-ghost" type="button" onClick={() => void cancelJob(item.id)}>
+                      取消
+                    </button>
+                  ) : item.status === "failed" || item.status === "cancelled" ? (
+                    <button className="btn-ghost" type="button" onClick={() => void retryJob(item.id)}>
+                      重试
+                    </button>
+                  ) : (
+                    <span className="muted">-</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {(queueQuery.data?.rows?.length ?? 0) === 0 && (
+              <tr>
+                <td colSpan={8}>暂无任务</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        <div className="upload-actions" style={{ marginTop: 10, justifyContent: "space-between" }}>
+          <button className="btn-ghost" type="button" onClick={() => void queueQuery.refetch()}>
+            刷新队列
+          </button>
+          <div className="upload-actions" style={{ gap: 8 }}>
+            <button className="btn-ghost" type="button" disabled={queuePage <= 1} onClick={() => setQueuePage((prev) => Math.max(1, prev - 1))}>
+              上一页
+            </button>
+            <span style={{ fontWeight: 900, minWidth: 72, textAlign: "center" }}>
+              {queuePage}/{queueTotalPages}
+            </span>
+            <button
+              className="btn-ghost"
+              type="button"
+              disabled={queuePage >= queueTotalPages}
+              onClick={() => setQueuePage((prev) => Math.min(queueTotalPages, prev + 1))}
+            >
+              下一页
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {statusQuery.error && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h3>任务异常</h3>
+          <p>{statusQuery.error.message}</p>
+        </div>
+      )}
+
+      {resultQuery.data && "summary" in resultQuery.data && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h3>批次汇总</h3>
+          <pre>{JSON.stringify(resultQuery.data.summary, null, 2)}</pre>
+
+          {Array.isArray(resultQuery.data.rows) && resultQuery.data.rows.length > 0 && (
+            <>
+              <h3 style={{ marginTop: 14 }}>本批明细（共 {resultQuery.data.rows.length} 条）</h3>
+              <table className="history-table">
+                <thead>
+                  <tr>
+                    <th>TermID</th>
+                    <th>Domain</th>
+                    <th>Country</th>
+                    <th>线上</th>
+                    <th>AI</th>
+                    <th>OP</th>
+                    <th>最佳版本</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {resultQuery.data.rows.map((item) => (
+                    <tr key={item.id}>
+                      <td>{item.termId}</td>
+                      <td>{item.domain}</td>
+                      <td>{item.country}</td>
+                      <td>{item.scoreOnlineTotal}</td>
+                      <td>{item.scoreAiTotal}</td>
+                      <td>{item.scoreOpTotal ?? "-"}</td>
+                      <td>{item.bestVersion}</td>
+                      <td>{item.errorReason ? "失败" : "成功"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          <button className="btn-ghost" type="button" onClick={downloadResultXlsx}>
+            下载本批结果
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

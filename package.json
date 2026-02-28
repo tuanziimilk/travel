@@ -1,0 +1,31 @@
+{
+  "name": "about-quality-demo",
+  "private": true,
+  "packageManager": "yarn@1.22.22",
+  "engines": {
+    "node": "22.22.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n web,api -c cyan,green \"yarn dev:web\" \"yarn dev:api\"",
+    "dev:web": "yarn workspace @about-demo/web dev",
+    "dev:api": "yarn workspace @about-demo/api dev",
+    "test": "vitest run",
+    "build": "yarn build:web && yarn build:api",
+    "build:web": "yarn workspace @about-demo/web build",
+    "build:api": "yarn workspace @about-demo/api build",
+    "start": "pm2 start pm2.ecosystem.config.cjs --only about-demo-api",
+    "format": "prettier --write .",
+    "typecheck": "yarn workspaces run typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "concurrently": "^9.1.2",
+    "prettier": "^3.5.3",
+    "typescript": "5.9.2",
+    "vitest": "^2.1.9"
+  }
+}
