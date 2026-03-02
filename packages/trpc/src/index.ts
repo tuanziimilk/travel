@@ -96,6 +96,30 @@ export const manualScoreInputSchema = z.object({
   saveToHistory: z.boolean().optional().default(true),
 });
 
+export const faqItemInputSchema = z.object({
+  Q_online: z.string(),
+  A_online: z.string(),
+  subclass_online: z.string().optional().default(""),
+  Q_ai: z.string(),
+  A_ai: z.string(),
+  subclass_ai: z.string().optional().default(""),
+  Q_op: z.string().optional().default(""),
+  A_op: z.string().optional().default(""),
+  subclass_op: z.string().optional().default(""),
+});
+
+export const manualFaqScoreInputSchema = z.object({
+  moduleId: moduleSchema.optional().default("faq"),
+  TermID: z.string().optional().default(""),
+  TermName: z.string().optional().default(""),
+  Domain: z.string().optional().default(""),
+  Country: z.string().min(2),
+  items: z.array(faqItemInputSchema).min(1),
+  uploader: uploaderSchema.optional(),
+  batchNote: z.string().optional().default(""),
+  saveToHistory: z.boolean().optional().default(true),
+});
+
 export const batchCreateInputSchema = z.object({
   moduleId: moduleSchema.optional().default("about"),
   uploader: uploaderSchema,

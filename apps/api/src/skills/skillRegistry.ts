@@ -1,6 +1,8 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import type { ModuleId } from "@about-demo/trpc";
 import { env } from "../env";
+import { resolveSkillRoot } from "./skillPath";
 
 export type SkillBundle = {
   skillMd: string;
@@ -23,7 +25,18 @@ class SkillRegistry {
   }
 
   async getAboutSkill(): Promise<SkillBundle> {
-    return this.getSkill(env.aboutSkillPath);
+    return this.getSkill(resolveSkillRoot(env.aboutSkillPath));
+  }
+
+  async getModuleSkill(moduleId: ModuleId): Promise<SkillBundle> {
+    if (moduleId === "faq") {
+      try {
+        return await this.getSkill(resolveSkillRoot(env.faqSkillPath));
+      } catch {
+        return this.getSkill(resolveSkillRoot(env.aboutSkillPath));
+      }
+    }
+    return this.getSkill(resolveSkillRoot(env.aboutSkillPath));
   }
 
   invalidate(path?: string) {
@@ -47,4 +60,3 @@ class SkillRegistry {
 }
 
 export const skillRegistry = new SkillRegistry();
-

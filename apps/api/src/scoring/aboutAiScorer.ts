@@ -62,7 +62,7 @@ export async function scoreAboutByAi(input: ManualScoreInput): Promise<ScoreOutp
 export async function scoreAboutByAiWithMeta(input: ManualScoreInput) {
   const startedAt = Date.now();
   const moduleId = input.moduleId || "about";
-  const skill = await skillRegistry.getAboutSkill();
+  const skill = await skillRegistry.getModuleSkill(moduleId);
   const moduleSkill = await getModuleSkillMd(moduleId);
   const prompt = buildPrompt(input, moduleSkill.skillMd || skill.skillMd, skill.references);
 

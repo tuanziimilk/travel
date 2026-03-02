@@ -11,8 +11,8 @@ export const env = {
   aiMaxOutputTokens: Number(process.env.AI_MAX_OUTPUT_TOKENS || 0),
   aiInputCostPer1M: Number(process.env.AI_INPUT_COST_PER_1M || 0),
   aiOutputCostPer1M: Number(process.env.AI_OUTPUT_COST_PER_1M || 0),
-  aboutSkillPath:
-    process.env.ABOUT_SKILL_PATH || "C:\\Users\\81473\\.trae\\skills\\about-quality-scoring",
+  aboutSkillPath: process.env.ABOUT_SKILL_PATH || "skills/about-quality-scoring",
+  faqSkillPath: process.env.FAQ_SKILL_PATH || "skills/faq-quality-scoring",
   snapshotEnabled: (process.env.SNAPSHOT_ENABLED || "true").toLowerCase() === "true",
   ingestRowConcurrency: Math.max(1, Number(process.env.INGEST_ROW_CONCURRENCY || 10)),
   ingestProgressFlushMs: Math.max(200, Number(process.env.INGEST_PROGRESS_FLUSH_MS || 1000)),

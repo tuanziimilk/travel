@@ -54,7 +54,8 @@ cp .env.example .env
 - `AI_MODEL`: 模型名（如 `gpt-5-mini`）
 - `AI_PROMPT_VERSION`: Prompt 版本号
 - `AI_INPUT_COST_PER_1M` / `AI_OUTPUT_COST_PER_1M`: 费用估算参数
-- `ABOUT_SKILL_PATH`: 本地 skill 路径
+- `ABOUT_SKILL_PATH`: About 评分规则目录（默认 `skills/about-quality-scoring`）
+- `FAQ_SKILL_PATH`: FAQ 评分规则目录（默认 `skills/faq-quality-scoring`）
 - `SNAPSHOT_ENABLED`: 是否保存快照
 - `INGEST_ROW_CONCURRENCY`: 批量任务内并发（当前建议 `10`）
 - `INGEST_PROGRESS_FLUSH_MS`: 进度写库节流毫秒（建议 `1000`）
@@ -199,4 +200,3 @@ yarn start
 - `/upload`：批量上传与任务队列
 - `/history`：历史批次与导出
 - `/analytics`：统计看板
-

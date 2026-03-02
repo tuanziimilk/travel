@@ -11,6 +11,7 @@ import { sql } from "drizzle-orm";
 
 export const uploadBatches = mysqlTable("upload_batches", {
   id: varchar("id", { length: 36 }).primaryKey(),
+  moduleId: varchar("module_id", { length: 16 }).notNull().default("about"),
   uploader: varchar("uploader", { length: 32 }).notNull(),
   source: varchar("source", { length: 16 }).default("upload").notNull(),
   note: varchar("note", { length: 255 }).default("").notNull(),
@@ -21,10 +22,21 @@ export const uploadBatches = mysqlTable("upload_batches", {
 export const aboutScoreRows = mysqlTable("about_score_rows", {
   id: varchar("id", { length: 36 }).primaryKey(),
   batchId: varchar("batch_id", { length: 36 }).notNull(),
+  rowKind: varchar("row_kind", { length: 16 }).notNull().default("about"),
   termId: varchar("term_id", { length: 191 }).notNull(),
   termName: varchar("term_name", { length: 255 }).notNull().default(""),
   domain: varchar("domain", { length: 255 }).notNull(),
   country: varchar("country", { length: 16 }).notNull(),
+
+  qOnline: text("q_online"),
+  aOnline: text("a_online"),
+  subclassOnline: varchar("subclass_online", { length: 255 }),
+  qAi: text("q_ai"),
+  aAi: text("a_ai"),
+  subclassAi: varchar("subclass_ai", { length: 255 }),
+  qOp: text("q_op"),
+  aOp: text("a_op"),
+  subclassOp: varchar("subclass_op", { length: 255 }),
 
   hashOnline: varchar("hash_online", { length: 64 }).notNull(),
   hashAi: varchar("hash_ai", { length: 64 }).notNull(),
