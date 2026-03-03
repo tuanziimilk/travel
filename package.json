@@ -1,5 +1,5 @@
 {
-  "name": "about-quality-demo",
+  "name": "sc-quality-scoring",
   "private": true,
   "packageManager": "yarn@1.22.22",
   "engines": {

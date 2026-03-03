@@ -103,12 +103,11 @@ export function validateScoreOutput(
   }
 
   if (!options.expectOp && resultVersions.has("op")) {
-    doc.results = doc.results.filter((item) => item.version !== "op");
-    resultVersions.delete("op");
+    errors.push("About_op 缺失时不得输出 op version");
   }
 
   if (versions.size !== resultVersions.size || [...versions].some((item) => !resultVersions.has(item))) {
-    doc.meta.versions_present = (["online", "ai", "op"] as const).filter((item) => resultVersions.has(item));
+    errors.push("meta.versions_present 与 results versions 不一致");
   }
 
   for (const row of doc.results) {
@@ -146,20 +145,20 @@ export function validateScoreOutput(
     const byThreshold = row.score_total >= 8.0 && row.score_breakdown.A >= 2.0 && row.score_breakdown.B >= 3.0;
     const shouldPass = byThreshold && !highRisk.hit;
     if (row.pass_for_publish !== shouldPass) {
-      row.pass_for_publish = shouldPass;
+      errors.push(`${row.version} pass_for_publish 与规则不一致`);
     }
 
     if (highRisk.hit && row.pass_for_publish) {
-      row.pass_for_publish = false;
+      errors.push(`${row.version} pass_for_publish 命中高风险红线仍为 true`);
     }
   }
 
   const expectedRanking = sortVersionsForTie(doc.results);
   if (expectedRanking.join("|") !== doc.comparison.ranking.join("|")) {
-    doc.comparison.ranking = expectedRanking;
+    errors.push("comparison.ranking 与并列规则不一致");
   }
   if (doc.comparison.best_version !== expectedRanking[0]) {
-    doc.comparison.best_version = expectedRanking[0];
+    errors.push("comparison.best_version 与排序结果不一致");
   }
 
   return { ok: errors.length === 0, errors, parsed: doc };

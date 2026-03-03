@@ -135,6 +135,23 @@ export function UploadPage() {
     if (jobId === jobIdValue) await statusQuery.refetch();
   }
 
+  async function downloadBatchXlsx(batchIdValue: string) {
+    if (!batchIdValue) return;
+    const response = await utils.client.batch.ingest.result.query({ batchId: batchIdValue, format: "xlsx" });
+    const xlsxBase64 = "xlsxBase64" in response ? response.xlsxBase64 || "" : "";
+    const binary = atob(xlsxBase64);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    const blob = new Blob([bytes], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `about-batch-${batchIdValue}.xlsx`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function downloadResultXlsx() {
     if (!batchId) return;
     const response = await utils.client.batch.ingest.result.query({ batchId, format: "xlsx" });
@@ -302,8 +319,17 @@ export function UploadPage() {
                       取消
                     </button>
                   ) : item.status === "failed" || item.status === "cancelled" ? (
-                    <button className="btn-ghost" type="button" onClick={() => void retryJob(item.id)}>
-                      重试
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button className="btn-ghost" type="button" onClick={() => void retryJob(item.id)}>
+                        重试
+                      </button>
+                      <button className="btn-ghost" type="button" onClick={() => void downloadBatchXlsx(item.batchId)}>
+                        下载
+                      </button>
+                    </div>
+                  ) : item.status === "done" ? (
+                    <button className="btn-ghost" type="button" onClick={() => void downloadBatchXlsx(item.batchId)}>
+                      下载
                     </button>
                   ) : (
                     <span className="muted">-</span>

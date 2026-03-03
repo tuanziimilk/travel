@@ -29,10 +29,11 @@ export function ratePercent(numerator: number, denominator: number) {
 export function collectPassMetrics(rows: PassMetricRow[]): PassMetricsPayload {
   const opEligibleRows = rows.filter((item) => item.scoreOpTotal !== null && item.scoreOpTotal !== undefined);
   const publishPassCount = rows.filter((item) => {
+    const onlinePass = Number(item.passOnline) === 1;
     const aiPass = Number(item.passAi) === 1;
     const opEligible = item.scoreOpTotal !== null && item.scoreOpTotal !== undefined;
     const opPass = opEligible && Number(item.passOp) === 1;
-    return aiPass || opPass;
+    return onlinePass || aiPass || opPass;
   }).length;
   const onlinePassCount = rows.filter((item) => Number(item.passOnline) === 1).length;
   const aiPassCount = rows.filter((item) => Number(item.passAi) === 1).length;

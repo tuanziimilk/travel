@@ -1,6 +1,6 @@
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { ManualScoreInput, ScoreOutput, uploaderSchema } from "@about-demo/trpc";
 import { db } from "../db/client";
@@ -37,10 +37,18 @@ export type ParsedUploadRow = {
 };
 
 type RowSelect = typeof aboutScoreRows.$inferSelect;
+type ModuleId = "about" | "faq";
 
 const ingestPayloadByBatch = new Map<string, ParsedUploadRow[]>();
-const pendingIngestJobs: Array<{ jobId: string; batchId: string; rows: ParsedUploadRow[] }> = [];
-let ingestRunnerWorking = false;
+type PendingIngestJob = { jobId: string; batchId: string; rows: ParsedUploadRow[]; moduleId: ModuleId };
+const pendingIngestJobsByModule: Record<ModuleId, PendingIngestJob[]> = {
+  about: [],
+  faq: [],
+};
+const ingestRunnerWorkingByModule: Record<ModuleId, boolean> = {
+  about: false,
+  faq: false,
+};
 const publishAboutSectionName = "About";
 
 export function parseUploadFile(fileName: string, base64: string): ParsedUploadRow[] {
@@ -317,25 +325,36 @@ export async function startIngestJob(batchId: string, fileName: string, fileBase
     predictedTotalTokens: 0,
     predictedCostUsd: "0",
   });
-  pendingIngestJobs.push({ jobId, batchId, rows });
-  void processPendingIngestJobs();
+  pendingIngestJobsByModule[moduleId].push({ jobId, batchId, rows, moduleId });
+  void processPendingIngestJobs(moduleId);
   return { jobId, totalRows: rows.length };
 }
 
-async function processPendingIngestJobs() {
-  if (ingestRunnerWorking) return;
-  ingestRunnerWorking = true;
+async function processPendingIngestJobs(moduleId: ModuleId) {
+  if (ingestRunnerWorkingByModule[moduleId]) return;
+  ingestRunnerWorkingByModule[moduleId] = true;
 
   try {
-    while (pendingIngestJobs.length > 0) {
-      const next = pendingIngestJobs.shift();
+    while (pendingIngestJobsByModule[moduleId].length > 0) {
+      const next = pendingIngestJobsByModule[moduleId].shift();
       if (!next) break;
 
-      await db.update(ingestJobs).set({ status: "running" }).where(eq(ingestJobs.id, next.jobId));
+      const latestRows = await db.select().from(ingestJobs).where(eq(ingestJobs.id, next.jobId));
+      const latest = latestRows[0];
+      if (!latest) continue;
+      if (latest.status === "cancelled" || latest.status === "done" || latest.status === "failed") continue;
+
+      await db
+        .update(ingestJobs)
+        .set({ status: "running" })
+        .where(and(eq(ingestJobs.id, next.jobId), eq(ingestJobs.status, "pending")));
+
+      const startedRows = await db.select().from(ingestJobs).where(eq(ingestJobs.id, next.jobId));
+      if (startedRows[0]?.status !== "running") continue;
       await runIngest(next.jobId, next.batchId, next.rows);
     }
   } finally {
-    ingestRunnerWorking = false;
+    ingestRunnerWorkingByModule[moduleId] = false;
   }
 }
 
@@ -406,6 +425,10 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
           saveToHistory: false,
         };
         const scored = await scoreAboutByAiWithMeta(input);
+
+        const latestAfterScore = await db.select().from(ingestJobs).where(eq(ingestJobs.id, jobId));
+        if (latestAfterScore[0]?.status === "cancelled") return;
+
         await insertScoreRow(batchId, row, scored.output);
         success += 1;
         promptTokensSum += scored.runtime.promptTokens;
@@ -413,6 +436,8 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
         totalTokensSum += scored.runtime.totalTokens;
         estimatedCostUsdSum += scored.runtime.estimatedCostUsd;
       } catch {
+        const latestAfterError = await db.select().from(ingestJobs).where(eq(ingestJobs.id, jobId));
+        if (latestAfterError[0]?.status === "cancelled") return;
         failed += 1;
       }
 
@@ -647,7 +672,7 @@ export async function cancelIngestJob(jobId: string) {
   await db
     .update(ingestJobs)
     .set({ status: "cancelled", finishedAt: new Date(), etaSeconds: 0 })
-    .where(eq(ingestJobs.id, jobId));
+    .where(and(eq(ingestJobs.id, jobId), inArray(ingestJobs.status, ["pending", "running"])));
   return { ok: true };
 }
 
@@ -688,8 +713,8 @@ export async function retryIngestJob(jobId: string) {
     predictedTotalTokens: 0,
     predictedCostUsd: "0",
   });
-  pendingIngestJobs.push({ jobId: newJobId, batchId: job.batchId, rows: payloadRows });
-  void processPendingIngestJobs();
+  pendingIngestJobsByModule[moduleId].push({ jobId: newJobId, batchId: job.batchId, rows: payloadRows, moduleId });
+  void processPendingIngestJobs(moduleId);
 
   return { ok: true, newJobId };
 }
@@ -951,27 +976,43 @@ export function toXlsxByModule(
       const opScore = Number(row.scoreOpTotal || 0);
       const aiScore = Number(row.scoreAiTotal || 0);
       const useOp = Number(row.passOp || 0) === 1 && opScore >= aiScore;
-      const source = useOp ? "op" : "ai";
+      const source = "AI";
       const rawText = String(useOp ? row.snapshotOp || row.snapshotAi || "" : row.snapshotAi || "");
       const qMatch = rawText.match(/Q:\s*([^\n]+)/i);
       const aMatch = rawText.match(/A:\s*([^\n]+)/i);
       const sMatch = rawText.match(/Subclass:\s*([^\n]+)/i);
 
       return {
+        ContentType: "faq",
+        Country: String(row.country || ""),
         TermID: String(row.termId || ""),
         TermName: String(row.termName || ""),
         Domain: String(row.domain || ""),
-        Country: String(row.country || ""),
-        subclass: String(sMatch?.[1] || ""),
-        Q: String(qMatch?.[1] || ""),
-        A: String(aMatch?.[1] || ""),
-        score_total: String(useOp ? row.scoreOpTotal || "" : row.scoreAiTotal || ""),
-        source,
+        Source: source,
+        Subclass: String(sMatch?.[1] || ""),
+        板块名称: "faq",
+        Titile1: String(qMatch?.[1] || ""),
+        "Brief Introduction": String(aMatch?.[1] || ""),
+        "Href Kw": "",
+        "Href Url": "",
       };
     });
 
   const passSheet = XLSX.utils.json_to_sheet(faqPassRows, {
-    header: ["TermID", "TermName", "Domain", "Country", "subclass", "Q", "A", "score_total", "source"],
+    header: [
+      "ContentType",
+      "Country",
+      "TermID",
+      "TermName",
+      "Domain",
+      "Source",
+      "Subclass",
+      "板块名称",
+      "Titile1",
+      "Brief Introduction",
+      "Href Kw",
+      "Href Url",
+    ],
   });
   XLSX.utils.book_append_sheet(workbook, passSheet, "可发布FAQ");
 

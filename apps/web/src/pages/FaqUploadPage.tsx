@@ -25,9 +25,25 @@ function formatDuration(ms?: number | null) {
   return `${minutes}分${seconds}秒`;
 }
 
+function formatEta(seconds?: number | null) {
+  const safe = Math.max(0, Number(seconds || 0));
+  return formatDuration(safe * 1000);
+}
+
 function formatUsd(value?: number | string | null) {
   const n = Number(value || 0);
   return `$${n.toFixed(6)}`;
+}
+
+function formatCny(value?: number | string | null) {
+  const n = Number(value || 0) * 7;
+  return `¥${n.toFixed(4)}`;
+}
+
+function formatJobId(jobId?: string | null) {
+  const value = String(jobId || "");
+  if (value.length <= 14) return value;
+  return `${value.slice(0, 8)}***${value.slice(-6)}`;
 }
 
 export function FaqUploadPage() {
@@ -109,6 +125,10 @@ export function FaqUploadPage() {
     void Promise.all([statusQuery.refetch(), queueQuery.refetch()]);
   }
 
+  async function refreshProgress() {
+    await Promise.all([statusQuery.refetch(), queueQuery.refetch()]);
+  }
+
   async function cancelJob(jobIdValue: string) {
     await cancelIngest.mutateAsync({ jobId: jobIdValue });
     await queueQuery.refetch();
@@ -121,28 +141,28 @@ export function FaqUploadPage() {
     if (jobId === jobIdValue) await statusQuery.refetch();
   }
 
-  async function downloadResultXlsx() {
-    if (!batchId) return;
-    const response = await utils.client.batch.ingest.result.query({ batchId, format: "xlsx" });
+  async function downloadBatchXlsx(batchIdValue: string) {
+    if (!batchIdValue) return;
+    const response = await utils.client.batch.ingest.result.query({ batchId: batchIdValue, format: "xlsx" });
     const xlsxBase64 = "xlsxBase64" in response ? response.xlsxBase64 || "" : "";
     const binary = atob(xlsxBase64);
     const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
     const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `faq-batch-${batchId}.xlsx`;
-    a.click();
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `faq-batch-${batchIdValue}.xlsx`;
+    anchor.click();
     URL.revokeObjectURL(url);
   }
 
   function downloadTemplate() {
     const blob = new Blob([faqUploadDemoCsv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "faq-upload-template.csv";
-    a.click();
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "faq-upload-template.csv";
+    anchor.click();
     URL.revokeObjectURL(url);
   }
 
@@ -150,14 +170,14 @@ export function FaqUploadPage() {
     <div className="faq-panel">
       <div className="section-header">
         <h2>FAQ 批量上传</h2>
-        <p>模板字段：单一 subclass + Q + A（online/ai/op）</p>
+        <p>模板字段：单行 subclass + Q + A（online/ai/op）</p>
       </div>
 
       <div className="card faq-card">
         <div className="grid">
           <div className="field">
             <label>上传人</label>
-            <Select.Root value={uploader} onValueChange={(v) => setUploader(v as any)}>
+            <Select.Root value={uploader} onValueChange={(value) => setUploader(value as (typeof uploaderOptions)[number])}>
               <Select.Trigger className="select-trigger">
                 <Select.Value />
               </Select.Trigger>
@@ -177,12 +197,12 @@ export function FaqUploadPage() {
 
           <div className="field">
             <label>备注</label>
-            <input value={note} onChange={(e) => setNote(e.target.value)} />
+            <input value={note} onChange={(event) => setNote(event.target.value)} />
           </div>
 
           <div className="field">
             <label>文件</label>
-            <input type="file" accept=".csv,.xlsx" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+            <input type="file" accept=".csv,.xlsx" onChange={(event) => setFile(event.target.files?.[0] || null)} />
           </div>
 
           <div className="upload-actions">
@@ -195,30 +215,68 @@ export function FaqUploadPage() {
               onClick={runUpload}
               disabled={!file || createBatch.isPending || startIngest.isPending}
             >
-              开始上传
+              {createBatch.isPending || startIngest.isPending ? "处理中..." : "开始上传并评分"}
             </button>
           </div>
+
+          {startIngest.error && (
+            <div className="field">
+              <p style={{ margin: 0, color: "#b00020", fontWeight: 900 }}>上传失败：{startIngest.error.message}</p>
+            </div>
+          )}
         </div>
       </div>
 
       {statusQuery.data && (
         <div className="card faq-card" style={{ marginTop: 16 }}>
           <h3>任务进度</h3>
-          <p>
-            状态：{queueStatusText[statusQuery.data.status] ?? statusQuery.data.status} · 商家 {statusQuery.data.merchantTotal || 0} · FAQ
-            {statusQuery.data.doneRows}/{statusQuery.data.totalRows} · {progressPercent}%
-          </p>
+          <div className="job-meta-bar">
+            <span className="job-meta-item">任务ID：{formatJobId(jobId)}</span>
+            <span className={`job-status-pill status-${statusQuery.data.status}`}>{queueStatusText[statusQuery.data.status] ?? statusQuery.data.status}</span>
+            <span className="job-meta-item">
+              商家：{statusQuery.data.merchantTotal || 0} · FAQ：{statusQuery.data.doneRows}/{statusQuery.data.totalRows} · 失败：
+              {statusQuery.data.failedRows}
+            </span>
+          </div>
+
+          <div className="receipt-box" style={{ marginBottom: 10, marginTop: 10, padding: 16 }}>
+            <div className="receipt-item">
+              <span className="receipt-label">耗时</span>
+              <span className="receipt-val">{formatDuration(statusQuery.data.elapsedMs)}</span>
+              <div className="receipt-sub">实时累计</div>
+            </div>
+            <div className="receipt-item">
+              <span className="receipt-label">Token</span>
+              <span className="receipt-val token-blue">{statusQuery.data.totalTokensSum}</span>
+              <div className="receipt-sub">真实消耗</div>
+            </div>
+            <div className="receipt-item">
+              <span className="receipt-label">费用</span>
+              <span className="receipt-val token-pink">{formatUsd(statusQuery.data.estimatedCostUsdSum)}</span>
+              <div className="receipt-sub">≈ {formatCny(statusQuery.data.estimatedCostUsdSum)}</div>
+            </div>
+          </div>
+
+          <div className="progress-track" style={{ marginTop: 8 }}>
+            <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
+          </div>
+          <p style={{ marginTop: 6 }}>{progressPercent}%</p>
+          <button className="btn-ghost" type="button" onClick={() => void refreshProgress()}>
+            刷新进度
+          </button>
         </div>
       )}
 
       <div className="card faq-card" style={{ marginTop: 16 }}>
         <h3>FAQ 任务队列</h3>
-        <table className="history-table">
+        <table className="history-table queue-table faq-queue-table">
           <thead>
             <tr>
               <th>任务ID</th>
               <th>状态</th>
-              <th>商家/FAQ</th>
+              <th>商家数</th>
+              <th>FAQ进度</th>
+              <th>ETA</th>
               <th>耗时</th>
               <th>Token</th>
               <th>费用(USD)</th>
@@ -229,24 +287,36 @@ export function FaqUploadPage() {
           <tbody>
             {(queueQuery.data?.rows ?? []).map((item) => (
               <tr key={item.id}>
-                <td>{item.id}</td>
+                <td title={item.id}>{formatJobId(item.id)}</td>
                 <td>{queueStatusText[item.status] ?? item.status}</td>
+                <td>{item.merchantTotal || 0}</td>
                 <td>
-                  {item.merchantTotal || 0}/{item.doneRows}/{item.totalRows}
-                  {item.failedRows > 0 ? ` (失败 ${item.failedRows})` : ""}
+                  {item.doneRows}/{item.totalRows}
+                  {item.totalRows > 0 ? ` (${Math.round((item.doneRows / item.totalRows) * 100)}%)` : ""}
+                  {item.failedRows > 0 ? `（失败 ${item.failedRows}）` : ""}
                 </td>
+                <td>{formatEta(item.etaSeconds)}</td>
                 <td>{formatDuration(item.elapsedMs)}</td>
                 <td>{item.totalTokensSum}</td>
                 <td>{formatUsd(item.estimatedCostUsdSum)}</td>
                 <td>{new Date(item.startedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}</td>
                 <td>
                   {item.status === "running" || item.status === "pending" ? (
-                    <button className="btn-ghost" type="button" onClick={() => void cancelJob(item.id)}>
+                    <button className="btn-ghost faq-queue-action-btn" type="button" onClick={() => void cancelJob(item.id)}>
                       取消
                     </button>
                   ) : item.status === "failed" || item.status === "cancelled" ? (
-                    <button className="btn-ghost" type="button" onClick={() => void retryJob(item.id)}>
-                      重试
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button className="btn-ghost faq-queue-action-btn" type="button" onClick={() => void retryJob(item.id)}>
+                        重试
+                      </button>
+                      <button className="btn-ghost faq-queue-action-btn" type="button" onClick={() => void downloadBatchXlsx(item.batchId)}>
+                        下载
+                      </button>
+                    </div>
+                  ) : item.status === "done" ? (
+                    <button className="btn-ghost faq-queue-action-btn" type="button" onClick={() => void downloadBatchXlsx(item.batchId)}>
+                      下载
                     </button>
                   ) : (
                     <span className="muted">-</span>
@@ -256,18 +326,18 @@ export function FaqUploadPage() {
             ))}
             {(queueQuery.data?.rows?.length ?? 0) === 0 && (
               <tr>
-                <td colSpan={8}>暂无任务</td>
+                <td colSpan={10}>暂无任务</td>
               </tr>
             )}
           </tbody>
         </table>
 
-        <div className="upload-actions" style={{ marginTop: 10, justifyContent: "space-between" }}>
+        <div className="upload-actions" style={{ marginTop: 16, justifyContent: "space-between" }}>
           <button className="btn-ghost" type="button" onClick={() => void queueQuery.refetch()}>
             刷新队列
           </button>
           <div className="upload-actions" style={{ gap: 8 }}>
-            <button className="btn-ghost" type="button" disabled={queuePage <= 1} onClick={() => setQueuePage((prev) => Math.max(1, prev - 1))}>
+            <button className="btn-ghost" type="button" disabled={queuePage <= 1} onClick={() => setQueuePage((value) => Math.max(1, value - 1))}>
               上一页
             </button>
             <span style={{ fontWeight: 900, minWidth: 72, textAlign: "center" }}>
@@ -277,7 +347,7 @@ export function FaqUploadPage() {
               className="btn-ghost"
               type="button"
               disabled={queuePage >= queueTotalPages}
-              onClick={() => setQueuePage((prev) => Math.min(queueTotalPages, prev + 1))}
+              onClick={() => setQueuePage((value) => Math.min(queueTotalPages, value + 1))}
             >
               下一页
             </button>
@@ -289,7 +359,7 @@ export function FaqUploadPage() {
         <div className="card faq-card" style={{ marginTop: 16 }}>
           <h3>批次摘要</h3>
           <pre>{JSON.stringify(resultQuery.data.summary, null, 2)}</pre>
-          <button className="btn-ghost" type="button" onClick={downloadResultXlsx}>
+          <button className="btn-ghost" type="button" onClick={() => void downloadBatchXlsx(batchId)}>
             下载 FAQ 结果
           </button>
         </div>
@@ -297,4 +367,3 @@ export function FaqUploadPage() {
     </div>
   );
 }
-
