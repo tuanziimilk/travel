@@ -29,7 +29,9 @@ import {
   saveManualScoreToBatch,
   startIngestJob,
   buildExportRows,
+  getBatchModuleId,
   toXlsx,
+  toXlsxByModule,
   toCsv,
 } from "../jobs/ingestWorker";
 import { scoreAboutByAiWithMeta } from "../scoring/aboutAiScorer";
@@ -157,7 +159,7 @@ export const appRouter = t.router({
         return startIngestJob(input.batchId, input.fileName, input.fileBase64);
       }),
       queue: t.procedure.input(batchQueueInputSchema).query(async ({ input }) => {
-        return listIngestJobs(input.page, input.pageSize);
+        return listIngestJobs(input.page, input.pageSize, input.moduleId);
       }),
       status: t.procedure.input(batchStatusInputSchema).query(async ({ input }) => {
         return getIngestStatus(input.jobId);
@@ -174,8 +176,13 @@ export const appRouter = t.router({
           return { csv: toCsv(buildExportRows(data.rows as unknown as Array<Record<string, unknown>>)) };
         }
         if (input.format === "xlsx") {
+          const moduleId = await getBatchModuleId(input.batchId);
           return {
-            xlsxBase64: toXlsx(data.rows as unknown as Array<Record<string, unknown>>, data.summary as Record<string, unknown>),
+            xlsxBase64: toXlsxByModule(
+              moduleId,
+              data.rows as unknown as Array<Record<string, unknown>>,
+              data.summary as Record<string, unknown>,
+            ),
           };
         }
         return data;

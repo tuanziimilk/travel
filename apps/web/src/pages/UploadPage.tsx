@@ -68,7 +68,7 @@ export function UploadPage() {
   );
 
   const queueQuery = trpc.batch.ingest.queue.useQuery(
-    { page: queuePage, pageSize: queuePageSize },
+    { moduleId: "about", page: queuePage, pageSize: queuePageSize },
     {
       refetchInterval: (query) => {
         const list = query.state.data?.rows ?? [];

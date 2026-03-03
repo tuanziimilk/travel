@@ -165,10 +165,66 @@ function validateStringArray(errors, path, value, minLen, maxLen) {
   }
 }
 
+function containsFirstPerson(text) {
+  if (typeof text !== "string") return false;
+  return /\b(i|we|our|ours|us|my|mine)\b|我|我们|咱们|本店|本站/iu.test(text);
+}
+
+function hasHighRiskFlag(notes) {
+  if (typeof notes !== "string") return false;
+  return /高风险|redline|red line|风险点/iu.test(notes);
+}
+
+const HIGH_RISK_SIGNAL_PATTERNS = [
+  /高风险|redline|red line|风险点/iu,
+  /叠加.*(冲突|矛盾)|可否叠加.*(冲突|矛盾)/u,
+  /生效.*(缺失|不清|模糊)|何时生效.*(缺失|不清|模糊)/u,
+  /适用范围.*(缺失|不清)|排除项.*(缺失|不清)|门槛.*(缺失|不清)/u,
+  /退款.*(缺失|不清)|取消订单.*(缺失|不清)/u,
+  /永久|100%|全部可用|绝对化/u,
+];
+
+function hasHighRiskSignal(text) {
+  if (typeof text !== "string") return false;
+  return HIGH_RISK_SIGNAL_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function getResultHighRiskInfo(item, notesText) {
+  const sources = [];
+
+  if (Array.isArray(item?.weaknesses)) {
+    item.weaknesses.forEach((text, index) => {
+      if (hasHighRiskSignal(text)) sources.push(`weaknesses[${index}]`);
+    });
+  }
+
+  if (Array.isArray(item?.suggestions)) {
+    item.suggestions.forEach((text, index) => {
+      if (hasHighRiskSignal(text)) sources.push(`suggestions[${index}]`);
+    });
+  }
+
+  if (hasHighRiskSignal(notesText)) {
+    sources.push("notes");
+  }
+
+  return {
+    hit: sources.length > 0,
+    sources: uniqueArray(sources),
+  };
+}
+
+function hasSeoNegativeSignal(item) {
+  const text = [...(item?.weaknesses || []), ...(item?.suggestions || [])].join(" ");
+  return /(关键词.*(不足|缺失|堆砌)|问句.*(不贴|偏离).*(搜索|意图)|SEO.*(弱|不足))/u.test(text);
+}
+
 function validateDocShape(errors, doc, options = {}) {
   const checkPass = options.checkPass === true;
   const checkRanking = options.checkRanking === true;
   const requireMer = options.requireMer === true;
+  const strictNotes = options.strictNotes === true;
+  const strictNoFirstPerson = options.strictNoFirstPerson === true;
   if (!isPlainObject(doc)) {
     errors.push("根对象必须是 JSON object");
     return;
@@ -184,6 +240,26 @@ function validateDocShape(errors, doc, options = {}) {
   if (!isPlainObject(doc.comparison)) errors.push("comparison 必须是 object");
   if (typeof doc.notes !== "string") errors.push("notes 必须是 string");
   if (errors.length > 0) return;
+
+  if (strictNoFirstPerson) {
+    const asText = JSON.stringify({ comparison: doc.comparison, notes: doc.notes });
+    if (containsFirstPerson(asText)) {
+      errors.push("严格模式：输出文本不得出现第一人称（I/we/我/我们等）");
+    }
+  }
+
+  if (strictNotes) {
+    const notesText = doc.notes || "";
+    if (!/op|OP|缺少 OP|无 OP/u.test(notesText)) {
+      errors.push("严格模式：notes 必须说明是否缺少 OP 版本");
+    }
+    if (!/country-language-map|语言|本地化/u.test(notesText)) {
+      errors.push("严格模式：notes 必须说明语言/本地化判断依据");
+    }
+    if (!/风险|risk|红线|redline/u.test(notesText)) {
+      errors.push("严格模式：notes 必须包含风险点说明");
+    }
+  }
 
   validateString(errors, "meta.TermID", doc.meta.TermID);
   validateString(errors, "meta.Domain", doc.meta.Domain);
@@ -295,12 +371,35 @@ function validateDocShape(errors, doc, options = {}) {
       typeof item.score_breakdown.A === "number" &&
       typeof item.score_breakdown.B === "number"
     ) {
-      const expected =
+      const expectedByScore =
         item.score_total >= 8.0 - 1e-9 &&
         item.score_breakdown.A >= 2.0 - 1e-9 &&
         item.score_breakdown.B >= 3.0 - 1e-9;
+
+      const highRiskInfo = getResultHighRiskInfo(item, doc.notes);
+      const expected = expectedByScore && !highRiskInfo.hit;
+
       if (item.pass_for_publish !== expected) {
-        errors.push(`${basePath}.pass_for_publish 与阈值规则不一致（启用 --check-pass 时校验）`);
+        if (expectedByScore && highRiskInfo.hit && item.pass_for_publish === true) {
+          errors.push(
+            `${basePath}.pass_for_publish 命中高风险红线仍为 true（来源：${highRiskInfo.sources.join(", ")}）；应为 false`,
+          );
+        } else {
+          errors.push(`${basePath}.pass_for_publish 与阈值+红线规则不一致（启用 --check-pass 时校验）`);
+        }
+      }
+
+      if (highRiskInfo.hit) {
+        if (item.score_breakdown.B > 3.4 + 1e-9) {
+          errors.push(`${basePath}.score_breakdown.B 命中高风险红线时必须 <= 3.4`);
+        }
+        if (item.score_total > 7.9 + 1e-9) {
+          errors.push(`${basePath}.score_total 命中高风险红线时必须 <= 7.9`);
+        }
+      }
+
+      if (item.score_breakdown.D >= 1.0 - 1e-9 && hasSeoNegativeSignal(item)) {
+        errors.push(`${basePath}.score_breakdown.D 存在 SEO 负向信号时不得为 1.0`);
       }
     }
   }
@@ -352,7 +451,7 @@ function validateDocShape(errors, doc, options = {}) {
 
     const hasOp = expectedVersions.includes("op");
     if (!hasOp && actualVersions.includes("op")) {
-      errors.push("About_OP 缺失时不应出现 op version（以 meta.versions_present 为准）");
+      errors.push("OP 版本缺失时不应出现 op version（以 meta.versions_present 为准）");
     }
 
     if (Array.isArray(doc.comparison?.ranking)) {
@@ -398,7 +497,7 @@ function validateExampleLine(errors, obj, lineNo) {
     errors.push(`${base}: 必须是 object`);
     return;
   }
-  for (const k of ["Country", "version", "about_text", "expected", "notes"]) {
+  for (const k of ["Country", "version", "expected", "notes"]) {
     if (!(k in obj)) errors.push(`${base}: 缺少字段 ${k}`);
   }
   if (typeof obj.Country !== "string" || obj.Country.trim().length === 0) {
@@ -407,8 +506,9 @@ function validateExampleLine(errors, obj, lineNo) {
   if (!["online", "ai", "op"].includes(obj.version)) {
     errors.push(`${base}: version 必须是 online/ai/op`);
   }
-  if (typeof obj.about_text !== "string" || obj.about_text.trim().length === 0) {
-    errors.push(`${base}: about_text 必须是非空 string`);
+  const sampleText = typeof obj.faq_text === "string" ? obj.faq_text : obj.about_text;
+  if (typeof sampleText !== "string" || sampleText.trim().length === 0) {
+    errors.push(`${base}: faq_text（或兼容字段 about_text）必须是非空 string`);
   }
   if (!isPlainObject(obj.expected)) {
     errors.push(`${base}: expected 必须是 object`);
@@ -525,6 +625,8 @@ async function main() {
     checkPass: args.checkPass,
     checkRanking: args.checkRanking,
     requireMer: args.requireMer,
+    strictNotes: args.strict,
+    strictNoFirstPerson: args.strict,
   });
 
   if (errors.length > 0) {

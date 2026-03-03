@@ -7,6 +7,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { countryOptions, uploaderOptions } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
+import { getLocalizedTextCount, getTextCountModeLabel } from "../lib/textCount";
 
 const PIN_KEY = "manual_pin_bundle_v1";
 
@@ -96,10 +97,6 @@ const dimMeta = [
   { key: "D", max: 1, label: "D 可读与本土化" },
 ] as const;
 
-function countWords(text: string) {
-  return text.trim() ? text.trim().split(/\s+/).length : 0;
-}
-
 function formatDuration(ms: number) {
   if (!ms) return "0ms";
   if (ms < 1000) return `${ms}ms`;
@@ -140,6 +137,7 @@ export function ManualPage() {
   const watchedOnline = form.watch("About_online");
   const watchedAi = form.watch("About_ai");
   const watchedOp = form.watch("About_op");
+  const watchedCountry = form.watch("Country");
 
   const runtime = result?.runtime;
   const estimatedUsd = runtime?.estimatedCostUsd ?? 0;
@@ -216,7 +214,10 @@ export function ManualPage() {
             <input {...form.register("Domain")} />
           </div>
           <div className="info-item">
-            <label>Country</label>
+            <div className="info-label-row">
+              <label>Country</label>
+              <span className="count-mode-inline-tip">字数统计：{getTextCountModeLabel(watchedCountry)}</span>
+            </div>
             <Select.Root
               value={form.watch("Country") || ""}
               onValueChange={(value) => form.setValue("Country", value, { shouldValidate: true })}
@@ -269,17 +270,32 @@ export function ManualPage() {
           <div className="text-box">
             <h3>About-线上</h3>
             <textarea {...form.register("About_online")} />
-            <div className="word-count">字数：{countWords(watchedOnline)} 词</div>
+            <div className="word-count">
+              {(() => {
+                const stat = getLocalizedTextCount(watchedOnline || "", watchedCountry);
+                return `字数：${stat.count} ${stat.unit}`;
+              })()}
+            </div>
           </div>
           <div className="text-box ai-box">
             <h3>About-AI优化</h3>
             <textarea {...form.register("About_ai")} />
-            <div className="word-count">字数：{countWords(watchedAi)} 词</div>
+            <div className="word-count">
+              {(() => {
+                const stat = getLocalizedTextCount(watchedAi || "", watchedCountry);
+                return `字数：${stat.count} ${stat.unit}`;
+              })()}
+            </div>
           </div>
           <div className="text-box op-box">
             <h3>About-OP复核（可选）</h3>
             <textarea {...form.register("About_op")} />
-            <div className="word-count">字数：{countWords(watchedOp)} 词</div>
+            <div className="word-count">
+              {(() => {
+                const stat = getLocalizedTextCount(watchedOp || "", watchedCountry);
+                return `字数：${stat.count} ${stat.unit}`;
+              })()}
+            </div>
           </div>
         </div>
 

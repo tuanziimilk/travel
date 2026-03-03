@@ -61,6 +61,7 @@ export function HistoryPage() {
   });
 
   const listQuery = trpc.batch.list.useQuery({
+    moduleId: "about",
     page: listPage,
     pageSize: 20,
     uploader: appliedFilters.uploader || undefined,

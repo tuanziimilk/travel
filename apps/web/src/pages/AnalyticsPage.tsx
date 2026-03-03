@@ -108,6 +108,7 @@ export function AnalyticsPage() {
   const [distributionView, setDistributionView] = useState<"heatmap" | "grouped">("heatmap");
 
   const query = trpc.analytics.summary.useQuery({
+    moduleId: "about",
     uploader: appliedFilters.uploader || undefined,
     country: appliedFilters.country || undefined,
     startDate: appliedFilters.startDate || undefined,

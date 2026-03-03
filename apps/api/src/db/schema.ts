@@ -84,6 +84,7 @@ export const ingestJobs = mysqlTable("ingest_jobs", {
   id: varchar("id", { length: 36 }).primaryKey(),
   batchId: varchar("batch_id", { length: 36 }).notNull(),
   status: varchar("status", { length: 16 }).notNull().default("pending"),
+  merchantTotal: int("merchant_total").notNull().default(0),
   totalRows: int("total_rows").notNull().default(0),
   doneRows: int("done_rows").notNull().default(0),
   failedRows: int("failed_rows").notNull().default(0),

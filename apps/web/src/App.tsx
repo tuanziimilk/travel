@@ -5,6 +5,10 @@ import { UploadPage } from "./pages/UploadPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { SkillConfigPage } from "./pages/SkillConfigPage";
+import { FaqManualPage } from "./pages/FaqManualPage";
+import { FaqUploadPage } from "./pages/FaqUploadPage";
+import { FaqHistoryPage } from "./pages/FaqHistoryPage";
+import { FaqAnalyticsPage } from "./pages/FaqAnalyticsPage";
 
 function NavLink({ href, label, tone = "page" }: { href: string; label: string; tone?: "module" | "page" }) {
   const [location] = useLocation();
@@ -49,10 +53,17 @@ export default function App() {
   const { moduleId, pageId } = parseLocation(location);
 
   const renderPage = () => {
-    if (pageId === "manual") return <ManualPage moduleId={moduleId} />;
-    if (pageId === "upload") return <UploadPage moduleId={moduleId} />;
-    if (pageId === "history") return <HistoryPage moduleId={moduleId} />;
-    if (pageId === "analytics") return <AnalyticsPage moduleId={moduleId} />;
+    if (moduleId === "faq") {
+      if (pageId === "manual") return <FaqManualPage />;
+      if (pageId === "upload") return <FaqUploadPage />;
+      if (pageId === "history") return <FaqHistoryPage />;
+      if (pageId === "analytics") return <FaqAnalyticsPage />;
+      return <SkillConfigPage moduleId={moduleId} />;
+    }
+    if (pageId === "manual") return <ManualPage />;
+    if (pageId === "upload") return <UploadPage />;
+    if (pageId === "history") return <HistoryPage />;
+    if (pageId === "analytics") return <AnalyticsPage />;
     return <SkillConfigPage moduleId={moduleId} />;
   };
 

@@ -64,6 +64,47 @@ export function parseUploadFile(fileName: string, base64: string): ParsedUploadR
   throw new Error("仅支持 .csv 或 .xlsx");
 }
 
+function parseFaqUploadFile(fileName: string, base64: string): ParsedUploadRow[] {
+  const buffer = Buffer.from(base64, "base64");
+  let records: Record<string, unknown>[] = [];
+  if (fileName.toLowerCase().endsWith(".csv")) {
+    records = parse(buffer.toString("utf8"), {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+    }) as Record<string, unknown>[];
+  } else if (fileName.toLowerCase().endsWith(".xlsx")) {
+    const workbook = XLSX.read(buffer, { type: "buffer" });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    records = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+  } else {
+    throw new Error("invalid file type");
+  }
+
+  return records.map((row) => {
+    const qOnline = String((row as any).Q_online ?? "");
+    const aOnline = String((row as any).A_online ?? "");
+    const subclassUnified = String((row as any).subclass ?? (row as any).subclass_online ?? "");
+    const qAi = String((row as any).Q_ai ?? "");
+    const aAi = String((row as any).A_ai ?? "");
+    const subclassAi = String((row as any).subclass_ai ?? subclassUnified);
+    const qOp = String((row as any).Q_op ?? "");
+    const aOp = String((row as any).A_op ?? "");
+    const subclassOp = String((row as any).subclass_op ?? subclassUnified);
+    const hasOp = qOp.trim() || aOp.trim() || subclassOp.trim();
+
+    return {
+      TermID: String((row as any).TermID ?? ""),
+      TermName: String((row as any).TermName ?? ""),
+      Domain: String((row as any).Domain ?? ""),
+      Country: String((row as any).Country ?? ""),
+      About_online: [`Q: ${qOnline}`, `A: ${aOnline}`, `Subclass: ${subclassUnified}`].join("\n"),
+      About_ai: [`Q: ${qAi}`, `A: ${aAi}`, `Subclass: ${subclassAi}`].join("\n"),
+      About_op: hasOp ? [`Q: ${qOp}`, `A: ${aOp}`, `Subclass: ${subclassOp}`].join("\n") : "",
+    };
+  });
+}
+
 function validateHeaders(headers: string[]) {
   const input = [...headers].sort().join("|");
   const expected = [...requiredHeaders].sort().join("|");
@@ -132,6 +173,7 @@ export async function createBatch(uploader: string) {
 }
 
 export async function createBatchWithMeta(params: {
+  moduleId?: "about" | "faq";
   uploader: string;
   note?: string;
   source?: "upload" | "manual";
@@ -143,6 +185,7 @@ export async function createBatchWithMeta(params: {
   try {
     await db.insert(uploadBatches).values({
       id,
+      moduleId: params.moduleId ?? "about",
       uploader: params.uploader,
       source: params.source ?? "upload",
       note: (params.note ?? "").slice(0, 255),
@@ -152,6 +195,7 @@ export async function createBatchWithMeta(params: {
     // 兜底兼容旧库结构：即便 source/note 不存在，也保证能创建 batch
     await db.insert(uploadBatches).values({
       id,
+      moduleId: params.moduleId ?? "about",
       uploader: params.uploader,
       rowCount: 0,
     });
@@ -160,6 +204,15 @@ export async function createBatchWithMeta(params: {
 }
 
 async function ensureUploadBatchesColumns() {
+  try {
+    await db.execute(sql`ALTER TABLE upload_batches ADD COLUMN module_id varchar(16) NOT NULL DEFAULT 'about'`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.toLowerCase().includes("duplicate") && !message.toLowerCase().includes("exists")) {
+      // ignore and continue fallback
+    }
+  }
+
   try {
     await db.execute(sql`ALTER TABLE upload_batches ADD COLUMN source varchar(16) NOT NULL DEFAULT 'upload'`);
   } catch (error) {
@@ -237,7 +290,13 @@ export async function saveManualScoreToBatch(params: {
 }
 
 export async function startIngestJob(batchId: string, fileName: string, fileBase64: string) {
-  const rows = parseUploadFile(fileName, fileBase64);
+  const batchRows = await db.select().from(uploadBatches).where(eq(uploadBatches.id, batchId));
+  const moduleId = (batchRows[0]?.moduleId || "about") as "about" | "faq";
+  const rows = moduleId === "faq" ? parseFaqUploadFile(fileName, fileBase64) : parseUploadFile(fileName, fileBase64);
+  const merchantTotal =
+    moduleId === "faq"
+      ? new Set(rows.map((row) => String(row.TermID || "").trim() || String(row.Domain || "").trim())).size
+      : rows.length;
   ingestPayloadByBatch.set(batchId, rows);
   const jobId = makeId();
   await ensureIngestJobsColumns();
@@ -245,6 +304,7 @@ export async function startIngestJob(batchId: string, fileName: string, fileBase
     id: jobId,
     batchId,
     status: "pending",
+    merchantTotal,
     totalRows: rows.length,
     doneRows: 0,
     failedRows: 0,
@@ -280,6 +340,8 @@ async function processPendingIngestJobs() {
 }
 
 async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]) {
+  const batchRows = await db.select().from(uploadBatches).where(eq(uploadBatches.id, batchId));
+  const moduleId = (batchRows[0]?.moduleId || "about") as "about" | "faq";
   let done = 0;
   let failed = 0;
   let success = 0;
@@ -332,6 +394,7 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
 
       try {
         const input: ManualScoreInput = {
+          moduleId,
           TermID: row.TermID,
           TermName: row.TermName,
           Domain: row.Domain,
@@ -385,6 +448,7 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
 
 async function ensureIngestJobsColumns() {
   const ddl = [
+    "ALTER TABLE ingest_jobs ADD COLUMN merchant_total int NOT NULL DEFAULT 0",
     "ALTER TABLE ingest_jobs ADD COLUMN elapsed_ms int NOT NULL DEFAULT 0",
     "ALTER TABLE ingest_jobs ADD COLUMN eta_seconds int NOT NULL DEFAULT 0",
     "ALTER TABLE ingest_jobs ADD COLUMN prompt_tokens_sum int NOT NULL DEFAULT 0",
@@ -560,17 +624,22 @@ export async function getIngestStatus(jobId: string) {
   return rows[0];
 }
 
-export async function listIngestJobs(page = 1, pageSize = 20) {
+export async function listIngestJobs(page = 1, pageSize = 20, moduleId?: "about" | "faq") {
   await markStalledJobsAsFailed();
   const safePage = Math.max(1, page);
   const safePageSize = Math.max(1, Math.min(50, pageSize));
   const offset = (safePage - 1) * safePageSize;
   const rows = await db.select().from(ingestJobs).orderBy(desc(ingestJobs.startedAt));
+  const batchRows = await db.select().from(uploadBatches);
+  const moduleByBatchId = new Map(batchRows.map((item) => [item.id, String(item.moduleId || "about")]));
+  const filtered = moduleId
+    ? rows.filter((item) => moduleByBatchId.get(item.batchId) === moduleId)
+    : rows;
   return {
-    total: rows.length,
+    total: filtered.length,
     page: safePage,
     pageSize: safePageSize,
-    rows: rows.slice(offset, offset + safePageSize),
+    rows: filtered.slice(offset, offset + safePageSize),
   };
 }
 
@@ -596,10 +665,17 @@ export async function retryIngestJob(jobId: string) {
   await db.update(uploadBatches).set({ rowCount: 0 }).where(eq(uploadBatches.id, job.batchId));
 
   const newJobId = makeId();
+  const batchRows = await db.select().from(uploadBatches).where(eq(uploadBatches.id, job.batchId));
+  const moduleId = (batchRows[0]?.moduleId || "about") as "about" | "faq";
+  const merchantTotal =
+    moduleId === "faq"
+      ? new Set(payloadRows.map((row) => String(row.TermID || "").trim() || String(row.Domain || "").trim())).size
+      : payloadRows.length;
   await db.insert(ingestJobs).values({
     id: newJobId,
     batchId: job.batchId,
     status: "pending",
+    merchantTotal,
     totalRows: payloadRows.length,
     doneRows: 0,
     failedRows: 0,
@@ -619,6 +695,7 @@ export async function retryIngestJob(jobId: string) {
 }
 
 async function markStalledJobsAsFailed() {
+  await ensureIngestJobsColumns();
   const runningRows = await db.select().from(ingestJobs).where(eq(ingestJobs.status, "running"));
   const nowMs = Date.now();
   for (const row of runningRows) {
@@ -685,6 +762,11 @@ export async function getBatchResult(batchId: string) {
     },
     rows,
   };
+}
+
+export async function getBatchModuleId(batchId: string) {
+  const rows = await db.select().from(uploadBatches).where(eq(uploadBatches.id, batchId));
+  return (rows[0]?.moduleId || "about") as "about" | "faq";
 }
 
 export function buildExportRows(rows: Array<Record<string, unknown>>) {
@@ -848,10 +930,59 @@ export function toXlsx(rows: Array<Record<string, unknown>>, summary: Record<str
   return XLSX.write(workbook, { type: "base64", bookType: "xlsx" });
 }
 
+export function toXlsxByModule(
+  moduleId: "about" | "faq",
+  rows: Array<Record<string, unknown>>,
+  summary: Record<string, unknown>,
+) {
+  if (moduleId === "about") return toXlsx(rows, summary);
+
+  const workbook = XLSX.utils.book_new();
+  const resultSheet = XLSX.utils.json_to_sheet(buildExportRows(rows));
+  XLSX.utils.book_append_sheet(workbook, resultSheet, "结果明细");
+
+  const statsSheet = XLSX.utils.json_to_sheet(buildSummaryRowsZh(summary));
+  XLSX.utils.book_append_sheet(workbook, statsSheet, "结果统计");
+
+  const faqPassRows = rows
+    .filter((row) => !row.errorReason)
+    .filter((row) => Number(row.passAi || 0) === 1 || Number(row.passOp || 0) === 1)
+    .map((row) => {
+      const opScore = Number(row.scoreOpTotal || 0);
+      const aiScore = Number(row.scoreAiTotal || 0);
+      const useOp = Number(row.passOp || 0) === 1 && opScore >= aiScore;
+      const source = useOp ? "op" : "ai";
+      const rawText = String(useOp ? row.snapshotOp || row.snapshotAi || "" : row.snapshotAi || "");
+      const qMatch = rawText.match(/Q:\s*([^\n]+)/i);
+      const aMatch = rawText.match(/A:\s*([^\n]+)/i);
+      const sMatch = rawText.match(/Subclass:\s*([^\n]+)/i);
+
+      return {
+        TermID: String(row.termId || ""),
+        TermName: String(row.termName || ""),
+        Domain: String(row.domain || ""),
+        Country: String(row.country || ""),
+        subclass: String(sMatch?.[1] || ""),
+        Q: String(qMatch?.[1] || ""),
+        A: String(aMatch?.[1] || ""),
+        score_total: String(useOp ? row.scoreOpTotal || "" : row.scoreAiTotal || ""),
+        source,
+      };
+    });
+
+  const passSheet = XLSX.utils.json_to_sheet(faqPassRows, {
+    header: ["TermID", "TermName", "Domain", "Country", "subclass", "Q", "A", "score_total", "source"],
+  });
+  XLSX.utils.book_append_sheet(workbook, passSheet, "可发布FAQ");
+
+  return XLSX.write(workbook, { type: "base64", bookType: "xlsx" });
+}
+
 export async function listBatches(filters: {
   page?: number;
   pageSize?: number;
   unpaged?: boolean;
+  moduleId?: string;
   uploader?: string;
   batchId?: string;
   country?: string;
@@ -859,6 +990,7 @@ export async function listBatches(filters: {
   endDate?: string;
 }) {
   await ensureUploadBatchesColumns();
+  await ensureIngestJobsColumns();
   await ensureAboutScoreRowsColumns();
   const all = await db.select().from(uploadBatches).orderBy(desc(uploadBatches.createdAt));
   const allJobs = await db.select().from(ingestJobs).orderBy(desc(ingestJobs.startedAt));
@@ -870,6 +1002,7 @@ export async function listBatches(filters: {
   const matched = all.filter((item) => {
     const latestJob = latestJobByBatch.get(item.id);
     if (latestJob?.status === "cancelled") return false;
+    if (filters.moduleId && String(item.moduleId || "about") !== filters.moduleId) return false;
     if (filters.uploader && item.uploader !== filters.uploader) return false;
     if (filters.batchId && item.id !== filters.batchId) return false;
     if (filters.startDate && new Date(item.createdAt) < new Date(filters.startDate)) return false;
@@ -900,6 +1033,10 @@ export async function listBatches(filters: {
     aiPassRate: number;
     opPassRate: number | null;
     aiPassLift: number;
+    merchantCount?: number;
+    merchantPublishPassCount?: number;
+    merchantPublishPassRate?: number;
+    overallTrend?: "better" | "worse" | "flat";
   }> = [];
 
   const matchedBatchIds = matched.map((item) => item.id);
@@ -931,6 +1068,47 @@ export async function listBatches(filters: {
     const avgOp = opRows.length ? Math.round((opRows.reduce((acc, item) => acc + Number(item.scoreOpTotal || 0), 0) / opRows.length) * 10) / 10 : 0;
     const passMetrics = collectPassMetrics(validRows);
     const hasOpData = passMetrics.hasOpData;
+    const moduleId = String(batch.moduleId || "about");
+
+    let merchantCount = 0;
+    let merchantPublishPassCount = 0;
+    let merchantPublishPassRate = 0;
+    let overallTrend: "better" | "worse" | "flat" = "flat";
+
+    if (moduleId === "faq") {
+      const merchantMap = new Map<string, RowSelect[]>();
+      for (const row of validRows) {
+        const key = String(row.termId || "").trim() || String(row.domain || "").trim();
+        const list = merchantMap.get(key) || [];
+        list.push(row);
+        merchantMap.set(key, list);
+      }
+      merchantCount = merchantMap.size;
+      let better = 0;
+      let worse = 0;
+      for (const list of merchantMap.values()) {
+        let onlineSum = 0;
+        let targetSum = 0;
+        let publish = false;
+        for (const row of list) {
+          const onlineScore = Number(row.scoreOnlineTotal || 0);
+          const aiScore = Number(row.scoreAiTotal || 0);
+          const opScore = row.scoreOpTotal == null ? Number.NEGATIVE_INFINITY : Number(row.scoreOpTotal || 0);
+          onlineSum += onlineScore;
+          targetSum += Math.max(aiScore, Number.isFinite(opScore) ? opScore : Number.NEGATIVE_INFINITY);
+          if (Number(row.passAi || 0) === 1 || Number(row.passOp || 0) === 1) publish = true;
+        }
+        const size = Math.max(1, list.length);
+        const onlineAvg = onlineSum / size;
+        const targetAvg = targetSum / size;
+        if (targetAvg > onlineAvg) better += 1;
+        else if (targetAvg < onlineAvg) worse += 1;
+        if (publish) merchantPublishPassCount += 1;
+      }
+      merchantPublishPassRate = merchantCount ? Math.round((merchantPublishPassCount / merchantCount) * 1000) / 10 : 0;
+      if (better > worse) overallTrend = "better";
+      else if (worse > better) overallTrend = "worse";
+    }
 
     result.push({
       id: batch.id,
@@ -955,6 +1133,10 @@ export async function listBatches(filters: {
       aiPassRate: passMetrics.aiPassRate,
       opPassRate: hasOpData ? passMetrics.opPassRate : null,
       aiPassLift: passMetrics.aiPassLift,
+      merchantCount,
+      merchantPublishPassCount,
+      merchantPublishPassRate,
+      overallTrend,
     });
   }
 
@@ -983,6 +1165,7 @@ export async function getBatchDetail(batchId: string, page: number, pageSize: nu
 }
 
 export async function analyticsSummary(filters: {
+  moduleId?: string;
   uploader?: string;
   batchId?: string;
   country?: string;
@@ -990,7 +1173,7 @@ export async function analyticsSummary(filters: {
   endDate?: string;
 }) {
   await ensureAboutScoreRowsColumns();
-  const batches = await listBatches({ ...filters, unpaged: true });
+  const batches = await listBatches({ ...filters, unpaged: true, moduleId: filters.moduleId });
   const batchIds = new Set(batches.rows.map((item) => item.id));
   const allRows = await db.select().from(aboutScoreRows);
   const rows = allRows.filter((item) => batchIds.has(item.batchId));
@@ -1059,6 +1242,47 @@ export async function analyticsSummary(filters: {
     fill("op", item.scoreOpTotal);
   }
 
+  const moduleId = String(filters.moduleId || "about");
+  let merchantCount = 0;
+  let merchantPublishPassCount = 0;
+  let merchantPublishPassRate = 0;
+  let overallTrend: "better" | "worse" | "flat" = "flat";
+
+  if (moduleId === "faq") {
+    const merchantMap = new Map<string, RowSelect[]>();
+    for (const row of validRows) {
+      const key = String(row.termId || "").trim() || String(row.domain || "").trim();
+      const list = merchantMap.get(key) || [];
+      list.push(row);
+      merchantMap.set(key, list);
+    }
+    merchantCount = merchantMap.size;
+    let better = 0;
+    let worse = 0;
+    for (const list of merchantMap.values()) {
+      let onlineSum = 0;
+      let targetSum = 0;
+      let publish = false;
+      for (const row of list) {
+        const onlineScore = Number(row.scoreOnlineTotal || 0);
+        const aiScore = Number(row.scoreAiTotal || 0);
+        const opScore = row.scoreOpTotal == null ? Number.NEGATIVE_INFINITY : Number(row.scoreOpTotal || 0);
+        onlineSum += onlineScore;
+        targetSum += Math.max(aiScore, Number.isFinite(opScore) ? opScore : Number.NEGATIVE_INFINITY);
+        if (Number(row.passAi || 0) === 1 || Number(row.passOp || 0) === 1) publish = true;
+      }
+      const size = Math.max(1, list.length);
+      const onlineAvg = onlineSum / size;
+      const targetAvg = targetSum / size;
+      if (targetAvg > onlineAvg) better += 1;
+      else if (targetAvg < onlineAvg) worse += 1;
+      if (publish) merchantPublishPassCount += 1;
+    }
+    merchantPublishPassRate = merchantCount ? Math.round((merchantPublishPassCount / merchantCount) * 1000) / 10 : 0;
+    if (better > worse) overallTrend = "better";
+    else if (worse > better) overallTrend = "worse";
+  }
+
   return {
     versionAverages: {
       online: avg("scoreOnlineTotal"),
@@ -1099,6 +1323,12 @@ export async function analyticsSummary(filters: {
           op: avgOpEligible("scoreOpTotal"),
         },
         bestVersionShare: bestOpSubset,
+      },
+      faqMerchant: {
+        merchantCount,
+        merchantPublishPassCount,
+        merchantPublishPassRate,
+        overallTrend,
       },
     },
     scoreDistribution: distributionByVersion.ai,

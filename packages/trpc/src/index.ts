@@ -148,6 +148,7 @@ export const batchRetryInputSchema = z.object({
 export const batchQueueInputSchema = z.object({
   page: z.number().int().min(1).optional().default(1),
   pageSize: z.number().int().min(1).max(50).optional().default(20),
+  moduleId: moduleSchema.optional(),
 });
 
 export const batchResultInputSchema = z.object({
