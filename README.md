@@ -1,162 +1,246 @@
-﻿# About 璐ㄩ噺璇勪及宸ュ叿锛坅bout-quality-demo锛?
-涓€涓熀浜?Monorepo 鐨?AI 璐ㄦ绯荤粺锛屾敮鎸侊細
+# SC Quality Scoring
 
-- 鎵嬪姩璇勪及锛坄/manual`锛?- 鎵归噺涓婁紶寮傛璇勪及锛坄/upload`锛?- 鍘嗗彶鎵规鏌ヨ涓庡鍑猴紙`/history`锛?- 璇勪及鐪嬫澘锛坄/analytics`锛?
+`SC Quality Scoring` 是一个面向 `About` 与 `FAQ` 文案质检评分的 Monorepo 工具。
+
+支持能力：
+
+- 手动评分（对比 online / ai / op）
+- 批量上传评分（队列执行、可取消/重试）
+- 历史批次查询（筛选、详情、下载）
+- 评估看板（分数、通过率、分布图）
+- Skill 在线读取/编辑（About 与 FAQ 分离）
+
 ---
 
-## 1. 椤圭洰缁撴瀯
+## 1. 项目结构
 
 ```txt
 SC-quality-scoring/
   apps/
     api/                 # Express + tRPC + Drizzle + MySQL
-    web/                 # React + Vite 鍓嶇
+    web/                 # React + Vite
   packages/
-    trpc/                # 鍓嶅悗绔叡浜?schema
+    trpc/                # 前后端共享 schema
+  skills/
+    about-quality-scoring/
+    faq-quality-scoring/
   .env.example
-  pm2.ecosystem.config.cjs
   package.json
 ```
 
 ---
 
-## 2. 杩愯鐜瑕佹眰
+## 2. 运行环境要求
 
-- Node: `22.22.0`锛堝繀椤伙紝椤圭洰鏈?engines 闄愬埗锛?- Yarn: `1.22.22`
+- Node: `22.22.0`
+- Yarn: `1.22.22`
 - MySQL: `8.x`
-- OS: Windows / Linux 鍧囧彲
 
-> 濡傛灉 `yarn` 鎶?`engine incompatible`锛屼紭鍏堟鏌?Node 鐗堟湰鏄惁鏄?`22.22.0`銆?
+建议先确认：
+
+```bash
+node -v
+yarn -v
+```
+
 ---
 
-## 3. 鐜鍙橀噺
+## 3. 安装与启动
 
-澶嶅埗 `.env.example` 涓?`.env`锛?
+1) 安装依赖
+
+```bash
+yarn install
+```
+
+2) 复制环境变量文件
+
 ```bash
 cp .env.example .env
 ```
 
-涓昏鍙橀噺璇存槑锛?
-- `DATABASE_URL`: MySQL 杩炴帴涓诧紙蹇呭～锛?- `API_PORT`: API 绔彛锛岄粯璁?`3001`
-- `WEB_ORIGIN`: 鍓嶇鏉ユ簮鍦板潃锛岄粯璁?`http://localhost:5173`
-- `AI_BASE_URL`: 澶фā鍨嬬綉鍏冲湴鍧€
-- `AI_API_KEY`: 澶фā鍨嬪瘑閽ワ紙蹇呭～锛?- `AI_MODEL`: 妯″瀷鍚嶏紙濡?`gpt-5-mini`锛?- `AI_PROMPT_VERSION`: Prompt 鐗堟湰鍙?- `AI_INPUT_COST_PER_1M` / `AI_OUTPUT_COST_PER_1M`: 璐圭敤浼扮畻鍙傛暟
-- `ABOUT_SKILL_PATH`: About 璇勫垎瑙勫垯鐩綍锛堥粯璁?`skills/about-quality-scoring`锛?- `FAQ_SKILL_PATH`: FAQ 璇勫垎瑙勫垯鐩綍锛堥粯璁?`skills/faq-quality-scoring`锛?- `SNAPSHOT_ENABLED`: 鏄惁淇濆瓨蹇収
-- `INGEST_ROW_CONCURRENCY`: 鎵归噺浠诲姟鍐呭苟鍙戯紙褰撳墠寤鸿 `10`锛?- `INGEST_PROGRESS_FLUSH_MS`: 杩涘害鍐欏簱鑺傛祦姣锛堝缓璁?`1000`锛?
----
+3) 启动开发环境
 
-## 4. 瀹夎涓庢湰鍦板惎鍔?
 ```bash
-yarn install
 yarn dev
 ```
 
-榛樿鍦板潃锛?
+默认地址：
+
 - Web: `http://localhost:5173`
 - API: `http://localhost:3001`
 - Health: `http://localhost:3001/health`
 
 ---
 
-## 5. 鏁版嵁搴撳垵濮嬪寲
+## 4. 环境变量说明（详细）
 
-### 5.1 棣栨鍒濆鍖?
-```bash
-yarn workspace @about-demo/api db:generate
-yarn workspace @about-demo/api db:migrate
-```
+以下变量定义在 `.env`（可参考 `.env.example`）。
 
-### 5.2 鍏煎鍘嗗彶搴撹鏄?
-鏈嶅姟绔凡鍋氳繍琛屾椂鑷姩琛ュ垪锛堜緥濡?`upload_batches.note/source`銆乣about_score_rows.term_name` 绛夛級銆?
-鍗充娇鏄棫搴擄紝涔熶細鍦ㄨ鍐欐椂鑷姩灏濊瘯 `ALTER TABLE` 琛ラ綈瀛楁銆?
+### 4.1 AI / 成本相关
+
+- `AI_BASE_URL`
+  - 说明：模型 API 网关地址
+  - 默认：`https://api.openai.com/v1`
+  - 示例：`https://api.openai.com/v1`
+
+- `AI_API_KEY`
+  - 说明：模型 API Key
+  - 默认：无（必填）
+  - 示例：`sk-xxxx`
+
+- `AI_MODEL`
+  - 说明：调用模型名
+  - 默认：`gpt-4.1-mini`
+  - 示例：`gpt-5-mini`
+
+- `AI_MAX_OUTPUT_TOKENS`
+  - 说明：限制模型单次最大输出 token
+  - 默认：`1200`（示例值）
+  - 建议：过小会导致输出截断，过大增加成本
+
+- `AI_PROMPT_VERSION`
+  - 说明：提示词版本标识（用于追踪）
+  - 默认：`about_quality_scoring_v1`
+  - FAQ 场景建议配置为 FAQ 对应版本
+
+- `AI_INPUT_COST_PER_1M`
+  - 说明：输入 token 单价（每 1M）
+  - 默认：`0.25`
+
+- `AI_OUTPUT_COST_PER_1M`
+  - 说明：输出 token 单价（每 1M）
+  - 默认：`2.00`
+
+### 4.2 数据库与服务地址
+
+- `DATABASE_URL`
+  - 说明：MySQL 连接串
+  - 默认：无（必填）
+  - 示例：`mysql://root:password@127.0.0.1:3306/about_quality_demo`
+
+- `API_PORT`
+  - 说明：API 启动端口
+  - 默认：`3001`
+
+- `WEB_ORIGIN`
+  - 说明：API CORS 白名单来源
+  - 默认：`http://localhost:5173`
+  - 生产建议：改成正式域名
+
+### 4.3 Skill 路径相关
+
+- `ABOUT_SKILL_PATH`
+  - 说明：About Skill 目录
+  - 默认：`skills/about-quality-scoring`
+
+- `FAQ_SKILL_PATH`
+  - 说明：FAQ Skill 目录
+  - 默认：`skills/faq-quality-scoring`
+
+说明：
+
+- 建议使用相对路径（随仓库迁移更稳）。
+- 后端已做路径容错：若配置为旧绝对路径，会自动回退到当前仓库 `skills/...`。
+
+### 4.4 批量队列与进度
+
+- `SNAPSHOT_ENABLED`
+  - 说明：是否保存评分快照
+  - 默认：`true`
+
+- `INGEST_ROW_CONCURRENCY`
+  - 说明：单个批量任务内部并发
+  - 默认：`10`
+  - 建议：
+    - 稳定起始值 `8~10`
+    - 限流明显时降到 `4~6`
+
+- `INGEST_PROGRESS_FLUSH_MS`
+  - 说明：进度写库节流间隔（毫秒）
+  - 默认：`1000`
+  - 建议：`500~1500`
+
+### 4.5 前端 tRPC 地址（可选）
+
+- `VITE_TRPC_URL`
+  - 说明：前端直连 tRPC 地址
+  - 默认：空（使用 `/trpc` 相对路径）
+  - 示例：`https://api.xxx.com/trpc`
+
+说明：
+
+- 开发环境默认使用 Vite 代理：`/trpc -> http://localhost:3001`
+- 生产环境可通过网关转发，或设置 `VITE_TRPC_URL`
+
 ---
 
-## 6. 鏋勫缓涓庨儴缃?
-### 6.1 鏋勫缓
+## 5. 改项目目录名后的注意事项
+
+当目录名变化（例如 `about-quality-demo` -> `SC-quality-scoring`）后，建议执行：
 
 ```bash
-yarn build
+yarn install
 ```
 
-### 6.2 鍚姩 API锛圥M2锛?
+目的：重建 workspace 软链接，避免 `@about-demo/*` 指向旧路径。
+
+---
+
+## 6. 常用命令
+
 ```bash
+yarn dev
+yarn typecheck
+yarn test
+yarn build
 yarn start
 ```
 
-PM2 閰嶇疆鏂囦欢锛歚pm2.ecosystem.config.cjs`
-
-> 褰撳墠浠撳簱鐨?PM2 浠呮墭绠?API銆俉eb 鐢变綘鑷繁閫夋嫨闈欐€侀儴缃叉柟寮忥紙Nginx銆乂ercel銆丯etlify 绛夛級銆?
 ---
 
-## 7. Web 涓?API 鑱旈€氶厤缃紙閲嶈锛?
-褰撳墠鍓嶇 `tRPC` 鍦板潃鍦ㄤ唬鐮佷腑鍐欐涓猴細
-
-- `apps/web/src/lib/trpc.ts` -> `http://localhost:3001/trpc`
-
-鐢熶骇閮ㄧ讲鏃惰鏀逛负浣犵殑瀹為檯 API 鍩熷悕锛堟垨鎸変綘鐨勭綉鍏崇瓥鐣ユ敼閫犱负鐜鍙橀噺锛夈€?
----
-
-## 8. 褰撳墠鎵归噺浠诲姟鎵ц妯″瀷
-
-- 浠诲姟闂达細涓茶锛堥槦鍒椾竴娆″彧璺戜竴涓壒娆★級
-- 浠诲姟鍐咃細骞惰锛堟寜 `INGEST_ROW_CONCURRENCY`锛?
-骞跺彂璋冧紭寤鸿锛?
-- 璧峰鍊?`10`
-- 鑻ユā鍨嬬綉鍏抽檺娴佹槑鏄撅紝闄嶅埌 `6~8`
-- 鑻ョ綉鍏崇ǔ瀹氬彲鎵垮彈锛屽啀閫愭涓婅皟
-
----
-
-## 9. 瀵煎嚭鑳藉姏璇存槑
-
-鎵归噺涓庡巻鍙查〉鍧囨敮鎸?xlsx 瀵煎嚭锛屽綋鍓嶅寘鍚?3 涓?sheet锛?
-1. `缁撴灉鏄庣粏`
-2. `缁撴灉缁熻`锛堜腑鏂囷級
-3. `鍙彂甯傾bout`锛堝浐瀹氭ā鏉匡級
-
-鍏朵腑 `鍙彂甯傾bout`锛?
-- 浠呰緭鍑衡€滆瘎浼版垚鍔熶笖鍙彂甯冣€濈殑琛?- `Source` 鍥哄畾涓?`AI`
-- `鏉垮潡鍚嶇О` 鍥哄畾涓?`About`
-- `鏄惁鍙彂甯僠 鍙ｅ緞锛歚AI鎬诲垎 >= 8` 鎴?`OP鎬诲垎 >= 8`
-
----
-
-## 10. 甯歌闂鎺掓煡
-
-### Q1: 鍘嗗彶椤垫樉绀?0 鏉★紝浣嗗簱閲屾湁鏁版嵁
-
-- 鍏堢湅 API 鏃ュ織鏄惁鏈?SQL 閿欒
-- 璁块棶 `/health` 纭 API 姝ｅ父
-- 纭 `DATABASE_URL` 鏄惁杩炲埌姝ｇ‘搴?
-### Q2: `yarn test` 鏃犳硶杩愯锛屾彁绀?Node 鐗堟湰涓嶅吋瀹?
-- 鍒囨崲鍒?Node `22.22.0`
-
-### Q3: 涓婁紶浠诲姟鑰楁椂娉㈠姩澶?
-- 妯″瀷鏈嶅姟鏈韩鏈夋姈鍔紝灞炰簬甯歌鐜拌薄
-- 鍏堣瀵?`Token/璐圭敤/鑰楁椂`锛屽啀璋冩暣 `INGEST_ROW_CONCURRENCY`
-
----
-
-## 11. 甯哥敤鍛戒护
+## 7. 部署前检查清单
 
 ```bash
-# 鏈湴寮€鍙?yarn dev
-
-# 绫诲瀷妫€鏌?yarn typecheck
-
-# 杩愯娴嬭瘯
-yarn test
-
-# 鏋勫缓
+yarn typecheck
 yarn build
-
-# 鍚姩 API锛圥M2锛?yarn start
+yarn test
 ```
+
+建议再人工验证：
+
+1) 手动评分（About/FAQ 各 1 次）
+2) 批量上传（FAQ 1 个小样本）
+3) 队列状态更新（running -> done）
+4) 历史批次可见并可下载
+5) 看板图表可渲染
 
 ---
 
-## 12. 璺敱閫熻
+## 8. 常见故障排查
 
-- `/manual`锛氭墜鍔ㄨ瘎浼?- `/upload`锛氭壒閲忎笂浼犱笌浠诲姟闃熷垪
-- `/history`锛氬巻鍙叉壒娆′笌瀵煎嚭
-- `/analytics`锛氱粺璁＄湅鏉?
+### 8.1 前端页面显示“暂无任务”
+
+依次检查：
+
+1) API 是否正常：`/health` 是否返回 200
+2) 浏览器 Network 中 `/trpc` 是否成功
+3) 当前页面是否在 FAQ 模块（不是 About）
+4) `DATABASE_URL` 是否连接到正确库
+
+### 8.2 Skill 取不到值
+
+1) 检查 `ABOUT_SKILL_PATH` / `FAQ_SKILL_PATH`
+2) 确认对应目录存在 `SKILL.md`
+3) 重新启动 API
+
+### 8.3 改目录后包解析失败
+
+表现：`Failed to resolve import '@about-demo/trpc'`
+
+解决：
+
+```bash
+yarn install
+```
+
