@@ -50,6 +50,7 @@ const ingestRunnerWorkingByModule: Record<ModuleId, boolean> = {
   faq: false,
 };
 const publishAboutSectionName = "About";
+const ingestJobStallMs = 5 * 60 * 1000;
 
 export function parseUploadFile(fileName: string, base64: string): ParsedUploadRow[] {
   const buffer = Buffer.from(base64, "base64");
@@ -358,6 +359,56 @@ async function processPendingIngestJobs(moduleId: ModuleId) {
   }
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function retryBackoffMs(attempt: number, baseMs: number, maxMs: number) {
+  const jitter = Math.floor(Math.random() * 120);
+  return Math.min(maxMs, baseMs * 2 ** attempt + jitter);
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function isTransientFailureMessage(messageRaw: string) {
+  const message = String(messageRaw || "").toLowerCase();
+  return (
+    message.includes("429") ||
+    message.includes("rate limit") ||
+    message.includes("timeout") ||
+    message.includes("timed out") ||
+    message.includes("network") ||
+    message.includes("fetch") ||
+    message.includes("econn") ||
+    message.includes("socket") ||
+    message.includes("502") ||
+    message.includes("503") ||
+    message.includes("504")
+  );
+}
+
+async function scoreWithRetries(input: ManualScoreInput, options?: { maxRetries?: number; baseMs?: number; maxMs?: number }) {
+  const maxRetries = Math.max(0, options?.maxRetries ?? env.ingestRowMaxRetries);
+  const baseMs = Math.max(100, options?.baseMs ?? env.ingestRowRetryBaseMs);
+  const maxMs = Math.max(baseMs, options?.maxMs ?? env.ingestRowRetryMaxMs);
+  const errors: string[] = [];
+
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    try {
+      return await scoreAboutByAiWithMeta(input, { requestTimeoutMs: env.aiRequestTimeoutMsBatch });
+    } catch (error) {
+      errors.push(`attempt${attempt + 1}: ${errorMessage(error)}`);
+      if (attempt >= maxRetries) break;
+      await sleep(retryBackoffMs(attempt, baseMs, maxMs));
+    }
+  }
+
+  throw new Error(`row retries exhausted: ${errors.join(" | ")}`);
+}
+
 async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]) {
   const batchRows = await db.select().from(uploadBatches).where(eq(uploadBatches.id, batchId));
   const moduleId = (batchRows[0]?.moduleId || "about") as "about" | "faq";
@@ -369,10 +420,21 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
   let totalTokensSum = 0;
   let estimatedCostUsdSum = 0;
   const startedAtMs = Date.now();
+  const failedCandidates: Array<{ row: ParsedUploadRow; input: ManualScoreInput; error: unknown }> = [];
+  let transientFailureStreak = 0;
+  let throttleUntilMs = 0;
+  const adaptiveThrottleEnabled = env.ingestAdaptiveThrottleEnabled;
+  const failureStreakThreshold = Math.max(1, env.ingestFailureStreakThreshold);
+  const throttleMs = Math.max(0, env.ingestThrottleMs);
 
   const concurrency = Math.max(1, env.ingestRowConcurrency);
   let cursor = 0;
   let lastFlushAt = 0;
+
+  const isCancelled = async () => {
+    const latest = await db.select().from(ingestJobs).where(eq(ingestJobs.id, jobId));
+    return latest[0]?.status === "cancelled";
+  };
 
   const flushProgress = async (force = false) => {
     const now = Date.now();
@@ -404,30 +466,32 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
 
   const worker = async () => {
     while (true) {
-      const latest = await db.select().from(ingestJobs).where(eq(ingestJobs.id, jobId));
-      if (latest[0]?.status === "cancelled") return;
+      if (adaptiveThrottleEnabled && throttleUntilMs > Date.now()) {
+        await sleep(throttleUntilMs - Date.now());
+      }
+
+      if (await isCancelled()) return;
       const index = cursor;
       cursor += 1;
       if (index >= rows.length) return;
       const row = rows[index];
+      const input: ManualScoreInput = {
+        moduleId,
+        TermID: row.TermID,
+        TermName: row.TermName,
+        Domain: row.Domain,
+        Country: row.Country,
+        About_online: row.About_online,
+        About_ai: row.About_ai,
+        About_op: row.About_op || "",
+        batchNote: "",
+        saveToHistory: false,
+      };
 
       try {
-        const input: ManualScoreInput = {
-          moduleId,
-          TermID: row.TermID,
-          TermName: row.TermName,
-          Domain: row.Domain,
-          Country: row.Country,
-          About_online: row.About_online,
-          About_ai: row.About_ai,
-          About_op: row.About_op || "",
-          batchNote: "",
-          saveToHistory: false,
-        };
-        const scored = await scoreAboutByAiWithMeta(input);
+        const scored = await scoreWithRetries(input);
 
-        const latestAfterScore = await db.select().from(ingestJobs).where(eq(ingestJobs.id, jobId));
-        if (latestAfterScore[0]?.status === "cancelled") return;
+        if (await isCancelled()) return;
 
         await insertScoreRow(batchId, row, scored.output);
         success += 1;
@@ -435,10 +499,23 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
         completionTokensSum += scored.runtime.completionTokens;
         totalTokensSum += scored.runtime.totalTokens;
         estimatedCostUsdSum += scored.runtime.estimatedCostUsd;
-      } catch {
-        const latestAfterError = await db.select().from(ingestJobs).where(eq(ingestJobs.id, jobId));
-        if (latestAfterError[0]?.status === "cancelled") return;
-        failed += 1;
+        transientFailureStreak = 0;
+      } catch (error) {
+        if (await isCancelled()) return;
+        failedCandidates.push({ row, input, error });
+
+        if (adaptiveThrottleEnabled) {
+          const message = errorMessage(error);
+          if (isTransientFailureMessage(message)) {
+            transientFailureStreak += 1;
+            if (transientFailureStreak >= failureStreakThreshold) {
+              throttleUntilMs = Date.now() + throttleMs;
+              transientFailureStreak = 0;
+            }
+          } else {
+            transientFailureStreak = 0;
+          }
+        }
       }
 
       done += 1;
@@ -447,6 +524,48 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
   };
 
   await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(1, rows.length)) }, () => worker()));
+
+  let pendingFailures = failedCandidates;
+  const finalRetryPasses = Math.max(0, env.ingestFinalRetryPasses);
+
+  for (let pass = 1; pass <= finalRetryPasses && pendingFailures.length > 0; pass += 1) {
+    if (await isCancelled()) break;
+
+    const nextFailures: typeof pendingFailures = [];
+    const passBaseMs = env.ingestRowRetryBaseMs * (pass + 1);
+
+    for (const candidate of pendingFailures) {
+      if (await isCancelled()) break;
+      try {
+        const scored = await scoreWithRetries(candidate.input, {
+          maxRetries: env.ingestRowMaxRetries + 1,
+          baseMs: passBaseMs,
+          maxMs: env.ingestRowRetryMaxMs * 2,
+        });
+
+        if (await isCancelled()) break;
+
+        await insertScoreRow(batchId, candidate.row, scored.output);
+        success += 1;
+        promptTokensSum += scored.runtime.promptTokens;
+        completionTokensSum += scored.runtime.completionTokens;
+        totalTokensSum += scored.runtime.totalTokens;
+        estimatedCostUsdSum += scored.runtime.estimatedCostUsd;
+      } catch (error) {
+        nextFailures.push({ row: candidate.row, input: candidate.input, error });
+      }
+    }
+
+    pendingFailures = nextFailures;
+    await flushProgress(false);
+  }
+
+  for (const candidate of pendingFailures) {
+    if (await isCancelled()) break;
+    await insertErrorRow(batchId, candidate.row, candidate.error);
+    failed += 1;
+  }
+
   await flushProgress(true);
 
   const finalJobRows = await db.select().from(ingestJobs).where(eq(ingestJobs.id, jobId));
@@ -459,10 +578,11 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
   }
 
   await db.update(uploadBatches).set({ rowCount: success }).where(eq(uploadBatches.id, batchId));
+  const finalStatus = failed > 0 ? "failed" : "done";
   await db
     .update(ingestJobs)
     .set({
-      status: "done",
+      status: finalStatus,
       finishedAt: new Date(),
       etaSeconds: 0,
       predictedTotalTokens: totalTokensSum,
@@ -721,14 +841,17 @@ export async function retryIngestJob(jobId: string) {
 
 async function markStalledJobsAsFailed() {
   await ensureIngestJobsColumns();
-  const runningRows = await db.select().from(ingestJobs).where(eq(ingestJobs.status, "running"));
+  const pendingOrRunningRows = await db
+    .select()
+    .from(ingestJobs)
+    .where(inArray(ingestJobs.status, ["pending", "running"]));
   const nowMs = Date.now();
-  for (const row of runningRows) {
+  for (const row of pendingOrRunningRows) {
     const updatedAtMs = new Date(row.updatedAt as unknown as string | Date).getTime();
-    if (nowMs - updatedAtMs > 5 * 60 * 1000) {
+    if (nowMs - updatedAtMs > ingestJobStallMs) {
       await db
         .update(ingestJobs)
-        .set({ status: "failed", finishedAt: new Date() })
+        .set({ status: "failed", finishedAt: new Date(), etaSeconds: 0 })
         .where(eq(ingestJobs.id, row.id));
     }
   }
@@ -738,9 +861,19 @@ export async function getBatchResult(batchId: string) {
   await ensureAboutScoreRowsColumns();
   const rows = await db.select().from(aboutScoreRows).where(eq(aboutScoreRows.batchId, batchId));
   const validRows = rows.filter((row) => !row.errorReason);
+  const failedRows = rows.filter((row) => row.errorReason);
   const passMetrics = collectPassMetrics(validRows);
   const opEligibleRows = validRows.filter((row) => row.scoreOpTotal != null);
   const rowCount = rows.length;
+
+  const failureReasonStats = failedRows.reduce(
+    (acc, row) => {
+      const category = classifyFailureReason(row.errorReason);
+      acc[category] = (acc[category] || 0) + 1;
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
 
   const avg = (items: RowSelect[], key: keyof RowSelect) => {
     if (!items.length) return 0;
@@ -762,7 +895,8 @@ export async function getBatchResult(batchId: string) {
   return {
     summary: {
       rowCount,
-      failedRows: rows.filter((item) => item.errorReason).length,
+      failedRows: failedRows.length,
+      failureReasonStats,
       publishPassCount: passMetrics.publishPassCount,
       publishPassRate: passMetrics.publishPassRate,
       avgOnline,
@@ -797,6 +931,7 @@ export async function getBatchModuleId(batchId: string) {
 export function buildExportRows(rows: Array<Record<string, unknown>>) {
   return rows.map((row) => {
     const failed = Boolean(row.errorReason);
+    const failureCategory = failed ? classifyFailureReason(row.errorReason) : "";
     const aiScore = Number(row.scoreAiTotal || 0);
     const opScore = Number(row.scoreOpTotal || 0);
     const passByScore = aiScore >= 8 || opScore >= 8;
@@ -818,10 +953,35 @@ export function buildExportRows(rows: Array<Record<string, unknown>>) {
       最优版本: row.bestVersion ?? "",
       关键差异: keyDeltasText,
       状态: failed ? "失败" : "成功",
+      失败分类: failureCategory,
       失败原因: row.errorReason ?? "",
       创建时间: row.createdAt ?? "",
     };
   });
+}
+
+function classifyFailureReason(reasonRaw: unknown) {
+  const text = String(reasonRaw || "").toLowerCase();
+  if (!text) return "unknown";
+  if (text.includes("429") || text.includes("rate limit") || text.includes("限流")) return "rate_limit";
+  if (text.includes("timeout") || text.includes("timed out") || text.includes("abort")) return "timeout";
+  if (text.includes("network") || text.includes("fetch") || text.includes("econn") || text.includes("socket")) return "network";
+  if (text.includes("校验失败") || text.includes("json") || text.includes("schema") || text.includes("validator")) {
+    return "validation";
+  }
+  if (
+    text.includes("500") ||
+    text.includes("502") ||
+    text.includes("503") ||
+    text.includes("504") ||
+    text.includes("service unavailable")
+  ) {
+    return "ai_service";
+  }
+  if (text.includes("sql") || text.includes("drizzle") || text.includes("database") || text.includes("insert")) {
+    return "db_write";
+  }
+  return "unknown";
 }
 
 function buildPublishAboutRows(rows: Array<Record<string, unknown>>) {
@@ -885,7 +1045,7 @@ function buildPublishAboutRows(rows: Array<Record<string, unknown>>) {
 
 function buildSummaryRowsZh(summary: Record<string, unknown>) {
   const pick = (key: string) => summary[key] ?? "";
-  return [
+  const rows = [
     { 指标: "总行数", 数值: String(pick("rowCount")) },
     { 指标: "成功行数", 数值: String(pick("validRowCount")) },
     { 指标: "失败行数", 数值: String(pick("failedRows")) },
@@ -897,6 +1057,25 @@ function buildSummaryRowsZh(summary: Record<string, unknown>) {
     { 指标: "AI-线上提升", 数值: String(pick("aiOnlineLift")) },
     { 指标: "OP-AI提升", 数值: String(pick("opAiLift")) },
   ];
+
+  const statsRaw = summary["failureReasonStats"];
+  if (statsRaw && typeof statsRaw === "object" && !Array.isArray(statsRaw)) {
+    const stats = statsRaw as Record<string, unknown>;
+    const labels: Record<string, string> = {
+      rate_limit: "失败分类.rate_limit(限流)",
+      timeout: "失败分类.timeout(超时)",
+      network: "失败分类.network(网络)",
+      validation: "失败分类.validation(校验)",
+      ai_service: "失败分类.ai_service(服务端)",
+      db_write: "失败分类.db_write(写库)",
+      unknown: "失败分类.unknown(未知)",
+    };
+    for (const [key, value] of Object.entries(stats)) {
+      rows.push({ 指标: labels[key] || `失败分类.${key}`, 数值: String(value ?? 0) });
+    }
+  }
+
+  return rows;
 }
 
 function flattenSummaryObject(input: Record<string, unknown>, prefix = ""): Array<{ metric: string; value: string }> {

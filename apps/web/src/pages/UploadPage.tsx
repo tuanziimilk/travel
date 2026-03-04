@@ -40,6 +40,12 @@ function formatCny(value?: number | string | null) {
   return `¥${n.toFixed(4)}`;
 }
 
+function formatJobId(jobId?: string | null) {
+  const value = String(jobId || "");
+  if (value.length <= 14) return value;
+  return `${value.slice(0, 8)}***${value.slice(-6)}`;
+}
+
 export function UploadPage() {
   const utils = trpc.useUtils();
   const [uploader, setUploader] = useState<(typeof uploaderOptions)[number]>("Ella");
@@ -53,7 +59,6 @@ export function UploadPage() {
   const createBatch = trpc.batch.create.useMutation();
   const startIngest = trpc.batch.ingest.start.useMutation();
   const cancelIngest = trpc.batch.ingest.cancel.useMutation();
-  const retryIngest = trpc.batch.ingest.retry.useMutation();
 
   const statusQuery = trpc.batch.ingest.status.useQuery(
     { jobId },
@@ -62,7 +67,7 @@ export function UploadPage() {
       refetchInterval: (query) => {
         const status = query.state.data?.status;
         if (!status) return 1500;
-        return status === "done" || status === "failed" ? false : 1500;
+        return status === "done" || status === "failed" || status === "cancelled" ? false : 1500;
       },
     },
   );
@@ -72,7 +77,7 @@ export function UploadPage() {
     {
       refetchInterval: (query) => {
         const list = query.state.data?.rows ?? [];
-        const hasRunning = list.some((item) => item.status !== "done" && item.status !== "failed");
+        const hasRunning = list.some((item) => item.status === "pending" || item.status === "running");
         return hasRunning ? 1500 : 4000;
       },
     },
@@ -125,12 +130,6 @@ export function UploadPage() {
 
   async function cancelJob(jobIdValue: string) {
     await cancelIngest.mutateAsync({ jobId: jobIdValue });
-    await queueQuery.refetch();
-    if (jobId === jobIdValue) await statusQuery.refetch();
-  }
-
-  async function retryJob(jobIdValue: string) {
-    await retryIngest.mutateAsync({ jobId: jobIdValue });
     await queueQuery.refetch();
     if (jobId === jobIdValue) await statusQuery.refetch();
   }
@@ -281,7 +280,7 @@ export function UploadPage() {
 
       <div className="card" style={{ marginTop: 16 }}>
         <h3>任务队列</h3>
-        <table className="history-table queue-table">
+        <table className="history-table queue-table about-queue-table">
           <thead>
             <tr>
               <th>任务ID</th>
@@ -297,7 +296,7 @@ export function UploadPage() {
           <tbody>
             {(queueQuery.data?.rows ?? []).map((item) => (
               <tr key={item.id}>
-                <td>{item.id}</td>
+                <td title={item.id}>{formatJobId(item.id)}</td>
                 <td>{queueStatusText[item.status] ?? item.status}</td>
                 <td>
                   {item.doneRows}/{item.totalRows}
@@ -315,20 +314,11 @@ export function UploadPage() {
                 <td>{new Date(item.startedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}</td>
                 <td>
                   {item.status === "running" || item.status === "pending" ? (
-                    <button className="btn-ghost" type="button" onClick={() => void cancelJob(item.id)}>
+                    <button className="btn-ghost about-queue-action-btn" type="button" onClick={() => void cancelJob(item.id)}>
                       取消
                     </button>
-                  ) : item.status === "failed" || item.status === "cancelled" ? (
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button className="btn-ghost" type="button" onClick={() => void retryJob(item.id)}>
-                        重试
-                      </button>
-                      <button className="btn-ghost" type="button" onClick={() => void downloadBatchXlsx(item.batchId)}>
-                        下载
-                      </button>
-                    </div>
-                  ) : item.status === "done" ? (
-                    <button className="btn-ghost" type="button" onClick={() => void downloadBatchXlsx(item.batchId)}>
+                  ) : item.status === "done" || item.status === "failed" || item.status === "cancelled" ? (
+                    <button className="btn-ghost about-queue-action-btn" type="button" onClick={() => void downloadBatchXlsx(item.batchId)}>
                       下载
                     </button>
                   ) : (

@@ -34,6 +34,7 @@ import {
   toXlsxByModule,
   toCsv,
 } from "../jobs/ingestWorker";
+import { env } from "../env";
 import { scoreAboutByAiWithMeta } from "../scoring/aboutAiScorer";
 import { getModuleSkillMd, saveModuleSkillMd } from "../skills/skillStore";
 
@@ -42,7 +43,7 @@ const t = initTRPC.create();
 export const appRouter = t.router({
   score: t.router({
     manual: t.procedure.input(manualScoreInputSchema).mutation(async ({ input }) => {
-      const scored = await scoreAboutByAiWithMeta(input);
+      const scored = await scoreAboutByAiWithMeta(input, { requestTimeoutMs: env.aiRequestTimeoutMsManual });
 
       if (input.saveToHistory) {
         const { batchId } = await createBatchWithMeta({
@@ -108,7 +109,7 @@ export const appRouter = t.router({
           uploader: input.uploader,
           batchNote: input.batchNote,
           saveToHistory: false,
-        });
+        }, { requestTimeoutMs: env.aiRequestTimeoutMsManual });
 
         rows.push({
           rowIndex: index + 1,

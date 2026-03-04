@@ -59,7 +59,6 @@ export function FaqUploadPage() {
   const createBatch = trpc.batch.create.useMutation();
   const startIngest = trpc.batch.ingest.start.useMutation();
   const cancelIngest = trpc.batch.ingest.cancel.useMutation();
-  const retryIngest = trpc.batch.ingest.retry.useMutation();
 
   const statusQuery = trpc.batch.ingest.status.useQuery(
     { jobId },
@@ -68,7 +67,7 @@ export function FaqUploadPage() {
       refetchInterval: (query) => {
         const status = query.state.data?.status;
         if (!status) return 1500;
-        return status === "done" || status === "failed" ? false : 1500;
+        return status === "done" || status === "failed" || status === "cancelled" ? false : 1500;
       },
     },
   );
@@ -78,7 +77,7 @@ export function FaqUploadPage() {
     {
       refetchInterval: (query) => {
         const list = query.state.data?.rows ?? [];
-        const hasRunning = list.some((item) => item.status !== "done" && item.status !== "failed");
+        const hasRunning = list.some((item) => item.status === "pending" || item.status === "running");
         return hasRunning ? 1500 : 4000;
       },
     },
@@ -131,12 +130,6 @@ export function FaqUploadPage() {
 
   async function cancelJob(jobIdValue: string) {
     await cancelIngest.mutateAsync({ jobId: jobIdValue });
-    await queueQuery.refetch();
-    if (jobId === jobIdValue) await statusQuery.refetch();
-  }
-
-  async function retryJob(jobIdValue: string) {
-    await retryIngest.mutateAsync({ jobId: jobIdValue });
     await queueQuery.refetch();
     if (jobId === jobIdValue) await statusQuery.refetch();
   }
@@ -305,16 +298,7 @@ export function FaqUploadPage() {
                     <button className="btn-ghost faq-queue-action-btn" type="button" onClick={() => void cancelJob(item.id)}>
                       取消
                     </button>
-                  ) : item.status === "failed" || item.status === "cancelled" ? (
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <button className="btn-ghost faq-queue-action-btn" type="button" onClick={() => void retryJob(item.id)}>
-                        重试
-                      </button>
-                      <button className="btn-ghost faq-queue-action-btn" type="button" onClick={() => void downloadBatchXlsx(item.batchId)}>
-                        下载
-                      </button>
-                    </div>
-                  ) : item.status === "done" ? (
+                  ) : item.status === "done" || item.status === "failed" || item.status === "cancelled" ? (
                     <button className="btn-ghost faq-queue-action-btn" type="button" onClick={() => void downloadBatchXlsx(item.batchId)}>
                       下载
                     </button>

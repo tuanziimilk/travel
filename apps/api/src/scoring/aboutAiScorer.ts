@@ -33,13 +33,106 @@ export function buildPrompt(input: ManualScoreInput, skillMd: string, refs: Reco
   return { system, user };
 }
 
+function parseJsonCandidate(candidateRaw: string) {
+  const candidate = candidateRaw.replace(/^\uFEFF/, "").trim();
+
+  const attempts: string[] = [];
+  attempts.push(candidate);
+
+  const fenceMatch = candidate.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenceMatch?.[1]) attempts.push(fenceMatch[1].trim());
+
+  const firstBrace = candidate.indexOf("{");
+  const lastBrace = candidate.lastIndexOf("}");
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    attempts.push(candidate.slice(firstBrace, lastBrace + 1));
+  }
+
+  const pushBalancedJson = (text: string) => {
+    let depth = 0;
+    let start = -1;
+    let inString = false;
+    let escaped = false;
+
+    for (let i = 0; i < text.length; i += 1) {
+      const ch = text[i];
+
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (ch === "\\") {
+          escaped = true;
+          continue;
+        }
+        if (ch === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (ch === '"') {
+        inString = true;
+        continue;
+      }
+
+      if (ch === "{") {
+        if (depth === 0) start = i;
+        depth += 1;
+        continue;
+      }
+
+      if (ch === "}") {
+        if (depth === 0) continue;
+        depth -= 1;
+        if (depth === 0 && start >= 0) {
+          attempts.push(text.slice(start, i + 1));
+          start = -1;
+        }
+      }
+    }
+  };
+
+  pushBalancedJson(candidate);
+  if (fenceMatch?.[1]) pushBalancedJson(fenceMatch[1].trim());
+
+  for (const text of attempts) {
+    try {
+      return { ok: true as const, value: JSON.parse(text) as unknown };
+    } catch {
+      // continue
+    }
+  }
+
+  return { ok: false as const, value: null };
+}
+
+function buildRepairPrompt(baseSystem: string, badCandidate: string, errors: string[]) {
+  return {
+    system: [
+      baseSystem,
+      "你现在是 JSON 修复器。",
+      "请只输出一个严格 JSON 对象。",
+      "不要输出 markdown，不要输出代码块，不要解释。",
+      "保持字段结构与原任务要求完全一致。",
+    ].join("\n\n"),
+    user: [
+      "上一轮输出未通过校验，请修复为合法 JSON。",
+      `错误信息: ${errors.join("; ")}`,
+      "原始输出如下：",
+      badCandidate.slice(0, 12000),
+      "请返回修复后的单个 JSON 对象。",
+    ].join("\n\n"),
+  };
+}
+
 function validateCandidate(candidate: string, input: ManualScoreInput) {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(candidate.replace(/^\uFEFF/, ""));
-  } catch {
+  const parsedResult = parseJsonCandidate(candidate);
+  if (!parsedResult.ok) {
     return { ok: false, errors: ["JSON 解析失败"] as string[] };
   }
+  const parsed = parsedResult.value;
 
   const validated = validateScoreOutput(parsed, {
     termName: input.TermName,
@@ -52,14 +145,15 @@ export async function scoreAboutByAi(input: ManualScoreInput): Promise<ScoreOutp
   const skill = await skillRegistry.getAboutSkill();
   const prompt = buildPrompt(input, skill.skillMd, skill.references);
   const executed = await aiExecutor.execute<ScoreOutput>({
-    maxRetries: 0,
+    maxRetries: env.aiExecutorMaxRetries,
     buildMessages: () => prompt,
     validate: (candidate) => validateCandidate(candidate, input),
+    buildRepairMessages: (candidate, errors) => buildRepairPrompt(prompt.system, candidate, errors),
   });
   return executed.result;
 }
 
-export async function scoreAboutByAiWithMeta(input: ManualScoreInput) {
+export async function scoreAboutByAiWithMeta(input: ManualScoreInput, options?: { requestTimeoutMs?: number }) {
   const startedAt = Date.now();
   const moduleId = input.moduleId || "about";
   const skill = await skillRegistry.getModuleSkill(moduleId);
@@ -67,9 +161,11 @@ export async function scoreAboutByAiWithMeta(input: ManualScoreInput) {
   const prompt = buildPrompt(input, moduleSkill.skillMd || skill.skillMd, skill.references);
 
   const executed = await aiExecutor.execute<ScoreOutput>({
-    maxRetries: 0,
+    maxRetries: env.aiExecutorMaxRetries,
+    requestTimeoutMs: options?.requestTimeoutMs,
     buildMessages: () => prompt,
     validate: (candidate) => validateCandidate(candidate, input),
+    buildRepairMessages: (candidate, errors) => buildRepairPrompt(prompt.system, candidate, errors),
   });
 
   const elapsedMs = Date.now() - startedAt;
