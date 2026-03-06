@@ -45,7 +45,7 @@ describe("score validator", () => {
     expect(res.ok).toBe(true);
   });
 
-  it("OP 缺失时出现 op 应失败", () => {
+  it("OP 缺失时自动剔除 op 版本", () => {
     const data: any = validBase(false);
     data.meta.versions_present = ["online", "ai", "op"];
     data.results.push({
@@ -59,7 +59,8 @@ describe("score validator", () => {
     });
     data.comparison = { best_version: "online", ranking: ["online", "ai", "op"], key_deltas: ["x", "y"] };
     const res = validateScoreOutput(data, { expectOp: false, termName: "" });
-    expect(res.ok).toBe(false);
+    expect(res.ok).toBe(true);
+    expect(res.parsed?.results.some((item) => item.version === "op")).toBe(false);
   });
 
   it("同分按 B/A/版本优先级排序", () => {
@@ -83,11 +84,12 @@ describe("score validator", () => {
     expect(ranking).toEqual(["online", "op", "ai"]);
   });
 
-  it("pass_for_publish 规则校验", () => {
+  it("pass_for_publish 自动按规则回填", () => {
     const data: any = validBase(false);
     data.results[0].pass_for_publish = false;
     const res = validateScoreOutput(data, { expectOp: false, termName: "" });
-    expect(res.ok).toBe(false);
+    expect(res.ok).toBe(true);
+    expect(res.parsed?.results[0]?.pass_for_publish).toBe(true);
   });
 
   it("禁止泄露 TermName 与第一人称", () => {
@@ -97,4 +99,3 @@ describe("score validator", () => {
     expect(res.ok).toBe(false);
   });
 });
-

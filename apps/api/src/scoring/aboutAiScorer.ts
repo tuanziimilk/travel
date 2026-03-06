@@ -34,18 +34,36 @@ export function buildPrompt(input: ManualScoreInput, skillMd: string, refs: Reco
 }
 
 function parseJsonCandidate(candidateRaw: string) {
-  const candidate = candidateRaw.replace(/^\uFEFF/, "").trim();
+  const normalizeJsonLikeText = (text: string) =>
+    text
+      .replace(/^\uFEFF/, "")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\uFF0C]/g, ",")
+      .replace(/[\uFF1A]/g, ":")
+      .replace(/,\s*([}\]])/g, "$1")
+      .trim();
+
+  const candidate = normalizeJsonLikeText(candidateRaw);
 
   const attempts: string[] = [];
-  attempts.push(candidate);
+  const seen = new Set<string>();
+  const pushAttempt = (text: string) => {
+    const normalized = normalizeJsonLikeText(text);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    attempts.push(normalized);
+  };
+
+  pushAttempt(candidate);
 
   const fenceMatch = candidate.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (fenceMatch?.[1]) attempts.push(fenceMatch[1].trim());
+  if (fenceMatch?.[1]) pushAttempt(fenceMatch[1]);
 
   const firstBrace = candidate.indexOf("{");
   const lastBrace = candidate.lastIndexOf("}");
   if (firstBrace >= 0 && lastBrace > firstBrace) {
-    attempts.push(candidate.slice(firstBrace, lastBrace + 1));
+    pushAttempt(candidate.slice(firstBrace, lastBrace + 1));
   }
 
   const pushBalancedJson = (text: string) => {
@@ -87,7 +105,7 @@ function parseJsonCandidate(candidateRaw: string) {
         if (depth === 0) continue;
         depth -= 1;
         if (depth === 0 && start >= 0) {
-          attempts.push(text.slice(start, i + 1));
+          pushAttempt(text.slice(start, i + 1));
           start = -1;
         }
       }
@@ -95,7 +113,7 @@ function parseJsonCandidate(candidateRaw: string) {
   };
 
   pushBalancedJson(candidate);
-  if (fenceMatch?.[1]) pushBalancedJson(fenceMatch[1].trim());
+  if (fenceMatch?.[1]) pushBalancedJson(fenceMatch[1]);
 
   for (const text of attempts) {
     try {

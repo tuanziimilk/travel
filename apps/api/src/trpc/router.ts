@@ -12,6 +12,7 @@ import {
   batchStatusInputSchema,
   manualScoreInputSchema,
   manualFaqScoreInputSchema,
+  type ManualScoreInput,
   skillGetInputSchema,
   skillSaveInputSchema,
 } from "@about-demo/trpc";
@@ -40,10 +41,43 @@ import { getModuleSkillMd, saveModuleSkillMd } from "../skills/skillStore";
 
 const t = initTRPC.create();
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function retryBackoffMs(attempt: number, baseMs: number, maxMs: number) {
+  const jitter = Math.floor(Math.random() * 120);
+  return Math.min(maxMs, baseMs * 2 ** attempt + jitter);
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+async function scoreManualWithRetries(input: ManualScoreInput, requestTimeoutMs: number) {
+  const maxRetries = Math.max(0, env.ingestRowMaxRetries);
+  const baseMs = Math.max(100, env.ingestRowRetryBaseMs);
+  const maxMs = Math.max(baseMs, env.ingestRowRetryMaxMs);
+  const errors: string[] = [];
+
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    try {
+      return await scoreAboutByAiWithMeta(input, { requestTimeoutMs });
+    } catch (error) {
+      errors.push(`attempt${attempt + 1}: ${errorMessage(error)}`);
+      if (attempt >= maxRetries) break;
+      await sleep(retryBackoffMs(attempt, baseMs, maxMs));
+    }
+  }
+
+  throw new Error(`手动评分重试后仍失败: ${errors.join(" | ")}`);
+}
+
 export const appRouter = t.router({
   score: t.router({
     manual: t.procedure.input(manualScoreInputSchema).mutation(async ({ input }) => {
-      const scored = await scoreAboutByAiWithMeta(input, { requestTimeoutMs: env.aiRequestTimeoutMsManual });
+      const scored = await scoreManualWithRetries(input, env.aiRequestTimeoutMsManual);
 
       if (input.saveToHistory) {
         const { batchId } = await createBatchWithMeta({
@@ -97,7 +131,8 @@ export const appRouter = t.router({
           ? [`Q: ${item.Q_op || ""}`, `A: ${item.A_op || ""}`, `Subclass: ${item.subclass_op || ""}`].join("\n")
           : "";
 
-        const scored = await scoreAboutByAiWithMeta({
+        const scored = await scoreManualWithRetries(
+          {
           moduleId: "faq",
           TermID: input.TermID,
           TermName: input.TermName,
@@ -109,7 +144,9 @@ export const appRouter = t.router({
           uploader: input.uploader,
           batchNote: input.batchNote,
           saveToHistory: false,
-        }, { requestTimeoutMs: env.aiRequestTimeoutMsManual });
+          },
+          env.aiRequestTimeoutMsManual,
+        );
 
         rows.push({
           rowIndex: index + 1,

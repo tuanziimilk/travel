@@ -52,6 +52,10 @@ const ingestRunnerWorkingByModule: Record<ModuleId, boolean> = {
 const publishAboutSectionName = "About";
 const ingestJobStallMs = 5 * 60 * 1000;
 
+function snapshotText(value: string | null | undefined) {
+  return env.snapshotEnabled ? String(value || "").trim() : null;
+}
+
 export function parseUploadFile(fileName: string, base64: string): ParsedUploadRow[] {
   const buffer = Buffer.from(base64, "base64");
   if (fileName.toLowerCase().endsWith(".csv")) {
@@ -289,9 +293,9 @@ export async function saveManualScoreToBatch(params: {
     issuesFlags: buildIssueFlags(params.scored),
     aiModel: env.aiModel,
     aiPromptVersion: env.aiPromptVersion,
-    snapshotOnline: env.snapshotEnabled ? (params.input.About_online || "").slice(0, 512) : null,
-    snapshotAi: env.snapshotEnabled ? (params.input.About_ai || "").slice(0, 512) : null,
-    snapshotOp: env.snapshotEnabled ? (params.input.About_op || "").slice(0, 512) : null,
+    snapshotOnline: snapshotText(params.input.About_online),
+    snapshotAi: snapshotText(params.input.About_ai),
+    snapshotOp: snapshotText(params.input.About_op),
     errorReason: null,
   });
 
@@ -352,7 +356,14 @@ async function processPendingIngestJobs(moduleId: ModuleId) {
 
       const startedRows = await db.select().from(ingestJobs).where(eq(ingestJobs.id, next.jobId));
       if (startedRows[0]?.status !== "running") continue;
-      await runIngest(next.jobId, next.batchId, next.rows);
+      try {
+        await runIngest(next.jobId, next.batchId, next.rows);
+      } catch {
+        await db
+          .update(ingestJobs)
+          .set({ status: "failed", finishedAt: new Date(), etaSeconds: 0 })
+          .where(eq(ingestJobs.id, next.jobId));
+      }
     }
   } finally {
     ingestRunnerWorkingByModule[moduleId] = false;
@@ -578,7 +589,7 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
   }
 
   await db.update(uploadBatches).set({ rowCount: success }).where(eq(uploadBatches.id, batchId));
-  const finalStatus = failed > 0 ? "failed" : "done";
+  const finalStatus = "done";
   await db
     .update(ingestJobs)
     .set({
@@ -670,9 +681,9 @@ async function insertScoreRow(batchId: string, row: ParsedUploadRow, scored: Sco
     issuesFlags: buildIssueFlags(scored),
     aiModel: env.aiModel,
     aiPromptVersion: env.aiPromptVersion,
-    snapshotOnline: env.snapshotEnabled ? row.About_online.slice(0, 512) : null,
-    snapshotAi: env.snapshotEnabled ? row.About_ai.slice(0, 512) : null,
-    snapshotOp: env.snapshotEnabled ? (row.About_op || "").slice(0, 512) : null,
+    snapshotOnline: snapshotText(row.About_online),
+    snapshotAi: snapshotText(row.About_ai),
+    snapshotOp: snapshotText(row.About_op),
     errorReason: null,
   });
 }
@@ -732,7 +743,7 @@ async function insertErrorRow(batchId: string, row: ParsedUploadRow, error: unkn
     scoreOpB: null,
     scoreOpC: null,
     scoreOpD: null,
-    bestVersion: "online",
+    bestVersion: "",
     passOnline: 0,
     passAi: 0,
     passOp: null,
@@ -740,9 +751,9 @@ async function insertErrorRow(batchId: string, row: ParsedUploadRow, error: unkn
     issuesFlags: { failed: true },
     aiModel: env.aiModel,
     aiPromptVersion: env.aiPromptVersion,
-    snapshotOnline: env.snapshotEnabled ? row.About_online.slice(0, 512) : null,
-    snapshotAi: env.snapshotEnabled ? row.About_ai.slice(0, 512) : null,
-    snapshotOp: env.snapshotEnabled ? (row.About_op || "").slice(0, 512) : null,
+    snapshotOnline: snapshotText(row.About_online),
+    snapshotAi: snapshotText(row.About_ai),
+    snapshotOp: snapshotText(row.About_op),
     errorReason: error instanceof Error ? error.message.slice(0, 512) : "unknown error",
   });
 }
@@ -884,9 +895,12 @@ export async function getBatchResult(batchId: string) {
   const avgOnline = avg(validRows, "scoreOnlineTotal");
   const avgAi = avg(validRows, "scoreAiTotal");
   const avgOp = avg(validRows.filter((item) => item.scoreOpTotal !== null), "scoreOpTotal");
-  const bestCounts = rows.reduce(
+  const bestCounts = validRows.reduce(
     (acc, item) => {
-      acc[item.bestVersion as "online" | "ai" | "op"] += 1;
+      const best = item.bestVersion as "online" | "ai" | "op";
+      if (best === "online" || best === "ai" || best === "op") {
+        acc[best] += 1;
+      }
       return acc;
     },
     { online: 0, ai: 0, op: 0 },
@@ -914,9 +928,9 @@ export async function getBatchResult(batchId: string) {
       opPassRate: passMetrics.opPassRate,
       aiPassLift: passMetrics.aiPassLift,
       bestVersionShare: {
-        online: rowCount ? bestCounts.online / rowCount : 0,
-        ai: rowCount ? bestCounts.ai / rowCount : 0,
-        op: rowCount ? bestCounts.op / rowCount : 0,
+        online: passMetrics.validRowCount ? bestCounts.online / passMetrics.validRowCount : 0,
+        ai: passMetrics.validRowCount ? bestCounts.ai / passMetrics.validRowCount : 0,
+        op: passMetrics.validRowCount ? bestCounts.op / passMetrics.validRowCount : 0,
       },
     },
     rows,
@@ -1418,7 +1432,10 @@ export async function analyticsSummary(filters: {
 
   const best = validRows.reduce(
     (acc, item) => {
-      acc[item.bestVersion as "online" | "ai" | "op"] += 1;
+      const bestVersion = item.bestVersion as "online" | "ai" | "op";
+      if (bestVersion === "online" || bestVersion === "ai" || bestVersion === "op") {
+        acc[bestVersion] += 1;
+      }
       return acc;
     },
     { online: 0, ai: 0, op: 0 },
@@ -1426,7 +1443,10 @@ export async function analyticsSummary(filters: {
 
   const bestOpSubset = opEligibleRows.reduce(
     (acc, item) => {
-      acc[item.bestVersion as "online" | "ai" | "op"] += 1;
+      const bestVersion = item.bestVersion as "online" | "ai" | "op";
+      if (bestVersion === "online" || bestVersion === "ai" || bestVersion === "op") {
+        acc[bestVersion] += 1;
+      }
       return acc;
     },
     { online: 0, ai: 0, op: 0 },

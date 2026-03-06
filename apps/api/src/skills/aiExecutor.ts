@@ -55,16 +55,13 @@ export class AiExecutor {
     const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
     return (
       message.includes("timeout") ||
+      message.includes("aborted") ||
+      message.includes("abort") ||
       message.includes("network") ||
       message.includes("fetch") ||
       message.includes("econnreset") ||
       message.includes("etimedout")
     );
-  }
-
-  private isAbortLikeError(error: unknown) {
-    const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
-    return message.includes("aborted") || message.includes("abort") || message.includes("timed out");
   }
 
   private normalizeFormatMode(raw: string): ResponseFormatMode {
@@ -189,8 +186,9 @@ export class AiExecutor {
       clearTimeout(timer);
     }
 
+    const body = await response.text();
+
     if (!response.ok) {
-      const body = await response.text();
       if (allowTemperature && this.shouldFallbackWithoutTemperature(response.status, body)) {
         return this.callLLMOnce(messages, formatMode, false, allowResponseFormat, allowMaxCompletionTokens, requestTimeoutMs);
       }
@@ -212,7 +210,24 @@ export class AiExecutor {
       }
       throw new Error(`LLM 请求失败: ${response.status} ${body}`);
     }
-    const json = (await response.json()) as ChatResponse;
+
+    const contentType = (response.headers.get("content-type") || "").toLowerCase();
+    const bodyTrimmed = body.trim();
+    if (!bodyTrimmed) {
+      throw new Error("LLM 返回为空响应体");
+    }
+
+    let json: ChatResponse;
+    try {
+      json = JSON.parse(bodyTrimmed) as ChatResponse;
+    } catch {
+      const isHtml = contentType.includes("text/html") || bodyTrimmed.startsWith("<") || bodyTrimmed.toLowerCase().includes("<html");
+      if (isHtml) {
+        throw new Error(`LLM 返回非JSON(HTML): ${bodyTrimmed.slice(0, 240)}`);
+      }
+      throw new Error(`LLM 返回非JSON: ${bodyTrimmed.slice(0, 240)}`);
+    }
+
     const content = this.extractContent(json);
     const usage: LlmCallUsage = {
       promptTokens: json.usage?.prompt_tokens ?? 0,
@@ -233,10 +248,6 @@ export class AiExecutor {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         errors.push(`attempt${attempt + 1}: ${message}`);
-
-        if (this.isAbortLikeError(error)) {
-          break;
-        }
 
         if (attempt >= maxRetries) break;
 
