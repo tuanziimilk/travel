@@ -96,6 +96,7 @@ export const ingestJobs = mysqlTable("ingest_jobs", {
   estimatedCostUsdSum: decimal("estimated_cost_usd_sum", { precision: 12, scale: 6 }).notNull().default("0"),
   predictedTotalTokens: int("predicted_total_tokens").notNull().default(0),
   predictedCostUsd: decimal("predicted_cost_usd", { precision: 12, scale: 6 }).notNull().default("0"),
+  errorReason: varchar("error_reason", { length: 512 }),
   startedAt: timestamp("started_at").defaultNow().notNull(),
   finishedAt: timestamp("finished_at"),
   updatedAt: timestamp("updated_at")

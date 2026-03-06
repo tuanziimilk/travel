@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateScoreOutput, sortVersionsForTie } from "./scoreValidator";
+import { sortVersionsForTie, validateScoreOutput } from "./scoreValidator";
 
 function validBase(expectOp = false) {
   return {
@@ -92,10 +92,12 @@ describe("score validator", () => {
     expect(res.parsed?.results[0]?.pass_for_publish).toBe(true);
   });
 
-  it("禁止泄露 TermName 与第一人称", () => {
+  it("TermName 泄漏仅扣分不自动替换", () => {
     const data: any = validBase(false);
-    data.results[0].strengths[0] = "we provide quality";
+    data.results[0].strengths[0] = "example.com provides quality";
     const res = validateScoreOutput(data, { expectOp: false, termName: "example.com" });
-    expect(res.ok).toBe(false);
+    expect(res.ok).toBe(true);
+    expect(res.parsed?.results[0]?.strengths[0]).toContain("example.com");
+    expect(Number(res.parsed?.results[0]?.score_breakdown.A || 0)).toBeLessThan(2);
   });
 });

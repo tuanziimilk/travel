@@ -56,6 +56,65 @@ function snapshotText(value: string | null | undefined) {
   return env.snapshotEnabled ? String(value || "").trim() : null;
 }
 
+function rowSignatureFromInput(row: ParsedUploadRow) {
+  const hashOnline = sha256(row.About_online || "");
+  const hashAi = sha256(row.About_ai || "");
+  const hashOp = row.About_op?.trim() ? sha256(row.About_op) : "";
+  return [row.TermID || "", row.Domain || "", hashOnline, hashAi, hashOp].join("|");
+}
+
+function rowSignatureFromStored(row: {
+  termId: string;
+  domain: string;
+  hashOnline: string;
+  hashAi: string;
+  hashOp: string | null;
+}) {
+  return [row.termId || "", row.domain || "", row.hashOnline || "", row.hashAi || "", row.hashOp || ""].join("|");
+}
+
+async function backfillMissingErrorRows(batchId: string, rows: ParsedUploadRow[], reason: string) {
+  if (!rows.length) return;
+
+  const existingRows = await db
+    .select({
+      termId: aboutScoreRows.termId,
+      domain: aboutScoreRows.domain,
+      hashOnline: aboutScoreRows.hashOnline,
+      hashAi: aboutScoreRows.hashAi,
+      hashOp: aboutScoreRows.hashOp,
+    })
+    .from(aboutScoreRows)
+    .where(eq(aboutScoreRows.batchId, batchId));
+
+  const stock = new Map<string, number>();
+  for (const item of existingRows) {
+    const signature = rowSignatureFromStored(item);
+    stock.set(signature, (stock.get(signature) || 0) + 1);
+  }
+
+  for (const row of rows) {
+    const signature = rowSignatureFromInput(row);
+    const remain = stock.get(signature) || 0;
+    if (remain > 0) {
+      stock.set(signature, remain - 1);
+      continue;
+    }
+    await insertErrorRow(batchId, row, reason);
+  }
+}
+
+async function aggregateBatchRows(batchId: string) {
+  const rows = await db
+    .select({ errorReason: aboutScoreRows.errorReason })
+    .from(aboutScoreRows)
+    .where(eq(aboutScoreRows.batchId, batchId));
+  const doneRows = rows.length;
+  const failedRows = rows.filter((item) => Boolean(item.errorReason)).length;
+  const successRows = Math.max(0, doneRows - failedRows);
+  return { doneRows, failedRows, successRows };
+}
+
 export function parseUploadFile(fileName: string, base64: string): ParsedUploadRow[] {
   const buffer = Buffer.from(base64, "base64");
   if (fileName.toLowerCase().endsWith(".csv")) {
@@ -329,6 +388,7 @@ export async function startIngestJob(batchId: string, fileName: string, fileBase
     estimatedCostUsdSum: "0",
     predictedTotalTokens: 0,
     predictedCostUsd: "0",
+    errorReason: null,
   });
   pendingIngestJobsByModule[moduleId].push({ jobId, batchId, rows, moduleId });
   void processPendingIngestJobs(moduleId);
@@ -358,10 +418,21 @@ async function processPendingIngestJobs(moduleId: ModuleId) {
       if (startedRows[0]?.status !== "running") continue;
       try {
         await runIngest(next.jobId, next.batchId, next.rows);
-      } catch {
+      } catch (error) {
+        const reason = `job failed: ${errorMessage(error)}`.slice(0, 512);
+        await backfillMissingErrorRows(next.batchId, next.rows, reason);
+        const stats = await aggregateBatchRows(next.batchId);
+        await db.update(uploadBatches).set({ rowCount: stats.successRows }).where(eq(uploadBatches.id, next.batchId));
         await db
           .update(ingestJobs)
-          .set({ status: "failed", finishedAt: new Date(), etaSeconds: 0 })
+          .set({
+            status: "failed",
+            finishedAt: new Date(),
+            etaSeconds: 0,
+            doneRows: stats.doneRows,
+            failedRows: stats.failedRows,
+            errorReason: reason,
+          })
           .where(eq(ingestJobs.id, next.jobId));
       }
     }
@@ -474,6 +545,16 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
       })
       .where(eq(ingestJobs.id, jobId));
   };
+
+  const heartbeatMs = 15_000;
+  const heartbeat = setInterval(() => {
+    void db
+      .update(ingestJobs)
+      .set({ elapsedMs: Math.max(0, Date.now() - startedAtMs) })
+      .where(and(eq(ingestJobs.id, jobId), eq(ingestJobs.status, "running")));
+  }, heartbeatMs);
+
+  try {
 
   const worker = async () => {
     while (true) {
@@ -600,6 +681,9 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
       predictedCostUsd: String(Math.round(estimatedCostUsdSum * 1_000_000) / 1_000_000),
     })
     .where(eq(ingestJobs.id, jobId));
+  } finally {
+    clearInterval(heartbeat);
+  }
 }
 
 async function ensureIngestJobsColumns() {
@@ -613,6 +697,7 @@ async function ensureIngestJobsColumns() {
     "ALTER TABLE ingest_jobs ADD COLUMN estimated_cost_usd_sum decimal(12,6) NOT NULL DEFAULT 0",
     "ALTER TABLE ingest_jobs ADD COLUMN predicted_total_tokens int NOT NULL DEFAULT 0",
     "ALTER TABLE ingest_jobs ADD COLUMN predicted_cost_usd decimal(12,6) NOT NULL DEFAULT 0",
+    "ALTER TABLE ingest_jobs ADD COLUMN error_reason varchar(512) NULL",
   ];
 
   for (const sqlText of ddl) {
@@ -808,6 +893,7 @@ export async function cancelIngestJob(jobId: string) {
 }
 
 export async function retryIngestJob(jobId: string) {
+  await ensureIngestJobsColumns();
   const rows = await db.select().from(ingestJobs).where(eq(ingestJobs.id, jobId));
   if (!rows.length) throw new Error("job 不存在");
   const job = rows[0];
@@ -843,6 +929,7 @@ export async function retryIngestJob(jobId: string) {
     estimatedCostUsdSum: "0",
     predictedTotalTokens: 0,
     predictedCostUsd: "0",
+    errorReason: null,
   });
   pendingIngestJobsByModule[moduleId].push({ jobId: newJobId, batchId: job.batchId, rows: payloadRows, moduleId });
   void processPendingIngestJobs(moduleId);
@@ -860,9 +947,21 @@ async function markStalledJobsAsFailed() {
   for (const row of pendingOrRunningRows) {
     const updatedAtMs = new Date(row.updatedAt as unknown as string | Date).getTime();
     if (nowMs - updatedAtMs > ingestJobStallMs) {
+      const reason = `job stalled over ${Math.round(ingestJobStallMs / 1000)}s and marked as failed`;
+      const payloadRows = ingestPayloadByBatch.get(row.batchId) || [];
+      await backfillMissingErrorRows(row.batchId, payloadRows, reason);
+      const stats = await aggregateBatchRows(row.batchId);
+      await db.update(uploadBatches).set({ rowCount: stats.successRows }).where(eq(uploadBatches.id, row.batchId));
       await db
         .update(ingestJobs)
-        .set({ status: "failed", finishedAt: new Date(), etaSeconds: 0 })
+        .set({
+          status: "failed",
+          finishedAt: new Date(),
+          etaSeconds: 0,
+          doneRows: stats.doneRows,
+          failedRows: stats.failedRows,
+          errorReason: reason,
+        })
         .where(eq(ingestJobs.id, row.id));
     }
   }
@@ -915,9 +1014,9 @@ export async function getBatchResult(batchId: string) {
       publishPassRate: passMetrics.publishPassRate,
       avgOnline,
       avgAi,
-      avgOp,
+      avgOp: opEligibleRows.length ? avgOp : null,
       aiOnlineLift: Math.round((avgAi - avgOnline) * 10) / 10,
-      opAiLift: Math.round((avgOp - avgAi) * 10) / 10,
+      opAiLift: opEligibleRows.length ? Math.round((avgOp - avgAi) * 10) / 10 : null,
       validRowCount: passMetrics.validRowCount,
       opEligibleRowCount: passMetrics.opEligibleRowCount,
       onlinePassCount: passMetrics.onlinePassCount,
@@ -1059,6 +1158,7 @@ function buildPublishAboutRows(rows: Array<Record<string, unknown>>) {
 
 function buildSummaryRowsZh(summary: Record<string, unknown>) {
   const pick = (key: string) => summary[key] ?? "";
+  const hasOp = Number(summary["opEligibleRowCount"] || 0) > 0;
   const rows = [
     { 指标: "总行数", 数值: String(pick("rowCount")) },
     { 指标: "成功行数", 数值: String(pick("validRowCount")) },
@@ -1067,10 +1167,13 @@ function buildSummaryRowsZh(summary: Record<string, unknown>) {
     { 指标: "通过率(%)", 数值: String(pick("publishPassRate")) },
     { 指标: "线上平均分", 数值: String(pick("avgOnline")) },
     { 指标: "AI平均分", 数值: String(pick("avgAi")) },
-    { 指标: "OP平均分", 数值: String(pick("avgOp")) },
     { 指标: "AI-线上提升", 数值: String(pick("aiOnlineLift")) },
-    { 指标: "OP-AI提升", 数值: String(pick("opAiLift")) },
   ];
+
+  if (hasOp) {
+    rows.push({ 指标: "OP平均分", 数值: String(pick("avgOp")) });
+    rows.push({ 指标: "OP-AI提升", 数值: String(pick("opAiLift")) });
+  }
 
   const statsRaw = summary["failureReasonStats"];
   if (statsRaw && typeof statsRaw === "object" && !Array.isArray(statsRaw)) {

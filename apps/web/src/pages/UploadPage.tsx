@@ -237,6 +237,11 @@ export function UploadPage() {
 
       {statusQuery.data && (
         <div className="card" style={{ marginTop: 16 }}>
+          {(statusQuery.data.status === "failed" || statusQuery.data.status === "cancelled") && statusQuery.data.errorReason && (
+            <p className="queue-reason-banner" title={String(statusQuery.data.errorReason)}>
+              {String(statusQuery.data.errorReason)}
+            </p>
+          )}
           <h3>任务进度</h3>
           <div className="job-meta-bar">
             <span className="job-meta-item">任务ID：{jobId}</span>
@@ -288,6 +293,7 @@ export function UploadPage() {
               <th>进度</th>
               <th>耗时</th>
               <th>Token</th>
+              <th className="queue-col-reason">失败原因</th>
               <th>费用</th>
               <th>开始时间</th>
               <th>操作</th>
@@ -308,11 +314,17 @@ export function UploadPage() {
                 <td>
                   {item.totalTokensSum}
                 </td>
+                <td
+                  className="queue-reason-cell"
+                  title={item.errorReason || (item.failedRows > 0 ? "存在失败行，请下载结果查看失败原因列" : "")}
+                >
+                  {item.errorReason || (item.failedRows > 0 ? "存在失败行，请查看导出" : "-")}
+                </td>
                 <td>
                   {formatUsd(item.estimatedCostUsdSum)}
                 </td>
                 <td>{new Date(item.startedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}</td>
-                <td>
+                <td className="queue-action-cell">
                   {item.status === "running" || item.status === "pending" ? (
                     <button className="btn-ghost about-queue-action-btn" type="button" onClick={() => void cancelJob(item.id)}>
                       取消
@@ -329,7 +341,7 @@ export function UploadPage() {
             ))}
             {(queueQuery.data?.rows?.length ?? 0) === 0 && (
               <tr>
-                <td colSpan={8}>暂无任务</td>
+                <td colSpan={9}>暂无任务</td>
               </tr>
             )}
           </tbody>

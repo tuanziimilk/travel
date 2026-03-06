@@ -7,6 +7,17 @@ function hasOneDecimal(value: number) {
   return Math.abs(value * 10 - Math.round(value * 10)) < 1e-9;
 }
 
+function escapeRegExp(text: string) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function hasTermNameLeak(text: string, termNameRaw: string) {
+  const termName = termNameRaw.trim();
+  if (!termName) return false;
+  const pattern = new RegExp(escapeRegExp(termName), "i");
+  return pattern.test(text);
+}
+
 const HIGH_RISK_PATTERNS = [
   /高风险|redline|red line/iu,
   /叠加.*(冲突|矛盾)|是否叠加.*(冲突|矛盾)/u,
@@ -90,10 +101,7 @@ export function validateScoreOutput(
 
   doc.results = options.expectOp ? normalizedResults : normalizedResults.filter((item) => item.version !== "op");
 
-  const textDump = JSON.stringify(doc);
-  if (options.termName && options.termName.trim() && textDump.includes(options.termName.trim())) {
-    errors.push("输出中包含 TermName，违反规则");
-  }
+  const termName = options.termName?.trim() || "";
 
   const resultVersions = new Set(doc.results.map((item) => item.version));
   if (options.expectOp && !resultVersions.has("op")) {
@@ -106,6 +114,17 @@ export function validateScoreOutput(
   doc.meta.versions_present = (["online", "ai", "op"] as const).filter((version) => resultVersions.has(version));
 
   for (const row of doc.results) {
+    const leakInRowText = termName
+      ? hasTermNameLeak(
+          JSON.stringify({
+            strengths: row.strengths,
+            weaknesses: row.weaknesses,
+            suggestions: row.suggestions,
+          }),
+          termName,
+        )
+      : false;
+
     row.score_total = round1(clamp(row.score_total, 0, 10));
 
     row.score_breakdown.A = round1(clamp(row.score_breakdown.A, 0, 3));
@@ -140,6 +159,15 @@ export function validateScoreOutput(
       if (highRisk.hit) {
         row.score_total = Math.min(7.9, row.score_total);
       }
+    }
+
+    if (leakInRowText) {
+      row.score_breakdown.A = round1(Math.max(0, row.score_breakdown.A - 1.0));
+      row.score_total = round1(
+        row.score_breakdown.A + row.score_breakdown.B + row.score_breakdown.C + row.score_breakdown.D,
+      );
+      row.weaknesses = ["未使用 {Mer.} 占位，出现商家名泄漏", ...row.weaknesses].slice(0, 6);
+      row.suggestions = ["将商家名统一替换为 {Mer.}，避免真实名称出现在输出", ...row.suggestions].slice(0, 6);
     }
 
     const byThreshold = row.score_total >= 8.0 && row.score_breakdown.A >= 2.0 && row.score_breakdown.B >= 3.0;
