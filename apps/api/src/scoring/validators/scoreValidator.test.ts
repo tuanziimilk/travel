@@ -100,4 +100,11 @@ describe("score validator", () => {
     expect(res.parsed?.results[0]?.strengths[0]).toContain("example.com");
     expect(Number(res.parsed?.results[0]?.score_breakdown.A || 0)).toBeLessThan(2);
   });
+  it("expectOp=true but missing op version should not hard fail", () => {
+    const data: any = validBase(true);
+    const res = validateScoreOutput(data, { expectOp: true, termName: "" });
+    expect(res.ok).toBe(true);
+    expect(res.parsed?.results.some((item) => item.version === "op")).toBe(false);
+    expect(res.parsed?.notes).toContain("op version");
+  });
 });

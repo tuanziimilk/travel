@@ -50,7 +50,7 @@ const ingestRunnerWorkingByModule: Record<ModuleId, boolean> = {
   faq: false,
 };
 const publishAboutSectionName = "About";
-const ingestJobStallMs = 5 * 60 * 1000;
+const ingestJobStallMs = env.ingestJobStallMs;
 
 function snapshotText(value: string | null | undefined) {
   return env.snapshotEnabled ? String(value || "").trim() : null;
@@ -93,7 +93,12 @@ async function backfillMissingErrorRows(batchId: string, rows: ParsedUploadRow[]
     stock.set(signature, (stock.get(signature) || 0) + 1);
   }
 
+  const targetMissingCount = Math.max(0, rows.length - existingRows.length);
+  if (targetMissingCount <= 0) return;
+
+  let insertedMissingCount = 0;
   for (const row of rows) {
+    if (insertedMissingCount >= targetMissingCount) break;
     const signature = rowSignatureFromInput(row);
     const remain = stock.get(signature) || 0;
     if (remain > 0) {
@@ -101,6 +106,7 @@ async function backfillMissingErrorRows(batchId: string, rows: ParsedUploadRow[]
       continue;
     }
     await insertErrorRow(batchId, row, reason);
+    insertedMissingCount += 1;
   }
 }
 
@@ -422,6 +428,9 @@ async function processPendingIngestJobs(moduleId: ModuleId) {
         const reason = `job failed: ${errorMessage(error)}`.slice(0, 512);
         await backfillMissingErrorRows(next.batchId, next.rows, reason);
         const stats = await aggregateBatchRows(next.batchId);
+        const totalRows = Math.max(0, Number(startedRows[0]?.totalRows || next.rows.length));
+        const doneRows = totalRows > 0 ? Math.min(stats.doneRows, totalRows) : stats.doneRows;
+        const failedRows = totalRows > 0 ? Math.min(stats.failedRows, totalRows) : stats.failedRows;
         await db.update(uploadBatches).set({ rowCount: stats.successRows }).where(eq(uploadBatches.id, next.batchId));
         await db
           .update(ingestJobs)
@@ -429,8 +438,8 @@ async function processPendingIngestJobs(moduleId: ModuleId) {
             status: "failed",
             finishedAt: new Date(),
             etaSeconds: 0,
-            doneRows: stats.doneRows,
-            failedRows: stats.failedRows,
+            doneRows,
+            failedRows,
             errorReason: reason,
           })
           .where(eq(ingestJobs.id, next.jobId));
@@ -477,10 +486,12 @@ async function scoreWithRetries(input: ManualScoreInput, options?: { maxRetries?
   const baseMs = Math.max(100, options?.baseMs ?? env.ingestRowRetryBaseMs);
   const maxMs = Math.max(baseMs, options?.maxMs ?? env.ingestRowRetryMaxMs);
   const errors: string[] = [];
+  const hasOp = Boolean(input.About_op?.trim());
+  const requestTimeoutMs = hasOp ? Math.max(env.aiRequestTimeoutMsBatch, 120_000) : env.aiRequestTimeoutMsBatch;
 
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     try {
-      return await scoreAboutByAiWithMeta(input, { requestTimeoutMs: env.aiRequestTimeoutMsBatch });
+      return await scoreAboutByAiWithMeta(input, { requestTimeoutMs });
     } catch (error) {
       errors.push(`attempt${attempt + 1}: ${errorMessage(error)}`);
       if (attempt >= maxRetries) break;
@@ -951,6 +962,9 @@ async function markStalledJobsAsFailed() {
       const payloadRows = ingestPayloadByBatch.get(row.batchId) || [];
       await backfillMissingErrorRows(row.batchId, payloadRows, reason);
       const stats = await aggregateBatchRows(row.batchId);
+      const totalRows = Math.max(0, Number(row.totalRows || 0));
+      const doneRows = totalRows > 0 ? Math.min(stats.doneRows, totalRows) : stats.doneRows;
+      const failedRows = totalRows > 0 ? Math.min(stats.failedRows, totalRows) : stats.failedRows;
       await db.update(uploadBatches).set({ rowCount: stats.successRows }).where(eq(uploadBatches.id, row.batchId));
       await db
         .update(ingestJobs)
@@ -958,8 +972,8 @@ async function markStalledJobsAsFailed() {
           status: "failed",
           finishedAt: new Date(),
           etaSeconds: 0,
-          doneRows: stats.doneRows,
-          failedRows: stats.failedRows,
+          doneRows,
+          failedRows,
           errorReason: reason,
         })
         .where(eq(ingestJobs.id, row.id));
@@ -1097,6 +1111,65 @@ function classifyFailureReason(reasonRaw: unknown) {
   return "unknown";
 }
 
+function trimBlankEdgeLines(value: unknown) {
+  const text = String(value ?? "").replace(/\r\n/g, "\n");
+  const lines = text.split("\n");
+  let start = 0;
+  let end = lines.length;
+
+  while (start < end && lines[start].trim() === "") start += 1;
+  while (end > start && lines[end - 1].trim() === "") end -= 1;
+
+  return lines.slice(start, end).join("\n");
+}
+
+function parseFaqSnapshot(rawText: unknown) {
+  const normalized = trimBlankEdgeLines(rawText);
+  if (!normalized) {
+    return {
+      question: "",
+      answer: "",
+      subclass: "",
+    };
+  }
+
+  const buckets: Record<"q" | "a" | "subclass", string[]> = {
+    q: [],
+    a: [],
+    subclass: [],
+  };
+  let current: keyof typeof buckets | null = null;
+
+  for (const line of normalized.split("\n")) {
+    const marker = line.match(/^\s*(Q|A|Subclass)\s*:\s*(.*)$/i);
+    if (marker) {
+      const keyRaw = marker[1].toLowerCase();
+      const key: keyof typeof buckets = keyRaw === "q" ? "q" : keyRaw === "a" ? "a" : "subclass";
+      current = key;
+      buckets[key].push(marker[2] || "");
+      continue;
+    }
+
+    if (current) {
+      buckets[current].push(line);
+    }
+  }
+
+  const question = trimBlankEdgeLines(buckets.q.join("\n"));
+  const answer = trimBlankEdgeLines(buckets.a.join("\n"));
+  const subclass = trimBlankEdgeLines(buckets.subclass.join("\n"));
+
+  if (!question && !answer && !subclass) {
+    return {
+      question: "",
+      answer: normalized,
+      subclass: "",
+    };
+  }
+
+  return { question, answer, subclass };
+}
+
 function buildPublishAboutRows(rows: Array<Record<string, unknown>>) {
   const headers = [
     "ContentType",
@@ -1139,7 +1212,7 @@ function buildPublishAboutRows(rows: Array<Record<string, unknown>>) {
       if (!aiPass && !opPass) return null;
 
       const useOp = opPass && (!aiPass || opScore > aiScore);
-      const brief = String(useOp ? row.snapshotOp || "" : row.snapshotAi || "");
+      const brief = trimBlankEdgeLines(useOp ? row.snapshotOp || "" : row.snapshotAi || "");
 
       return {
         ...blank,
@@ -1273,10 +1346,8 @@ export function toXlsxByModule(
       const aiScore = Number(row.scoreAiTotal || 0);
       const useOp = Number(row.passOp || 0) === 1 && opScore >= aiScore;
       const source = "AI";
-      const rawText = String(useOp ? row.snapshotOp || row.snapshotAi || "" : row.snapshotAi || "");
-      const qMatch = rawText.match(/Q:\s*([^\n]+)/i);
-      const aMatch = rawText.match(/A:\s*([^\n]+)/i);
-      const sMatch = rawText.match(/Subclass:\s*([^\n]+)/i);
+      const rawText = useOp ? row.snapshotOp || row.snapshotAi || "" : row.snapshotAi || "";
+      const parsed = parseFaqSnapshot(rawText);
 
       return {
         ContentType: "faq",
@@ -1285,10 +1356,10 @@ export function toXlsxByModule(
         TermName: String(row.termName || ""),
         Domain: String(row.domain || ""),
         Source: source,
-        Subclass: String(sMatch?.[1] || ""),
+        Subclass: parsed.subclass,
         板块名称: "faq",
-        Titile1: String(qMatch?.[1] || ""),
-        "Brief Introduction": String(aMatch?.[1] || ""),
+        Titile1: parsed.question,
+        "Brief Introduction": parsed.answer,
         "Href Kw": "",
         "Href Url": "",
       };

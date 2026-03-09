@@ -12,6 +12,7 @@ import {
   batchStatusInputSchema,
   manualScoreInputSchema,
   manualFaqScoreInputSchema,
+  runtimeAiConfigSetInputSchema,
   type ManualScoreInput,
   skillGetInputSchema,
   skillSaveInputSchema,
@@ -35,7 +36,7 @@ import {
   toXlsxByModule,
   toCsv,
 } from "../jobs/ingestWorker";
-import { env } from "../env";
+import { env, getAiRuntimeConfig, setAiRuntimeModel } from "../env";
 import { scoreAboutByAiWithMeta } from "../scoring/aboutAiScorer";
 import { getModuleSkillMd, saveModuleSkillMd } from "../skills/skillStore";
 
@@ -244,6 +245,16 @@ export const appRouter = t.router({
     }),
     save: t.procedure.input(skillSaveInputSchema).mutation(async ({ input }) => {
       return saveModuleSkillMd(input.moduleId, input.skillMd);
+    }),
+  }),
+  runtime: t.router({
+    aiConfig: t.router({
+      get: t.procedure.query(() => {
+        return getAiRuntimeConfig();
+      }),
+      set: t.procedure.input(runtimeAiConfigSetInputSchema).mutation(({ input }) => {
+        return setAiRuntimeModel(input.aiModel);
+      }),
     }),
   }),
 });

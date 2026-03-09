@@ -104,9 +104,7 @@ export function validateScoreOutput(
   const termName = options.termName?.trim() || "";
 
   const resultVersions = new Set(doc.results.map((item) => item.version));
-  if (options.expectOp && !resultVersions.has("op")) {
-    errors.push("About_op 存在时必须返回 op version");
-  }
+  const opMissingWhenExpected = options.expectOp && !resultVersions.has("op");
   if (!resultVersions.has("online") || !resultVersions.has("ai")) {
     errors.push("results 必须包含 online 和 ai version");
   }
@@ -180,6 +178,11 @@ export function validateScoreOutput(
   } else {
     doc.comparison.ranking = expectedRanking;
     doc.comparison.best_version = expectedRanking[0];
+  }
+
+  if (opMissingWhenExpected) {
+    const warning = "输入包含 About_op，但模型未返回 op version；已降级为 online+ai 输出";
+    doc.notes = doc.notes?.trim() ? `${doc.notes}\n${warning}` : warning;
   }
 
   return { ok: errors.length === 0, errors, parsed: doc };

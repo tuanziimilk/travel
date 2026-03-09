@@ -1,5 +1,7 @@
 import { Link, useLocation } from "wouter";
-import { moduleOptions, type ModuleId } from "@about-demo/trpc";
+import * as Select from "@radix-ui/react-select";
+import { moduleOptions, type AiModel, type ModuleId } from "@about-demo/trpc";
+import { trpc } from "./lib/trpc";
 import { ManualPage } from "./pages/ManualPage";
 import { UploadPage } from "./pages/UploadPage";
 import { HistoryPage } from "./pages/HistoryPage";
@@ -15,9 +17,7 @@ function NavLink({ href, label, tone = "page" }: { href: string; label: string; 
   const active = location === href;
   return (
     <Link href={href}>
-      <span className={`nav-btn nav-btn-${tone} ${active ? (tone === "module" ? "active-module" : "active") : ""}`}>
-        {label}
-      </span>
+      <span className={`nav-btn nav-btn-${tone} ${active ? (tone === "module" ? "active-module" : "active") : ""}`}>{label}</span>
     </Link>
   );
 }
@@ -51,6 +51,18 @@ function moduleLabel(moduleId: ModuleId) {
 export default function App() {
   const [location] = useLocation();
   const { moduleId, pageId } = parseLocation(location);
+  const utils = trpc.useUtils();
+  const aiConfigQuery = trpc.runtime.aiConfig.get.useQuery();
+  const aiConfigSetMutation = trpc.runtime.aiConfig.set.useMutation({
+    onSuccess: () => {
+      void utils.runtime.aiConfig.get.invalidate();
+    },
+  });
+
+  const handleModelChange = (value: string) => {
+    if (!value || aiConfigSetMutation.isPending) return;
+    aiConfigSetMutation.mutate({ aiModel: value as AiModel });
+  };
 
   const renderPage = () => {
     if (moduleId === "faq") {
@@ -101,6 +113,29 @@ export default function App() {
           <section className="top-nav">
             <div className="logo-text">内容质检对比工具</div>
             <div className="btn-group">
+              <div className="model-switch" aria-label="runtime-ai-model">
+                <span className="model-switch-label">模型</span>
+                <Select.Root
+                  value={aiConfigQuery.data?.aiModel || ""}
+                  onValueChange={handleModelChange}
+                  disabled={aiConfigQuery.isLoading || aiConfigSetMutation.isPending}
+                >
+                  <Select.Trigger className="select-trigger model-switch-trigger" aria-label="runtime-ai-model-select">
+                    <Select.Value placeholder="选择模型" />
+                  </Select.Trigger>
+                  <Select.Portal>
+                    <Select.Content className="select-content model-switch-content" position="popper" sideOffset={8}>
+                      <Select.Viewport className="select-viewport">
+                        {(aiConfigQuery.data?.availableModels || []).map((model) => (
+                          <Select.Item className="select-item model-switch-item" key={model} value={model}>
+                            <Select.ItemText>{model}</Select.ItemText>
+                          </Select.Item>
+                        ))}
+                      </Select.Viewport>
+                    </Select.Content>
+                  </Select.Portal>
+                </Select.Root>
+              </div>
               <span className="module-chip">当前板块：{moduleLabel(moduleId)}</span>
             </div>
           </section>
@@ -111,3 +146,4 @@ export default function App() {
     </div>
   );
 }
+

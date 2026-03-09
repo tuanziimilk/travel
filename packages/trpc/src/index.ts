@@ -47,6 +47,21 @@ export const moduleOptions = ["about", "faq"] as const;
 export const moduleSchema = z.enum(moduleOptions);
 export type ModuleId = z.infer<typeof moduleSchema>;
 
+export const aiModelOptions = [
+  "gpt-5.2",
+  "gpt-5.1",
+  "gpt-5",
+  "gpt-5-mini",
+  "gpt-5-nano",
+  "gpt-4.1",
+  "gpt-4.1-mini",
+  "gpt-4.1-nano",
+  "gpt-4o",
+  "gpt-4o-mini",
+] as const;
+export const aiModelSchema = z.enum(aiModelOptions);
+export type AiModel = z.infer<typeof aiModelSchema>;
+
 export const scoreBreakdownSchema = z.object({
   A: z.number(),
   B: z.number(),
@@ -187,6 +202,10 @@ export const skillGetInputSchema = z.object({
 export const skillSaveInputSchema = z.object({
   moduleId: moduleSchema,
   skillMd: z.string().min(1),
+});
+
+export const runtimeAiConfigSetInputSchema = z.object({
+  aiModel: aiModelSchema,
 });
 
 export type ManualScoreInput = z.infer<typeof manualScoreInputSchema>;
