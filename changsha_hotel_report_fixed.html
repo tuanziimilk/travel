@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>长沙五一广场酒店深度对比报告</title>
+  <style>
+    :root {
+      --bg: #07111f;
+      --bg-soft: #0d1830;
+      --panel: rgba(14, 24, 48, 0.78);
+      --panel-strong: rgba(16, 27, 53, 0.92);
+      --line: rgba(255,255,255,0.10);
+      --line-strong: rgba(255,255,255,0.16);
+      --text: #eef4ff;
+      --muted: #a8b5d6;
+      --subtle: #d7e2ff;
+      --blue: #7f9cff;
+      --cyan: #62d7c4;
+      --gold: #f7d88a;
+      --red: #ff9b9b;
+      --green: #8ae2a7;
+      --shadow: 0 24px 60px rgba(0,0,0,0.35);
+      --radius-xl: 28px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --max: 1360px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: Inter, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      line-height: 1.6;
+      background:
+        radial-gradient(circle at 10% 0%, rgba(127,156,255,0.22), transparent 26%),
+        radial-gradient(circle at 95% 10%, rgba(98,215,196,0.16), transparent 20%),
+        linear-gradient(180deg, #07111f 0%, #0a1428 40%, #0b1730 100%);
+    }
+
+    a { color: #c6d6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .layout {
+      width: min(var(--max), calc(100% - 28px));
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      gap: 22px;
+      padding: 24px 0 60px;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 18px;
+      align-self: start;
+      max-height: calc(100vh - 36px);
+      overflow: auto;
+      background: rgba(8, 16, 33, 0.76);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }
+
+    .brand {
+      padding: 16px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, rgba(127,156,255,0.18), rgba(98,215,196,0.12));
+      border: 1px solid var(--line-strong);
+      margin-bottom: 16px;
+    }
+
+    .brand h3 { margin: 0 0 8px; font-size: 18px; line-height: 1.2; }
+    .brand p { margin: 0; color: var(--muted); font-size: 13px; }
+
+    .nav-title {
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      margin: 16px 0 10px;
+    }
+
+    .nav-list { display: grid; gap: 8px; }
+    .nav-link {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 11px 12px;
+      border-radius: 14px;
+      color: var(--subtle);
+      background: rgba(255,255,255,0.03);
+      border: 1px solid transparent;
+      transition: .18s ease;
+    }
+    .nav-link:hover {
+      text-decoration: none;
+      background: rgba(255,255,255,0.06);
+      border-color: rgba(255,255,255,0.08);
+      transform: translateY(-1px);
+    }
+    .nav-link span:last-child { color: var(--muted); font-size: 12px; }
+
+    .main { min-width: 0; display: grid; gap: 20px; }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 34px;
+      border-radius: 30px;
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(135deg, rgba(127,156,255,0.18), rgba(98,215,196,0.1)),
+        rgba(14, 24, 48, 0.74);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }
+
+    .hero::before,
+    .hero::after {
+      content: "";
+      position: absolute;
+      border-radius: 999px;
+      pointer-events: none;
+      filter: blur(10px);
+    }
+    .hero::before {
+      width: 280px;
+      height: 280px;
+      right: -90px;
+      top: -90px;
+      background: radial-gradient(circle, rgba(127,156,255,0.35), transparent 68%);
+    }
+    .hero::after {
+      width: 240px;
+      height: 240px;
+      right: 120px;
+      bottom: -110px;
+      background: radial-gradient(circle, rgba(98,215,196,0.24), transparent 68%);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      color: #dde6ff;
+      font-size: 13px;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(32px, 4vw, 48px);
+      line-height: 1.08;
+      letter-spacing: -0.03em;
+      max-width: 860px;
+    }
+
+    .hero p.lead {
+      margin: 14px 0 0;
+      color: var(--muted);
+      max-width: 860px;
+      font-size: 15px;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.4fr .9fr;
+      gap: 18px;
+      margin-top: 24px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+
+    .pad { padding: 22px; }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 22px;
+    }
+
+    .stat {
+      min-width: 0;
+      padding: 16px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .stat .k { font-size: 12px; color: var(--muted); }
+    .stat .v { margin-top: 8px; font-size: 24px; font-weight: 800; word-break: break-word; }
+
+    .section { display: grid; gap: 14px; }
+    .section-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .section-head h2 { margin: 0; font-size: 24px; letter-spacing: -0.02em; }
+    .section-head p { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+
+    .pill-row, .weight-row { display: flex; flex-wrap: wrap; gap: 10px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.05);
+      color: #d7e2ff;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .pill strong { color: white; }
+
+    .kpi-grid,
+    .cards-grid,
+    .risk-grid,
+    .pick-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .kpi-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+
+    .kpi-card,
+    .hotel-card,
+    .risk-card,
+    .pick {
+      min-width: 0;
+    }
+
+    .kpi-card {
+      padding: 16px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.07);
+    }
+    .kpi-card h3 { margin: 0 0 8px; font-size: 16px; }
+    .kpi-card p { margin: 0; font-size: 14px; color: var(--muted); }
+
+    .decision-list { display: grid; gap: 12px; }
+    .decision-item {
+      padding: 16px 18px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .table-shell {
+      border-radius: 22px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.04);
+    }
+    .table-wrap { overflow: auto; max-width: 100%; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1120px;
+    }
+    th, td {
+      padding: 14px 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      vertical-align: top;
+      text-align: left;
+      font-size: 14px;
+    }
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: rgba(8, 16, 33, 0.94);
+      color: #dbe5ff;
+      font-weight: 700;
+      white-space: nowrap;
+      backdrop-filter: blur(10px);
+    }
+    tbody tr:hover { background: rgba(255,255,255,0.035); }
+
+    .hotel-name { margin: 0 0 6px; font-size: 15px; font-weight: 800; color: white; }
+    .hotel-meta { color: var(--muted); font-size: 12px; }
+
+    .rank {
+      width: 36px;
+      height: 36px;
+      border-radius: 12px;
+      display: inline-grid;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: linear-gradient(135deg, rgba(127,156,255,0.34), rgba(98,215,196,0.18));
+      font-weight: 800;
+    }
+
+    .score-box { display: inline-grid; gap: 3px; }
+    .score-box strong { font-size: 22px; line-height: 1; }
+    .score-box span { color: var(--muted); font-size: 12px; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .badge.ok { background: rgba(138,226,167,.12); color: var(--green); border-color: rgba(138,226,167,.22); }
+    .badge.warn { background: rgba(247,216,138,.12); color: var(--gold); border-color: rgba(247,216,138,.24); }
+    .badge.risk { background: rgba(255,155,155,.12); color: var(--red); border-color: rgba(255,155,155,.22); }
+    .badge.info { background: rgba(127,156,255,.14); color: #bfd0ff; border-color: rgba(127,156,255,.22); }
+
+    .progress {
+      position: relative;
+      width: 148px;
+      max-width: 100%;
+      height: 8px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(255,255,255,0.08);
+      margin-top: 8px;
+    }
+    .bar { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--cyan), var(--blue)); }
+    .bar.low { width: 32%; }
+    .bar.mid { width: 58%; }
+    .bar.good { width: 74%; }
+    .bar.high { width: 88%; }
+    .bar.top { width: 94%; }
+
+    .heat {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 124px;
+      flex-wrap: wrap;
+    }
+    .heat-dots { display: inline-flex; gap: 4px; }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.14);
+    }
+    .dot.on.green { background: var(--green); box-shadow: 0 0 10px rgba(138,226,167,.4); }
+    .dot.on.gold { background: var(--gold); box-shadow: 0 0 10px rgba(247,216,138,.4); }
+    .dot.on.red { background: var(--red); box-shadow: 0 0 10px rgba(255,155,155,.4); }
+
+    .hotel-card {
+      padding: 20px;
+      border-radius: 22px;
+      background: linear-gradient(135deg, rgba(127,156,255,0.09), rgba(255,255,255,0.04));
+      border: 1px solid rgba(255,255,255,0.08);
+      position: relative;
+      overflow: hidden;
+    }
+    .hotel-card::after {
+      content: "";
+      position: absolute;
+      right: -40px;
+      top: -40px;
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(127,156,255,0.16), transparent 70%);
+      pointer-events: none;
+    }
+    .hotel-card h3 { margin: 0; font-size: 20px; }
+    .hotel-card .subline { margin-top: 6px; color: var(--muted); font-size: 13px; }
+    .hotel-card .meta-grid {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .mini {
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      font-size: 13px;
+    }
+    .mini .label { color: var(--muted); display: block; font-size: 12px; }
+    .mini strong {
+      display: block;
+      margin-top: 4px;
+      color: white;
+      word-break: break-word;
+    }
+
+    .risk-list { display: grid; gap: 10px; margin-top: 16px; }
+    .risk-item {
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.045);
+      border: 1px solid rgba(255,255,255,0.07);
+      font-size: 14px;
+    }
+
+    .risk-card {
+      padding: 18px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .risk-card h3 { margin: 0 0 8px; font-size: 16px; }
+    .risk-card p { margin: 0; color: var(--muted); font-size: 14px; }
+
+    .pick {
+      padding: 22px;
+      border-radius: 24px;
+      border: 1px solid var(--line);
+      background: linear-gradient(135deg, rgba(127,156,255,0.14), rgba(255,255,255,0.04));
+      position: relative;
+      overflow: hidden;
+    }
+    .pick.alt { background: linear-gradient(135deg, rgba(98,215,196,0.12), rgba(255,255,255,0.04)); }
+    .pick h3 { margin: 0 0 8px; font-size: 22px; }
+    .pick p { margin: 0 0 14px; color: var(--muted); }
+
+    .footnote, .print-tip, .small { color: var(--muted); font-size: 13px; }
+
+    .top-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 18px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.06);
+      color: white;
+      font-size: 13px;
+    }
+    .btn:hover { text-decoration: none; background: rgba(255,255,255,0.08); }
+
+    @media (max-width: 1180px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar {
+        position: relative;
+        top: auto;
+        max-height: none;
+      }
+      .hero-grid,
+      .kpi-grid.three,
+      .cards-grid,
+      .risk-grid,
+      .pick-grid { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 760px) {
+      .layout { width: min(calc(100% - 18px), var(--max)); padding: 14px 0 32px; }
+      .hero, .pad { padding: 18px; }
+      .stats,
+      .hotel-card .meta-grid { grid-template-columns: 1fr; }
+      .section-head h2 { font-size: 20px; }
+      h1 { font-size: clamp(28px, 8vw, 38px); }
+      table { min-width: 880px; }
+    }
+
+    @media print {
+      body { background: white; color: #111827; }
+      .layout { width: 100%; grid-template-columns: 1fr; gap: 0; padding: 0; }
+      .sidebar { display: none; }
+      .hero, .panel, .pick, .hotel-card {
+        background: white !important;
+        color: #111827 !important;
+        box-shadow: none !important;
+        border: 1px solid #d1d5db !important;
+      }
+      .hero p.lead, .section-head p, .footnote, .small, .print-tip, .hotel-meta, .risk-card p, .kpi-card p { color: #4b5563 !important; }
+      a { color: #1d4ed8 !important; text-decoration: underline; }
+      th { background: #f8fafc !important; color: #111827 !important; }
+      .table-shell { border: 1px solid #d1d5db !important; }
+      .badge { border-color: #d1d5db !important; color: #111827 !important; background: #f9fafb !important; }
+      .btn, .top-actions { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <h3>长沙酒店决策报告</h3>
+        <p>围绕五一广场、5/3–5/5、噪音风险优先的修复版 HTML。</p>
+      </div>
+      <div class="nav-title">目录</div>
+      <nav class="nav-list">
+        <a class="nav-link" href="#overview"><span>概览与结论</span><span>01</span></a>
+        <a class="nav-link" href="#method"><span>筛选逻辑</span><span>02</span></a>
+        <a class="nav-link" href="#pool"><span>候选池总览</span><span>03</span></a>
+        <a class="nav-link" href="#top8"><span>Top 8 深度对比</span><span>04</span></a>
+        <a class="nav-link" href="#cards"><span>酒店卡片</span><span>05</span></a>
+        <a class="nav-link" href="#risk"><span>噪音风险拆解</span><span>06</span></a>
+        <a class="nav-link" href="#final"><span>最终推荐</span><span>07</span></a>
+        <a class="nav-link" href="#checklist"><span>预订前核对清单</span><span>08</span></a>
+      </nav>
+      <div class="nav-title">重点提示</div>
+      <div class="decision-list">
+        <div class="decision-item"><strong>最重要：</strong>噪音风险 > 价格低一点。</div>
+        <div class="decision-item"><strong>最易翻车：</strong>临街低楼层、窗户密封差、房型落差。</div>
+        <div class="decision-item"><strong>最稳打法：</strong>先锁 2 家，再确认高楼层/靠内侧房。</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="hero" id="overview">
+        <div class="eyebrow">长沙 · 2026/5/3–5/5 · 五一广场附近酒店筛选报告</div>
+        <h1>五一广场附近酒店<br />深度对比决策报告</h1>
+        <p class="lead">
+          这版重点修了样式层面的几个典型问题：侧边栏过长时滚动异常、卡片在窄屏挤压、统计块与小卡片换行不自然、表格在移动端过度溢出，以及部分模块在打印视图下的可读性。内容仍然围绕你的核心要求：评分、位置、品牌、房型、价格和差评，另外把噪音问题提到第一优先级。
+        </p>
+        <div class="top-actions">
+          <a class="btn" href="#top8">查看 Top 8</a>
+          <a class="btn" href="#risk">直接看噪音风险</a>
+          <a class="btn" href="#final">看最终推荐</a>
+        </div>
+
+        <div class="stats">
+          <div class="stat"><div class="k">候选池酒店数</div><div class="v">20+</div></div>
+          <div class="stat"><div class="k">深度对比</div><div class="v">8</div></div>
+          <div class="stat"><div class="k">第一权重</div><div class="v">噪音 40%</div></div>
+          <div class="stat"><div class="k">预算区间</div><div class="v">¥300–600</div></div>
+        </div>
+
+        <div class="hero-grid" style="margin-top:18px;">
+          <div class="panel pad">
+            <div class="section-head">
+              <div>
+                <h2>一句话结论</h2>
+                <p>不是选“最热闹的”，而是选“逛得开心、晚上还能睡得着的”。</p>
+              </div>
+            </div>
+            <div class="decision-list">
+              <div class="decision-item"><strong>要稳睡少踩雷：</strong>优先大型连锁或标准化酒店。</div>
+              <div class="decision-item"><strong>要位置和体验：</strong>靠五一广场更近的酒店更香，但也更吃房型与楼层。</div>
+              <div class="decision-item"><strong>真正该盯：</strong>临街噪音、窗户密封、低楼层、夜生活密度。</div>
+            </div>
+          </div>
+          <div class="panel pad" id="method">
+            <div class="section-head">
+              <div>
+                <h2>筛选逻辑</h2>
+                <p>这次按“噪音风险优先”重新加权。</p>
+              </div>
+            </div>
+            <div class="weight-row">
+              <span class="pill"><strong>40%</strong> 噪音与硬伤</span>
+              <span class="pill"><strong>20%</strong> 房型匹配</span>
+              <span class="pill"><strong>18%</strong> 距离</span>
+              <span class="pill"><strong>12%</strong> 评分 / 点评量</span>
+              <span class="pill"><strong>10%</strong> 性价比与稳定性</span>
+            </div>
+            <div class="footnote">五一广场属于高活跃商圈，距离越近通常不等于越适合浅睡人群。真正值钱的是“近，但不吵”。</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel pad section">
+        <div class="section-head">
+          <div>
+            <h2>这份报告解决什么</h2>
+            <p>不是列酒店，而是降低“白天逛得爽，晚上被吵醒”的概率。</p>
+          </div>
+        </div>
+        <div class="kpi-grid three">
+          <div class="kpi-card">
+            <h3>先看噪音</h3>
+            <p>重点不是有没有差评，而是差评是否集中在临街、夜市、酒吧、隔音差这类不可逆问题上。</p>
+          </div>
+          <div class="kpi-card">
+            <h3>再看房型</h3>
+            <p>同一家不同房型差别可能很大。高楼层、靠内侧、非电梯旁，通常能明显改善体验。</p>
+          </div>
+          <div class="kpi-card">
+            <h3>最后看价格</h3>
+            <p>便宜不等于值。你买的是睡眠质量、商圈便利度和节假日稳定性。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel pad section" id="pool">
+        <div class="section-head">
+          <div>
+            <h2>候选池总览（示意）</h2>
+            <p>这一版主要修样式；内容结构已按长沙五一广场场景重排，便于你继续补酒店数据。</p>
+          </div>
+          <div class="pill-row">
+            <span class="pill">已剔除广告酒店</span>
+            <span class="pill">按 5/3–5/5 入住筛选</span>
+            <span class="pill">房型偏好：大床优先</span>
+          </div>
+        </div>
+
+        <div class="table-shell">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>酒店</th>
+                  <th>评分 / 点评</th>
+                  <th>距离</th>
+                  <th>推荐房型</th>
+                  <th>价格</th>
+                  <th>噪音风险</th>
+                  <th>稳定性</th>
+                  <th>链接</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>1</td>
+                  <td><div class="hotel-name">长沙 IFS 国金中心芙蓉广场亚朵酒店</div><div class="hotel-meta">偏稳妥型，适合睡眠优先</div></td>
+                  <td>4.7 / 2252</td>
+                  <td>步行约 1.1 km</td>
+                  <td>高级大床房</td>
+                  <td>约 ¥539</td>
+                  <td><span class="badge ok">低</span></td>
+                  <td>连锁 / 高</td>
+                  <td><a href="https://hotels.ctrip.com/hotel/2035887.html" target="_blank">直达详情</a></td>
+                </tr>
+                <tr>
+                  <td>2</td>
+                  <td><div class="hotel-name">兰欧国际酒店（长沙五一广场IFS国金中心店）</div><div class="hotel-meta">位置与体验感兼顾</div></td>
+                  <td>4.7 / 4062</td>
+                  <td>商圈内</td>
+                  <td>高层景观大床房</td>
+                  <td>¥300–600 档</td>
+                  <td><span class="badge warn">中</span></td>
+                  <td>中高</td>
+                  <td><a href="https://hotels.ctrip.com/hotel/112388453.html" target="_blank">直达详情</a></td>
+                </tr>
+                <tr>
+                  <td>3</td>
+                  <td><div class="hotel-name">长沙远丘酒店（五一广场IFS国金中心店）</div><div class="hotel-meta">离五一广场极近，但更挑房</div></td>
+                  <td>4.8 / 558</td>
+                  <td>步行约 120 m</td>
+                  <td>大床房</td>
+                  <td>约 ¥468</td>
+                  <td><span class="badge warn">中</span></td>
+                  <td>中</td>
+                  <td><a href="https://hotels.ctrip.com/hotel/126904022.html" target="_blank">直达详情</a></td>
+                </tr>
+                <tr>
+                  <td>4</td>
+                  <td><div class="hotel-name">长沙潇湘华天大酒店</div><div class="hotel-meta">大型酒店，稳但不算最有氛围</div></td>
+                  <td>4.6 / 2410</td>
+                  <td>步行约 1.1 km</td>
+                  <td>大床房</td>
+                  <td>约 ¥458</td>
+                  <td><span class="badge warn">中</span></td>
+                  <td>高</td>
+                  <td><a href="https://hotels.ctrip.com/hotel/444150.html" target="_blank">直达详情</a></td>
+                </tr>
+                <tr>
+                  <td>5</td>
+                  <td><div class="hotel-name">长沙安可美酒店（五一广场IFS国金中心店）</div><div class="hotel-meta">位置好，噪音看房型</div></td>
+                  <td>4.6 / 3217</td>
+                  <td>步行约 580 m</td>
+                  <td>大床房</td>
+                  <td>¥300–600 档</td>
+                  <td><span class="badge warn">中</span></td>
+                  <td>中</td>
+                  <td><a href="https://hotels.ctrip.com/hotel/119564753.html" target="_blank">直达详情</a></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel pad section" id="top8">
+        <div class="section-head">
+          <div>
+            <h2>Top 8 深度对比</h2>
+            <p>按“噪音风险优先”的逻辑排，不是单纯看分数高低。</p>
+          </div>
+          <div class="pill-row">
+            <span class="pill">大床优先</span>
+            <span class="pill">有窗优先</span>
+            <span class="pill">高楼层优先</span>
+            <span class="pill">噪音优先</span>
+          </div>
+        </div>
+
+        <div class="table-shell">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>排名</th>
+                  <th>酒店</th>
+                  <th>综合分</th>
+                  <th>位置</th>
+                  <th>房型匹配</th>
+                  <th>价格</th>
+                  <th>稳定性</th>
+                  <th>挑选原因</th>
+                  <th>噪音重点</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="rank">1</span></td>
+                  <td><div class="hotel-name">亚朵（IFS 国金中心芙蓉广场）</div><div class="hotel-meta">睡眠优先的人最稳</div></td>
+                  <td><div class="score-box"><strong>9.1</strong><span>稳妥首选</span></div><div class="progress"><div class="bar top"></div></div></td>
+                  <td>步行约 1.1 km</td>
+                  <td>大床 ✅ / 高楼层可优化 / 空间感中上</td>
+                  <td>约 ¥539</td>
+                  <td><span class="badge ok">高</span></td>
+                  <td>适合浅睡、差评敏感、节假日不想折腾的人。</td>
+                  <td>高频关注：临街低楼层、靠电梯房。整体仍属低风险。</td>
+                </tr>
+                <tr>
+                  <td><span class="rank">2</span></td>
+                  <td><div class="hotel-name">兰欧国际（五一广场IFS国金中心店）</div><div class="hotel-meta">位置和体验感都不错</div></td>
+                  <td><div class="score-box"><strong>8.8</strong><span>体验型</span></div><div class="progress"><div class="bar high"></div></div></td>
+                  <td>商圈内</td>
+                  <td>大床 ✅ / 高层景观房加分</td>
+                  <td>¥300–600 档</td>
+                  <td><span class="badge info">中</span></td>
+                  <td>适合想住得更近、更有城市感的人。</td>
+                  <td>高频关注：临街噪音、夜间车流。高楼层靠内侧更关键。</td>
+                </tr>
+                <tr>
+                  <td><span class="rank">3</span></td>
+                  <td><div class="hotel-name">远丘酒店（IFS 国金中心店）</div><div class="hotel-meta">离五一广场非常近</div></td>
+                  <td><div class="score-box"><strong>8.6</strong><span>位置强</span></div><div class="progress"><div class="bar good"></div></div></td>
+                  <td>步行约 120 m</td>
+                  <td>大床 ✅ / 房型要挑</td>
+                  <td>约 ¥468</td>
+                  <td><span class="badge info">中</span></td>
+                  <td>位置非常香，但也最吃楼层与朝向。</td>
+                  <td>高频关注：商圈噪音、夜生活密度。浅睡人群需谨慎。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel pad section" id="cards">
+        <div class="section-head">
+          <div>
+            <h2>酒店卡片</h2>
+            <p>把最关键的信息收束成更直观的卡片，方便快速二选一。</p>
+          </div>
+        </div>
+        <div class="cards-grid">
+          <article class="hotel-card">
+            <h3>亚朵（IFS 国金中心芙蓉广场）</h3>
+            <div class="subline">适合：浅睡、怕噪音、想要稳定落地的人</div>
+            <div class="meta-grid">
+              <div class="mini"><span class="label">价格</span><strong>约 ¥539</strong></div>
+              <div class="mini"><span class="label">距离</span><strong>步行约 1.1 km</strong></div>
+              <div class="mini"><span class="label">评分 / 点评</span><strong>4.7 / 2252</strong></div>
+              <div class="mini"><span class="label">房型偏好</span><strong>大床，高楼层优先</strong></div>
+            </div>
+            <div class="risk-list">
+              <div class="risk-item"><strong>最大优点：</strong>整体稳定，噪音更可控。</div>
+              <div class="risk-item"><strong>最大风险：</strong>价格略高，离核心热闹区不是最近。</div>
+              <div class="risk-item"><strong>建议：</strong>优先高楼层、远离电梯与临街面。</div>
+            </div>
+          </article>
+
+          <article class="hotel-card">
+            <h3>兰欧国际（五一广场IFS国金中心店）</h3>
+            <div class="subline">适合：位置控，但仍想兼顾一点稳定性的人</div>
+            <div class="meta-grid">
+              <div class="mini"><span class="label">价格</span><strong>¥300–600 档</strong></div>
+              <div class="mini"><span class="label">距离</span><strong>商圈内</strong></div>
+              <div class="mini"><span class="label">评分 / 点评</span><strong>4.7 / 4062</strong></div>
+              <div class="mini"><span class="label">房型偏好</span><strong>高层景观房</strong></div>
+            </div>
+            <div class="risk-list">
+              <div class="risk-item"><strong>最大优点：</strong>位置、体验感、点评量都不错。</div>
+              <div class="risk-item"><strong>最大风险：</strong>临街房型夜间噪音更明显。</div>
+              <div class="risk-item"><strong>建议：</strong>一定要确认高楼层、靠内侧房型。</div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel pad section" id="risk">
+        <div class="section-head">
+          <div>
+            <h2>噪音风险拆解</h2>
+            <p>这次重点看噪音，所以把风险拆成可判断、可规避的几类。</p>
+          </div>
+        </div>
+
+        <div class="risk-grid">
+          <div class="risk-card"><h3>临街噪音</h3><p>车流、人流、夜市和酒吧带来的持续性噪音，往往比偶发邻居更难扛。</p></div>
+          <div class="risk-card"><h3>楼层差异</h3><p>同一家酒店，高楼层和低楼层体感可能完全不同。高楼层通常更值钱。</p></div>
+          <div class="risk-card"><h3>窗户密封</h3><p>双层窗和普通窗的差距非常大，尤其在五一广场这类商圈。</p></div>
+          <div class="risk-card"><h3>结构隔音</h3><p>民宿和小体量酒店更容易在走廊、隔壁房、上下楼噪音上翻车。</p></div>
+        </div>
+
+        <div class="table-shell" style="margin-top: 2px;">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>酒店</th>
+                  <th>噪音来源</th>
+                  <th>是否影响睡眠</th>
+                  <th>是否可通过沟通规避</th>
+                  <th>硬伤程度</th>
+                  <th>结论</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><div class="hotel-name">亚朵</div></td>
+                  <td>临街低楼层、走廊、电梯口</td>
+                  <td>视房型</td>
+                  <td>可：高楼层、靠内侧、远离电梯</td>
+                  <td><span class="badge ok">低</span></td>
+                  <td>浅睡人群可放首位。</td>
+                </tr>
+                <tr>
+                  <td><div class="hotel-name">兰欧国际</div></td>
+                  <td>临街噪音、夜间车流、商圈活跃声</td>
+                  <td>中</td>
+                  <td>可：高楼层、靠内侧房型</td>
+                  <td><span class="badge warn">中</span></td>
+                  <td>体验型选择，必须挑房。</td>
+                </tr>
+                <tr>
+                  <td><div class="hotel-name">远丘</div></td>
+                  <td>距离太近带来的夜间环境噪音</td>
+                  <td>中偏高</td>
+                  <td>部分可规避</td>
+                  <td><span class="badge warn">中</span></td>
+                  <td>位置特别香，但浅睡慎重。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel pad section" id="final">
+        <div class="section-head">
+          <div>
+            <h2>最终推荐</h2>
+            <p>给你两条路线：一种求稳，一种求位置和体验。</p>
+          </div>
+        </div>
+        <div class="pick-grid">
+          <div class="pick">
+            <h3>最终推荐 A：稳睡型</h3>
+            <p>适合把“少踩雷、晚上睡得稳、白天继续玩”放在第一位的人。</p>
+            <div class="decision-list">
+              <div class="decision-item"><strong>主推：</strong>亚朵（IFS 国金中心芙蓉广场）</div>
+              <div class="decision-item"><strong>备选：</strong>潇湘华天这类大型酒店</div>
+              <div class="decision-item"><strong>原因：</strong>节假日波动下，标准化酒店在噪音控制、卫生稳定和调房能力上更占优。</div>
+            </div>
+          </div>
+          <div class="pick alt">
+            <h3>最终推荐 B：位置 + 体验型</h3>
+            <p>适合把“离得近、逛得爽、住得有点氛围感”放在第一位的人。</p>
+            <div class="decision-list">
+              <div class="decision-item"><strong>主推：</strong>兰欧国际 / 远丘</div>
+              <div class="decision-item"><strong>前提：</strong>必须确认高楼层、靠内侧、不临街。</div>
+              <div class="decision-item"><strong>原因：</strong>这类酒店更容易让人一眼心动，但也更依赖具体房型，选错房型会很闹心。</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel pad section" id="checklist">
+        <div class="section-head">
+          <div>
+            <h2>预订前核对清单</h2>
+            <p>你只要把这 4 个问题问清楚，基本就能避掉一大半噪音翻车场景。</p>
+          </div>
+        </div>
+        <div class="decision-list">
+          <div class="decision-item"><strong>1.</strong> 这次预订的具体房型是否有窗？是否临街？窗户是普通窗还是双层窗？</div>
+          <div class="decision-item"><strong>2.</strong> 能否尽量安排高楼层、靠内侧、远离电梯和走廊尽头的房间？</div>
+          <div class="decision-item"><strong>3.</strong> 五一期间附近是否有夜市、酒吧、活动、施工、团队入住等特殊情况？</div>
+          <div class="decision-item"><strong>4.</strong> 如果现场噪音明显，是否支持调房？</div>
+        </div>
+        <div class="footnote">真正成熟的酒店筛选，不是选一间“看上去最好”的，而是选一间“最不容易在你的关键诉求上翻车”的。</div>
+        <div class="print-tip">这版已修复主要样式问题，并保留打印样式，导出 PDF 时可直接使用。</div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
