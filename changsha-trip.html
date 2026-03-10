@@ -1,24 +1,23 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>浜斾竴婀樻蹇?| 鏋佺畝鏃ョ▼鏉傚織鐗?/title>
+    <title>五一湘楚志 | 极简日程杂志版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@400;600;700;900&display=swap" rel="stylesheet">
     
     <style>
-        html { zoom: 150%; }
-        /* Muji 鏋佺畝绂呮剰閰嶈壊涓庡瓧浣撶郴缁?*/
+        /* Muji 极简禅意配色与字体系统 */
         :root {
-            --bg-paper: #fdfbf7;      /* 瀹ｇ焊鐧?*/
-            --bg-base: #f4f1eb;       /* 鍘熸湪绫冲簳鑹?*/
-            --text-main: #4a4a4a;     /* 纰崇伆鑹?*/
-            --text-title: #2c3e2e;    /* 鎶硅尪娣辩豢 */
-            --accent-green: #6b8454;  /* 绔归潚鑹?*/
-            --accent-wood: #c29b62;   /* 鏋湪閲?*/
-            --border-light: #e2dfd8;  /* 鏋佺粏鍒嗗壊绾?*/
+            --bg-paper: #fdfbf7;      /* 宣纸白 */
+            --bg-base: #f4f1eb;       /* 原木米底色 */
+            --text-main: #4a4a4a;     /* 碳灰色 */
+            --text-title: #2c3e2e;    /* 抹茶深绿 */
+            --accent-green: #6b8454;  /* 竹青色 */
+            --accent-wood: #c29b62;   /* 枯木金 */
+            --border-light: #e2dfd8;  /* 极细分割线 */
         }
 
         body {
@@ -34,11 +33,11 @@
         .text-title { color: var(--text-title); }
         .border-line { border-color: var(--border-light); }
 
-        /* 闅愯棌渚ц竟鏍忔粴鍔ㄦ潯浣嗕繚鎸佸彲婊氬姩 */
+        /* 隐藏侧边栏滚动条但保持可滚动 */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-        /* 鏉傚織椋庡崱鐗?*/
+        /* 杂志风卡片 */
         .mag-card {
             background-color: var(--bg-paper);
             border: 1px solid var(--border-light);
@@ -47,7 +46,7 @@
             box-shadow: 0 4px 20px -10px rgba(0,0,0,0.03);
         }
 
-        /* 绱у噾鏍囩 */
+        /* 紧凑标签 */
         .mag-tag {
             display: inline-flex;
             align-items: center;
@@ -59,15 +58,15 @@
             letter-spacing: 0.05em;
         }
 
-        /* 鑳介噺杩涘害鏉?*/
+        /* 能量进度条 */
         .energy-bar-bg { width: 100px; height: 6px; background-color: #e2dfd8; border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; margin-left: 8px;}
         .energy-bar-fill { height: 100%; background-color: var(--accent-green); }
 
-        /* 琛岀▼绾靛悜鍒楄〃椤规偓娴晥鏋?*/
+        /* 行程纵向列表项悬浮效果 */
         .time-row { transition: background-color 0.2s ease; }
         .time-row:hover { background-color: #faf9f5; }
 
-        /* 鎵撻挬娓呭崟鏍峰紡 */
+        /* 打钩清单样式 */
         .check-item { 
             display: flex; align-items: flex-start; margin-bottom: 0.4rem; 
             cursor: pointer; transition: opacity 0.2s; user-select: none;
@@ -88,150 +87,154 @@
         }
         .check-item.active .check-text { text-decoration: line-through; color: #9ca3af; }
 
-        /* 渚ц竟鏍忓鑸縺娲荤姸鎬?*/
+        /* 侧边栏导航激活状态 */
         .nav-link { border-left: 2px solid transparent; transition: all 0.2s; }
         .nav-link.active { border-left-color: var(--accent-green); color: var(--text-title); font-weight: 700; background-color: rgba(107, 132, 84, 0.05); }
     </style>
 </head>
 <body class="lg:flex min-h-screen selection:bg-[#6b8454] selection:text-white">
 
-    <!-- 宸︿晶鍥哄畾鏍忥細鏁版嵁涓庢竻鍗?(鍗犲 30%) -->
+    <!-- 左侧固定栏：数据与清单 (占宽 30%) -->
     <aside class="lg:w-[320px] xl:w-[360px] lg:fixed lg:h-screen lg:overflow-y-auto no-scrollbar bg-paper border-r border-line p-6 flex flex-col z-20" style="background-color: var(--bg-paper);">
         
         <!-- Header -->
         <div class="mb-8 mt-2">
             <p class="text-xs tracking-[0.2em] text-[#c29b62] mb-2 font-bold uppercase">Bespoke Itinerary</p>
-            <h1 class="text-3xl font-black serif text-title tracking-tight mb-2">婀樻蹇?路 浜斾竴</h1>
+            <h1 class="text-3xl font-black serif text-title tracking-tight mb-2">湘楚志 · 五一</h1>
             <p class="text-sm text-gray-500 font-light flex items-center">
-                涓婃捣 <i class="fas fa-arrow-right text-[10px] mx-2 opacity-50"></i> 寮犲鐣?<i class="fas fa-arrow-right text-[10px] mx-2 opacity-50"></i> 闀挎矙
+                上海 <i class="fas fa-arrow-right text-[10px] mx-2 opacity-50"></i> 张家界 <i class="fas fa-arrow-right text-[10px] mx-2 opacity-50"></i> 长沙
             </p>
         </div>
 
-        <!-- 澶╂皵涓庣┛鎼鎶?-->
+        <!-- 天气与穿搭预报 -->
         <div class="mb-8">
             <h3 class="text-sm font-bold text-title mb-3 flex items-center serif border-b border-line pb-2">
-                <i class="fas fa-cloud-sun mr-2 text-[#c29b62]"></i> 澶╂皵涓庣┛鎼寚鍖?            </h3>
+                <i class="fas fa-cloud-sun mr-2 text-[#c29b62]"></i> 天气与穿搭指北
+            </h3>
             <div class="space-y-4">
                 <div class="bg-[#faf9f5] p-3 border border-line rounded">
                     <div class="flex justify-between items-center mb-1">
-                        <span class="text-xs font-bold text-gray-700">馃搷 寮犲鐣?(澶╅棬灞遍《)</span>
-                        <span class="text-sm font-black text-title serif">12掳 - 20掳C</span>
+                        <span class="text-xs font-bold text-gray-700">📍 张家界 (天门山顶)</span>
+                        <span class="text-sm font-black text-title serif">12° - 20°C</span>
                     </div>
                     <p class="text-[11px] text-gray-500 mt-2 leading-relaxed">
-                        <strong class="text-gray-700">鐜锛?/strong>灞遍《椋庡ぇ娓╁樊澶э紝鏄ュ瘨鏂欏抄銆?br>
-                        <strong class="text-gray-700">绌挎惌锛?/strong>鍐查攱琛?鍚唴鑳?/钖勭窘缁?+ 杩愬姩闀胯￥ + 闃叉粦杩愬姩闉嬨€?span class="text-[#c29b62]">缁濆绂佺┛瑁欒鐖北銆?/span>
+                        <strong class="text-gray-700">环境：</strong>山顶风大温差大，春寒料峭。<br>
+                        <strong class="text-gray-700">穿搭：</strong>冲锋衣(含内胆)/薄羽绒 + 运动长裤 + 防滑运动鞋。<span class="text-[#c29b62]">绝对禁穿裙装爬山。</span>
                     </p>
                 </div>
                 <div class="bg-[#faf9f5] p-3 border border-line rounded">
                     <div class="flex justify-between items-center mb-1">
-                        <span class="text-xs font-bold text-gray-700">馃搷 闀挎矙 (鐩嗗湴鍩庡競)</span>
-                        <span class="text-sm font-black text-title serif">22掳 - 28掳C</span>
+                        <span class="text-xs font-bold text-gray-700">📍 长沙 (盆地城市)</span>
+                        <span class="text-sm font-black text-title serif">22° - 28°C</span>
                     </div>
                     <p class="text-[11px] text-gray-500 mt-2 leading-relaxed">
-                        <strong class="text-gray-700">鐜锛?/strong>鍒濆寰儹闂锋箍锛屽伓鏈夐樀闆ㄣ€?br>
-                        <strong class="text-gray-700">绌挎惌锛?/strong>鐭T鎭?纰庤姳娲嬭 + 钖勬闃叉檼琛ｃ€傞殢韬惡甯?span class="text-[#c29b62]">鎶樺彔鏅撮洦浼?/span>銆?                    </p>
+                        <strong class="text-gray-700">环境：</strong>初夏微热闷湿，偶有阵雨。<br>
+                        <strong class="text-gray-700">穿搭：</strong>短袖T恤/碎花洋装 + 薄款防晒衣。随身携带<span class="text-[#c29b62]">折叠晴雨伞</span>。
+                    </p>
                 </div>
             </div>
         </div>
 
-        <!-- 璇︾粏琛屾潕娓呭崟 -->
+        <!-- 详细行李清单 -->
         <div class="mb-8">
             <h3 class="text-sm font-bold text-title mb-3 flex items-center serif border-b border-line pb-2">
-                <i class="fas fa-list-check mr-2 text-[#c29b62]"></i> 琛屾潕鎵撳寘娓呭崟
-                <span class="text-[10px] font-normal text-gray-400 ml-auto">鐐瑰嚮鎵撻挬</span>
+                <i class="fas fa-list-check mr-2 text-[#c29b62]"></i> 行李打包清单
+                <span class="text-[10px] font-normal text-gray-400 ml-auto">点击打钩</span>
             </h3>
             <div class="grid grid-cols-2 gap-x-4 gap-y-4">
-                <!-- 璇佷欢 -->
+                <!-- 证件 -->
                 <div>
-                    <h4 class="text-[11px] font-bold text-[#6b8454] mb-2 uppercase">I. 閫氬叧鏂囩墥</h4>
-                    <div class="check-item" onclick="this.classList.toggle('active')"><div class="check-box"></div><span class="check-text text-[11px]">瀹炰綋韬唤璇?蹇呴渶)</span></div>
-                    <div class="check-item" onclick="this.classList.toggle('active')"><div class="check-box"></div><span class="check-text text-[11px]">灏戦噺鐜伴噾200鍏?/span></div>
+                    <h4 class="text-[11px] font-bold text-[#6b8454] mb-2 uppercase">I. 通关文牒</h4>
+                    <div class="check-item" onclick="this.classList.toggle('active')"><div class="check-box"></div><span class="check-text text-[11px]">实体身份证(必需)</span></div>
+                    <div class="check-item" onclick="this.classList.toggle('active')"><div class="check-box"></div><span class="check-text text-[11px]">少量现金200元</span></div>
                 </div>
-                <!-- 瑁呭 -->
+                <!-- 装备 -->
                 <div>
-                    <h4 class="text-[11px] font-bold text-[#6b8454] mb-2 uppercase">II. 寰″瘨姝﹁</h4>
-                    <div class="check-item" onclick="this.classList.toggle('active')"><div class="check-box"></div><span class="check-text text-[11px] font-bold">闃查鍐查攱琛?/span></div>
-                    <div class="check-item" onclick="this.classList.toggle('active')"><div class="check-box"></div><span class="check-text text-[11px] font-bold">鏃х殑闃叉粦杩愬姩闉?/span></div>
-                    <div class="check-item" onclick="this.classList.toggle('active')"><div class="check-box"></div><span class="check-text text-[11px]">闃叉檼琛?澧ㄩ暅</span></div>
+                    <h4 class="text-[11px] font-bold text-[#6b8454] mb-2 uppercase">II. 御寒武装</h4>
+                    <div class="check-item" onclick="this.classList.toggle('active')"><div class="check-box"></div><span class="check-text text-[11px] font-bold">防风冲锋衣</span></div>
+                    <div class="check-item" onclick="this.classList.toggle('active')"><div class="check-box"></div><span class="check-text text-[11px] font-bold">旧的防滑运动鞋</span></div>
+                    <div class="check-item" onclick="this.classList.toggle('active')"><div class="check-box"></div><span class="check-text text-[11px]">防晒衣/墨镜</span></div>
                 </div>
-                <!-- 鐢靛瓙 -->
+                <!-- 电子 -->
                 <div>
-                    <h4 class="text-[11px] font-bold text-[#6b8454] mb-2 uppercase">III. 鍣ㄦ璁惧</h4>
-                    <div class="check-item" onclick="this.classList.toggle('active')"><div class="check-box"></div><span class="check-text text-[11px]">澶у閲忓厖鐢靛疂</span></div>
-                    <div class="check-item" onclick="this.classList.toggle('active')"><div class="check-box"></div><span class="check-text text-[11px]">澶囩敤鍏呯數绾?/span></div>
+                    <h4 class="text-[11px] font-bold text-[#6b8454] mb-2 uppercase">III. 器械设备</h4>
+                    <div class="check-item" onclick="this.classList.toggle('active')"><div class="check-box"></div><span class="check-text text-[11px]">大容量充电宝</span></div>
+                    <div class="check-item" onclick="this.classList.toggle('active')"><div class="check-box"></div><span class="check-text text-[11px]">备用充电线</span></div>
                 </div>
-                <!-- 鑽搧 -->
+                <!-- 药品 -->
                 <div>
-                    <h4 class="text-[11px] font-bold text-[#6b8454] mb-2 uppercase">IV. 鐐间腹琛ョ粰</h4>
-                    <div class="check-item" onclick="this.classList.toggle('active')"><div class="check-box"></div><span class="check-text text-[11px] font-bold">鍋ヨ儍娑堥鐗?鑲犺儍鑽?/span></div>
-                    <div class="check-item" onclick="this.classList.toggle('active')"><div class="check-box"></div><span class="check-text text-[11px]">鍒涘彲璐?闃叉按闃茬（)</span></div>
-                    <div class="check-item" onclick="this.classList.toggle('active')"><div class="check-box"></div><span class="check-text text-[11px]">鏅撮洦鎶樺彔浼?/span></div>
+                    <h4 class="text-[11px] font-bold text-[#6b8454] mb-2 uppercase">IV. 炼丹补给</h4>
+                    <div class="check-item" onclick="this.classList.toggle('active')"><div class="check-box"></div><span class="check-text text-[11px] font-bold">健胃消食片/肠胃药</span></div>
+                    <div class="check-item" onclick="this.classList.toggle('active')"><div class="check-box"></div><span class="check-text text-[11px]">创可贴(防水防磨)</span></div>
+                    <div class="check-item" onclick="this.classList.toggle('active')"><div class="check-box"></div><span class="check-text text-[11px]">晴雨折叠伞</span></div>
                 </div>
             </div>
         </div>
 
-        <!-- 椤甸潰鐢垫瀵艰埅 -->
+        <!-- 页面电梯导航 -->
         <nav class="mt-auto hidden lg:block border-t border-line pt-6 pb-4">
-            <h4 class="text-xs font-bold tracking-widest text-gray-400 mb-3">鐩綍 INDEX</h4>
+            <h4 class="text-xs font-bold tracking-widest text-gray-400 mb-3">目录 INDEX</h4>
             <ul class="space-y-1 text-sm text-gray-500" id="nav-menu">
-                <li><a href="#logistics" class="nav-link block py-1.5 pl-3 hover:text-[#2c3e2e]">鍩哄缓涓庤惤浣?(Info)</a></li>
-                <li><a href="#d1" class="nav-link block py-1.5 pl-3 hover:text-[#2c3e2e]">D1 鎶佃揪浠欏 (5.1)</a></li>
-                <li><a href="#d2" class="nav-link block py-1.5 pl-3 hover:text-[#2c3e2e]">D2 澶╅棬鎯婇瓊 (5.2)</a></li>
-                <li><a href="#d3" class="nav-link block py-1.5 pl-3 hover:text-[#2c3e2e]">D3 鏄熷煄璺冭縼 (5.3)</a></li>
-                <li><a href="#d4" class="nav-link block py-1.5 pl-3 hover:text-[#2c3e2e]">D4 鐑熺伀鑴氶兘 (5.4)</a></li>
-                <li><a href="#d5" class="nav-link block py-1.5 pl-3 hover:text-[#2c3e2e]">D5 浼橀泤鍑棆 (5.5)</a></li>
+                <li><a href="#logistics" class="nav-link block py-1.5 pl-3 hover:text-[#2c3e2e]">基建与落位 (Info)</a></li>
+                <li><a href="#d1" class="nav-link block py-1.5 pl-3 hover:text-[#2c3e2e]">D1 抵达仙境 (5.1)</a></li>
+                <li><a href="#d2" class="nav-link block py-1.5 pl-3 hover:text-[#2c3e2e]">D2 天门惊魂 (5.2)</a></li>
+                <li><a href="#d3" class="nav-link block py-1.5 pl-3 hover:text-[#2c3e2e]">D3 星城跃迁 (5.3)</a></li>
+                <li><a href="#d4" class="nav-link block py-1.5 pl-3 hover:text-[#2c3e2e]">D4 烟火脚都 (5.4)</a></li>
+                <li><a href="#d5" class="nav-link block py-1.5 pl-3 hover:text-[#2c3e2e]">D5 优雅凯旋 (5.5)</a></li>
             </ul>
         </nav>
     </aside>
 
-    <!-- 鍙充晶涓诲唴瀹瑰尯锛氶珮瀵嗗害绾靛悜鏃ョ▼ (鍗犲 70%) -->
+    <!-- 右侧主内容区：高密度纵向日程 (占宽 70%) -->
     <main class="lg:ml-[320px] xl:ml-[360px] flex-1 p-4 sm:p-8 xl:p-12 space-y-10 max-w-4xl">
 
-        <!-- 妯″潡 0锛氬紩瑷€ -->
+        <!-- 模块 0：引言 -->
         <section class="border-l-4 border-[#c29b62] pl-4 py-1">
-            <p class="serif text-lg text-title leading-relaxed">鈥滀笁鍗冨宄板叆姊︼紝涓€纰椾汉闂寸儫鐏€傗€?br>
-            <span class="text-sm text-gray-500 font-sans mt-2 block">鍒犵箒灏辩畝锛屽紶寮涙湁搴︺€傝繖鏄竴浠戒笓涓烘偍瀹氬埗鐨勫疄鐢ㄨ鍔ㄦ寚浠ら泦銆?/span></p>
+            <p class="serif text-lg text-title leading-relaxed">“三千奇峰入梦，一碗人间烟火。”<br>
+            <span class="text-sm text-gray-500 font-sans mt-2 block">删繁就简，张弛有度。这是一份专为您定制的实用行动指令集。</span></p>
         </section>
 
-        <!-- 妯″潡 1锛氫綇瀹胯惤浣?-->
+        <!-- 模块 1：住宿落位 -->
         <section id="logistics" class="scroll-mt-8">
-            <h2 class="text-2xl font-black serif text-title mb-6 border-b border-line pb-2">00 <span class="text-base font-normal ml-3">缁濆瘑鍩哄湴钀戒綅鎸囧寳</span></h2>
+            <h2 class="text-2xl font-black serif text-title mb-6 border-b border-line pb-2">00 <span class="text-base font-normal ml-3">绝密基地落位指北</span></h2>
             
             <div class="grid md:grid-cols-2 gap-4">
                 <div class="mag-card p-5 border-t-2 border-t-[#6b8454]">
-                    <div class="text-[10px] text-gray-400 mb-1 tracking-widest font-bold">STAY / D1-D2 寮犲鐣屽競鍖?/div>
-                    <h3 class="font-bold text-title serif text-lg mb-2">澶╅棬灞辩储閬撲笅绔?500绫冲唴</h3>
-                    <p class="text-sm text-gray-600 mb-3 leading-relaxed"><strong>鎺ㄨ崘锛?/strong>甯屽皵椤挎鏈?澶у焊妗ュ簵) / 浜氭湹 / 绱㈤亾瀵归潰楂樺垎姘戝(濡?鏈村洯瀹㈡爤)銆?/p>
+                    <div class="text-[10px] text-gray-400 mb-1 tracking-widest font-bold">STAY / D1-D2 张家界市区</div>
+                    <h3 class="font-bold text-title serif text-lg mb-2">天门山索道下站 500米内</h3>
+                    <p class="text-sm text-gray-600 mb-3 leading-relaxed"><strong>推荐：</strong>希尔顿欢朋(大庸桥店) / 亚朵 / 索道对面高分民宿(如:朴园客栈)。</p>
                     <div class="bg-[#faf9f5] p-2 rounded text-xs text-gray-500 border border-line">
-                        馃搷 <strong>钀戒綅閫昏緫锛?/strong>D2鏃╄捣姝ヨ3鍒嗛挓鐩磋揪绱㈤亾鎺掗槦璧风偣锛屽厤鍘诲懆杞€備笖D3鍙互鍦ㄦ瀹夌ǔ鐫″埌鑷劧閱掋€傚懆杈瑰悆涓変笅閿呮瀬鍏舵柟渚裤€?                    </div>
+                        📍 <strong>落位逻辑：</strong>D2早起步行3分钟直达索道排队起点，免去周转。且D3可以在此安稳睡到自然醒。周边吃三下锅极其方便。
+                    </div>
                 </div>
                 
                 <div class="mag-card p-5 border-t-2 border-t-[#c29b62]">
-                    <div class="text-[10px] text-gray-400 mb-1 tracking-widest font-bold">STAY / D3-D5 闀挎矙鏍稿績鍖?/div>
-                    <h3 class="font-bold text-title serif text-lg mb-2">浜斾竴骞垮満 / 鑺欒搲骞垮満 鍛ㄨ竟</h3>
-                    <p class="text-sm text-gray-600 mb-3 leading-relaxed"><strong>鎺ㄨ崘锛?/strong>灏间緷鏍肩綏(濂㈠崕) / 鑺欒搲涓矾浜氭湹S(楂樼┖鍩庢櫙) / 鍏ㄥ銆?/p>
+                    <div class="text-[10px] text-gray-400 mb-1 tracking-widest font-bold">STAY / D3-D5 长沙核心区</div>
+                    <h3 class="font-bold text-title serif text-lg mb-2">五一广场 / 芙蓉广场 周边</h3>
+                    <p class="text-sm text-gray-600 mb-3 leading-relaxed"><strong>推荐：</strong>尼依格罗(奢华) / 芙蓉中路亚朵S(高空城景) / 全季。</p>
                     <div class="bg-[#faf9f5] p-2 rounded text-xs text-gray-500 border border-line">
-                        馃搷 <strong>钀戒綅閫昏緫锛?/strong>涓嬫ゼ鍗宠尪棰滄偊鑹蹭笌澶滃鎺掓尅銆傛櫄涓婂悆鎾戠洿鎺ユ暎姝ュ洖闃诧紝浜斾竴鏈熼棿鎵撲笉鍒拌溅鏃跺彲杩呴€熼捇鍏ュ湴閾佺綉銆?                    </div>
+                        📍 <strong>落位逻辑：</strong>下楼即茶颜悦色与夜宵排挡。晚上吃撑直接散步回防，五一期间打不到车时可迅速钻入地铁网。
+                    </div>
                 </div>
             </div>
         </section>
 
-        <!-- 妯″潡 2锛欴1 琛岀▼ -->
+        <!-- 模块 2：D1 行程 -->
         <section id="d1" class="scroll-mt-8">
             <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between border-b border-title pb-2 mb-4">
-                <h2 class="text-2xl font-black serif text-title">01 <span class="text-lg font-bold ml-2">鎶佃揪浠欏锛屾參鑺傚浼戞暣</span></h2>
-                <div class="text-xs text-gray-500 mt-2 sm:mt-0 font-bold">5鏈?鏃?/ 浣撳姏娑堣€?<div class="energy-bar-bg"><div class="energy-bar-fill" style="width: 30%"></div></div></div>
+                <h2 class="text-2xl font-black serif text-title">01 <span class="text-lg font-bold ml-2">抵达仙境，慢节奏休整</span></h2>
+                <div class="text-xs text-gray-500 mt-2 sm:mt-0 font-bold">5月1日 / 体力消耗 <div class="energy-bar-bg"><div class="energy-bar-fill" style="width: 30%"></div></div></div>
             </div>
             
             <div class="mag-card">
                 <div class="time-row flex flex-col sm:flex-row border-b border-line p-5">
                     <div class="sm:w-32 flex-shrink-0 mb-2 sm:mb-0">
-                        <span class="text-sm font-bold text-[#c29b62] serif">14:19 鎶佃揪</span><br>
-                        <span class="text-[10px] text-gray-400 bg-gray-100 px-1 rounded">楂橀搧 G219</span>
+                        <span class="text-sm font-bold text-[#c29b62] serif">14:19 抵达</span><br>
+                        <span class="text-[10px] text-gray-400 bg-gray-100 px-1 rounded">高铁 G219</span>
                     </div>
                     <div class="flex-1">
-                        <h3 class="font-bold text-title mb-1">鎺ラ┏涓庡叆浣忓熀鍦?/h3>
-                        <p class="text-sm text-gray-600 leading-relaxed">鍒楄溅鎶佃揪寮犲鐣岃タ绔欍€傚嚭绔欏悗<strong>鏃犺閲庣敓瀵兼父鐨勭柉鐙傛惌璁?/strong>锛岀洿濂斿畼鏂圭綉绾﹁溅鐐广€傛墦杞︼紙绾?0鍒嗛挓锛夊墠寰€銆愬ぉ闂ㄥ北绱㈤亾涓嬬珯銆戝懆杈归瀹氶厭搴楀姙鐞嗗叆浣忥紝娲楀幓鐝懗銆?/p>
+                        <h3 class="font-bold text-title mb-1">接驳与入住基地</h3>
+                        <p class="text-sm text-gray-600 leading-relaxed">列车抵达张家界西站。出站后<strong>无视野生导游的疯狂搭讪</strong>，直奔官方网约车点。打车（约20分钟）前往【天门山索道下站】周边预定酒店办理入住，洗去班味。</p>
                     </div>
                 </div>
                 
@@ -240,8 +243,8 @@
                         <span class="text-sm font-bold text-[#c29b62] serif">16:30 - 18:30</span>
                     </div>
                     <div class="flex-1">
-                        <h3 class="font-bold text-title mb-1">澶滄帰璧涘崥鍦熷妤?/h3>
-                        <p class="text-sm text-gray-600 leading-relaxed">鎵撹溅璧淬€愪竷鍗佷簩濂囨ゼ銆戙€備簲涓€鏈熼棿鍐呴儴鏋佸叾鎷ユ尋锛?strong>鏃犻渶璐エ鍏ュ唴</strong>锛岀洿鎺ュ湪椹矾瀵归潰骞垮満鏋惰鏈轰綅銆?8:30 鍗庣伅鍒濅笂鏃讹紝璁板綍杩欏骇涓浗鐗堛€婂崈涓庡崈瀵汇€嬫堡灞嬬殑闇囨捈鍏ㄦ櫙銆?/p>
+                        <h3 class="font-bold text-title mb-1">夜探赛博土家楼</h3>
+                        <p class="text-sm text-gray-600 leading-relaxed">打车赴【七十二奇楼】。五一期间内部极其拥挤，<strong>无需购票入内</strong>，直接在马路对面广场架设机位。18:30 华灯初上时，记录这座中国版《千与千寻》汤屋的震撼全景。</p>
                     </div>
                 </div>
 
@@ -250,32 +253,32 @@
                         <span class="text-sm font-bold text-[#c29b62] serif">19:00 - 20:30</span>
                     </div>
                     <div class="flex-1">
-                        <h3 class="font-bold text-title mb-1">鐑荆琛ョ粰锛氬垵灏濅笁涓嬮攨</h3>
-                        <p class="text-sm text-gray-600 leading-relaxed mb-2">鍥炲競鍖哄瑙呫€愬瘜姝ｆ瘏涓変笅閿呫€戞垨銆愯儭甯堝倕銆戙€傛牳蹇冩寚浠わ細鐐瑰彇<strong>鈥滆偉鑲?鑵婅倝+鐗涜倸鈥?/strong>鍋氭垚骞查攨锛岄厤涓€浠界偢钂垮瓙绮戠矐瑙ｈ吇銆傚湪娌歌吘鐨勭孩娌逛腑鍞ら啋婀樻鍛宠暰銆?/p>
+                        <h3 class="font-bold text-title mb-1">热辣补给：初尝三下锅</h3>
+                        <p class="text-sm text-gray-600 leading-relaxed mb-2">回市区寻觅【富正毅三下锅】或【胡师傅】。核心指令：点取<strong>“肥肠+腊肉+牛肚”</strong>做成干锅，配一份炸蒿子粑粑解腻。在沸腾的红油中唤醒湘楚味蕾。</p>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- 妯″潡 3锛欴2 琛岀▼ -->
+        <!-- 模块 3：D2 行程 -->
         <section id="d2" class="scroll-mt-8">
             <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between border-b border-title pb-2 mb-4">
-                <h2 class="text-2xl font-black serif text-title">02 <span class="text-lg font-bold ml-2">浜戠婕锛屽ぉ闂ㄦ儕榄?/span></h2>
-                <div class="text-xs text-gray-500 mt-2 sm:mt-0 font-bold">5鏈?鏃?/ 浣撳姏娑堣€?<div class="energy-bar-bg"><div class="energy-bar-fill" style="width: 85%"></div></div></div>
+                <h2 class="text-2xl font-black serif text-title">02 <span class="text-lg font-bold ml-2">云端漫步，天门惊魂</span></h2>
+                <div class="text-xs text-gray-500 mt-2 sm:mt-0 font-bold">5月2日 / 体力消耗 <div class="energy-bar-bg"><div class="energy-bar-fill" style="width: 85%"></div></div></div>
             </div>
             
             <p class="text-xs text-[#c29b62] font-bold mb-4 bg-orange-50 p-2 border border-orange-100 rounded inline-block">
-                <i class="fas fa-triangle-exclamation mr-1"></i> 鍐涗护鐘讹細闂ㄧエ蹇呴』鎻愬墠7澶╄喘鍏ュ畼鏂广€怉绾匡細澶х储閬撲笂锛屽揩绾?澶у反涓嬨€戙€傜幇鍦虹粷鏃犱綑绁紒
+                <i class="fas fa-triangle-exclamation mr-1"></i> 军令状：门票必须提前7天购入官方【A线：大索道上，快线/大巴下】。现场绝无余票！
             </p>
 
             <div class="mag-card">
                 <div class="time-row flex flex-col sm:flex-row border-b border-line p-5">
                     <div class="sm:w-32 flex-shrink-0 mb-2 sm:mb-0">
-                        <span class="text-sm font-bold text-[#c29b62] serif">07:00 (鏋侀噸瑕?</span>
+                        <span class="text-sm font-bold text-[#c29b62] serif">07:00 (极重要)</span>
                     </div>
                     <div class="flex-1">
-                        <h3 class="font-bold text-title mb-1">澶哄彇澶╅棬澶х储閬撻鍙?/h3>
-                        <p class="text-sm text-gray-600 leading-relaxed">鎼哄甫鎵撳寘鐨勭⒊姘村共绮紝浠庨厭搴楁琛岃嚦绱㈤亾绔欐帓闃熴€備箻鍧愯繎 30 鍒嗛挓鐨勪簹娲叉渶闀块珮灞辩储閬擄紝鐪肩湅鍩庡競鍙樹负寰缉妯″瀷锛岀┛杩囦簯娴风洿绌跨粷澹佺櫥椤躲€?/p>
+                        <h3 class="font-bold text-title mb-1">夺取天门大索道首发</h3>
+                        <p class="text-sm text-gray-600 leading-relaxed">携带打包的碳水干粮，从酒店步行至索道站排队。乘坐近 30 分钟的亚洲最长高山索道，眼看城市变为微缩模型，穿过云海直穿绝壁登顶。</p>
                     </div>
                 </div>
                 
@@ -284,8 +287,8 @@
                         <span class="text-sm font-bold text-[#c29b62] serif">08:00 - 13:00</span>
                     </div>
                     <div class="flex-1">
-                        <h3 class="font-bold text-title mb-1">缁濆楂樼┖鍕樻帰 (瑗跨嚎鏈€浼?</h3>
-                        <p class="text-sm text-gray-600 leading-relaxed">鍑虹珯鐩村銆愯タ绾跨幓鐠冩爤閬撱€戯紙鐜板満缂?5 鍏冮瀷濂楄垂浣撻獙鍑岀┖寰锛?鉃?璐村礀寰掓銆愰璋锋爤閬撱€戯紝鍊惧惉鏉炬稕 鉃?璧拌繃鎽囨檭鐨勩€愭偓绱㈡ˉ銆?鉃?鎶点€愬ぉ闂ㄥ北瀵恒€戣繘琛屼紤鏁磋ˉ缁欍€?/p>
+                        <h3 class="font-bold text-title mb-1">绝壁高空勘探 (西线最优)</h3>
+                        <p class="text-sm text-gray-600 leading-relaxed">出站直奔【西线玻璃栈道】（现场缴 5 元鞋套费体验凌空微步） ➔ 贴崖徒步【鬼谷栈道】，倾听松涛 ➔ 走过摇晃的【悬索桥】 ➔ 抵【天门山寺】进行休整补给。</p>
                     </div>
                 </div>
 
@@ -294,31 +297,32 @@
                         <span class="text-sm font-bold text-[#c29b62] serif">13:30 - 18:00</span>
                     </div>
                     <div class="flex-1">
-                        <h3 class="font-bold text-title mb-1">涓嬫挙澶╅棬娲?& 鍖荤枟鍥炶</h3>
-                        <p class="text-sm text-gray-600 leading-relaxed">涔樸€愮┛灞辫嚜鍔ㄦ壎姊€戯紙鏋侀暱锛岀洿鎺ュ嚳绌垮北浣擄級闄嶈嚦澶╅棬娲炲箍鍦恒€傛寫鎴樸€?99绾т笂澶╂銆戝緬姝ヤ笅鎾わ紙鑻ヨ啙鐩栦笉閫傚彲涔?2鍏冨崟绋嬬數姊エ锛夈€傚倣鏅氬悶椋熸箻瑗胯剢鑲氱儳鐑わ紝闅忓嵆鍓嶅線<strong class="text-[#c29b62]">銆愬ぇ搴歌冻娴淬€?/strong>鎺ュ彈鍙岃吙鎶㈡晳寮忔帹鎷裤€?/p>
+                        <h3 class="font-bold text-title mb-1">下撤天门洞 & 医疗回血</h3>
+                        <p class="text-sm text-gray-600 leading-relaxed">乘【穿山自动扶梯】（极长，直接凿穿山体）降至天门洞广场。挑战【999级上天梯】徒步下撤（若膝盖不适可买32元单程电梯票）。傍晚吞食湘西脆肚烧烤，随即前往<strong class="text-[#c29b62]">【大庸足浴】</strong>接受双腿抢救式推拿。</p>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- 妯″潡 4锛欴3 琛岀▼ (閲嶆瀯锛氫汉鏂囨參娓镐笌杞満) -->
+        <!-- 模块 4：D3 行程 (重构：人文慢游与转场) -->
         <section id="d3" class="scroll-mt-8">
             <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between border-b-2 border-[#6b8454] pb-2 mb-4">
-                <h2 class="text-2xl font-black serif text-[#6b8454]">03 <span class="text-lg font-bold ml-2">婀樿タ浣欓煹涓庢槦鍩庤穬杩?/span></h2>
-                <div class="text-xs text-gray-500 mt-2 sm:mt-0 font-bold">5鏈?鏃?/ 浣撳姏娑堣€?<div class="energy-bar-bg"><div class="energy-bar-fill" style="width: 40%"></div></div></div>
+                <h2 class="text-2xl font-black serif text-[#6b8454]">03 <span class="text-lg font-bold ml-2">湘西余韵与星城跃迁</span></h2>
+                <div class="text-xs text-gray-500 mt-2 sm:mt-0 font-bold">5月3日 / 体力消耗 <div class="energy-bar-bg"><div class="energy-bar-fill" style="width: 40%"></div></div></div>
             </div>
 
             <p class="text-xs text-gray-600 bg-gray-50 p-3 mb-4 border border-line rounded">
-                <i class="fas fa-mug-hot text-[#6b8454] mr-1"></i> 浠婃棩鎴樼暐璋冩暣锛氭斁寮冨娉笖浜烘尋浜虹殑妫灄鍏洯锛屾敼涓衡€滀汉鏂囨參娓糕€濈瓥鐣ワ紝璁╂槰鏃ヨ礋鑽风殑鍙岃吙寰楀埌鍏呭垎浼戞暣銆?            </p>
+                <i class="fas fa-mug-hot text-[#6b8454] mr-1"></i> 今日战略调整：放弃奔波且人挤人的森林公园，改为“人文慢游”策略，让昨日负荷的双腿得到充分休整。
+            </p>
 
             <div class="mag-card">
                 <div class="time-row flex flex-col sm:flex-row border-b border-line p-5">
                     <div class="sm:w-32 flex-shrink-0 mb-2 sm:mb-0">
-                        <span class="text-sm font-bold text-[#c29b62] serif">09:30 鎱㈡椂鍏?/span>
+                        <span class="text-sm font-bold text-[#c29b62] serif">09:30 慢时光</span>
                     </div>
                     <div class="flex-1">
-                        <h3 class="font-bold text-title mb-1">鑷劧閱掍笌纰虫按鑻忛啋</h3>
-                        <p class="text-sm text-gray-600 leading-relaxed">鐫″埌鑷劧閱掋€傞€€鎴垮苟灏嗚鏉庡瘎瀛樺湪閰掑簵鍓嶅彴銆傝交瑁呭嚭闂紝鍘昏澶村瑙呬竴纰楀紶瀹剁晫鐗硅壊鐨?strong class="text-title">銆愯崏甯介潰銆?/strong>鎴?strong class="text-title">銆愮尓鑴戝３鍑夐潰銆?/strong>锛屾劅鍙椾笉琚椆閽熷偓淇冪殑鏃╂櫒銆?/p>
+                        <h3 class="font-bold text-title mb-1">自然醒与碳水苏醒</h3>
+                        <p class="text-sm text-gray-600 leading-relaxed">睡到自然醒。退房并将行李寄存在酒店前台。轻装出门，去街头寻觅一碗张家界特色的<strong class="text-title">【草帽面】</strong>或<strong class="text-title">【猪脑壳凉面】</strong>，感受不被闹钟催促的早晨。</p>
                     </div>
                 </div>
 
@@ -327,52 +331,53 @@
                         <span class="text-sm font-bold text-[#c29b62] serif">10:30 - 13:00</span>
                     </div>
                     <div class="flex-1">
-                        <h3 class="font-bold text-title mb-1">浜烘枃鍕樻帰锛氬湡瀹堕鎯呭洯 (鍦熷徃鍩?</h3>
-                        <p class="text-sm text-gray-600 leading-relaxed">鎵撹溅鍓嶅線銆愬湡瀹堕鎯呭洯銆戙€傝繖閲屾棤闇€鐖北锛屽彲浠ユ矇娴稿紡鎰熷彈婀樿タ鍘熺敓鎬佺殑鍦熷鍚婅剼妤煎缓绛戠兢锛屾墦鍗℃瀬鍏堕渿鎾肩殑鍦熷徃鐜嬪鈥滀節閲嶅ぉ涓栬鍫傗€濄€?/p>
+                        <h3 class="font-bold text-title mb-1">人文勘探：土家风情园 (土司城)</h3>
+                        <p class="text-sm text-gray-600 leading-relaxed">打车前往【土家风情园】。这里无需爬山，可以沉浸式感受湘西原生态的土家吊脚楼建筑群，打卡极其震撼的土司王宫“九重天世袭堂”。</p>
                     </div>
                 </div>
 
                 <div class="time-row flex flex-col sm:flex-row border-b border-line p-5">
                     <div class="sm:w-32 flex-shrink-0 mb-2 sm:mb-0">
-                        <span class="text-sm font-bold text-[#c29b62] serif">13:30 鍗堥</span>
+                        <span class="text-sm font-bold text-[#c29b62] serif">13:30 午餐</span>
                     </div>
                     <div class="flex-1">
-                        <h3 class="font-bold text-title mb-1">鏈€鍚庣殑婀樿タ鍛宠暰</h3>
-                        <p class="text-sm text-gray-600 leading-relaxed">鍗堥鎵撳崱褰撳湴浜烘帹鑽愮殑<strong class="text-title">銆愬瀛愰噷鐨勮彍閽点€?/strong>锛屾垨鑰呭悆涓€椤垮湴閬撶伀鐑殑<strong class="text-title">銆愭箻瑗块搧鏉跨儳銆?/strong>锛岀粰寮犲鐣岀殑鍛宠涔嬫梾鐢讳笂鍙ュ彿銆?/p>
+                        <h3 class="font-bold text-title mb-1">最后的湘西味蕾</h3>
+                        <p class="text-sm text-gray-600 leading-relaxed">午餐打卡当地人推荐的<strong class="text-title">【寨子里的菜钵】</strong>，或者吃一顿地道火热的<strong class="text-title">【湘西铁板烧】</strong>，给张家界的味觉之旅画上句号。</p>
                     </div>
                 </div>
                 
                 <div class="time-row flex flex-col sm:flex-row p-5 bg-[#faf9f5]">
                     <div class="sm:w-32 flex-shrink-0 mb-2 sm:mb-0">
-                        <span class="text-sm font-bold text-[#6b8454] serif">14:30 鉃?18:30</span><br>
-                        <span class="text-[10px] text-white bg-[#6b8454] px-1 rounded mt-1 inline-block">楂橀搧璧撮暱娌?/span>
+                        <span class="text-sm font-bold text-[#6b8454] serif">14:30 ➔ 18:30</span><br>
+                        <span class="text-[10px] text-white bg-[#6b8454] px-1 rounded mt-1 inline-block">高铁赴长沙</span>
                     </div>
                     <div class="flex-1">
-                        <h3 class="font-bold text-[#6b8454] mb-1">璺ㄥ煄璺冭縼涓庢槦鍩庨澶?/h3>
+                        <h3 class="font-bold text-[#6b8454] mb-1">跨城跃迁与星城首夜</h3>
                         <p class="text-sm text-gray-600 leading-relaxed">
-                            鈥?鍥為厭搴楁彁鍙栬鏉庯紝鎵撹溅浠?0鍒嗛挓鍗冲彲鎶佃揪寮犲鐣岃タ绔欍€?br>
-                            鈥?鎼箻涓嬪崍鐝楂橀搧锛堝 G6119/G6121绛夛級锛岀害2.5灏忔椂闄嶈惤銆愰暱娌欏崡绔欍€戙€?br>
-                            鈥?鍏ヤ綇浜斾竴骞垮満鍩哄湴鍚庯紝濡傛灉绮惧姏鍏呮矝锛岀洿濂斻€愬洓鏂瑰潽澶滃競銆戞壂琛楋紱濡傛灉鎯充紤鎭紝鍦ㄩ厭搴楃偣銆愯尪棰滄偊鑹层€戝拰銆愯仛鍛崇灴璁般€戝彛鍛宠櫨澶栧崠锛屽墺铏惧簡鍔熴€?                        </p>
+                            • 回酒店提取行李，打车仅20分钟即可抵达张家界西站。<br>
+                            • 搭乘下午班次高铁（如 G6119/G6121等），约2.5小时降落【长沙南站】。<br>
+                            • 入住五一广场基地后，如果精力充沛，直奔【四方坪夜市】扫街；如果想休息，在酒店点【茶颜悦色】和【聚味瞿记】口味虾外卖，剥虾庆功。
+                        </p>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- 妯″潡 5锛欴4 琛岀▼ -->
+        <!-- 模块 5：D4 行程 -->
         <section id="d4" class="scroll-mt-8">
             <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between border-b border-title pb-2 mb-4">
-                <h2 class="text-2xl font-black serif text-title">04 <span class="text-lg font-bold ml-2">鏄熷煄鐑熺伀锛岃剼閮介鍗?/span></h2>
-                <div class="text-xs text-gray-500 mt-2 sm:mt-0 font-bold">5鏈?鏃?/ 浣撳姏娑堣€?<div class="energy-bar-bg"><div class="energy-bar-fill" style="width: 40%"></div></div></div>
+                <h2 class="text-2xl font-black serif text-title">04 <span class="text-lg font-bold ml-2">星城烟火，脚都风华</span></h2>
+                <div class="text-xs text-gray-500 mt-2 sm:mt-0 font-bold">5月4日 / 体力消耗 <div class="energy-bar-bg"><div class="energy-bar-fill" style="width: 40%"></div></div></div>
             </div>
             
             <div class="mag-card">
                 <div class="time-row flex flex-col sm:flex-row border-b border-line p-5">
                     <div class="sm:w-32 flex-shrink-0 mb-2 sm:mb-0">
-                        <span class="text-sm font-bold text-[#c29b62] serif">10:00 鍡︾矇</span>
+                        <span class="text-sm font-bold text-[#c29b62] serif">10:00 嗦粉</span>
                     </div>
                     <div class="flex-1">
-                        <h3 class="font-bold text-title mb-1">纰虫按鑻忛啋锛氬棪绮夊ぇ涓?/h3>
-                        <p class="text-sm text-gray-600 leading-relaxed">鍓嶅線銆愬叕浜ゆ柊鏉戠矇搴椼€戯紙鎺掗槦涔呬絾鍦伴亾锛岃倝涓?闆噷钑伙級鎴栥€愯倖濮愰潰绮夐銆戯紙鍘熸堡鐗涜倝锛夈€?strong>闅愯棌鎸囦护锛?/strong>蹇呴』鍔犱竴涓噾榛勭殑鐓庤嵎鍖呰泲锛屾蹈娉″惛婊¤倝姹ゃ€?/p>
+                        <h3 class="font-bold text-title mb-1">碳水苏醒：嗦粉大业</h3>
+                        <p class="text-sm text-gray-600 leading-relaxed">前往【公交新村粉店】（排队久但地道，肉丝+雪里蕻）或【肆姐面粉馆】（原汤牛肉）。<strong>隐藏指令：</strong>必须加一个金黄的煎荷包蛋，浸泡吸满肉汤。</p>
                     </div>
                 </div>
 
@@ -381,59 +386,59 @@
                         <span class="text-sm font-bold text-[#c29b62] serif">13:00 - 16:00</span>
                     </div>
                     <div class="flex-1">
-                        <h3 class="font-bold text-title mb-1">閬挎殤涓庝汉鏂囪€冨療</h3>
-                        <p class="text-sm text-gray-600 leading-relaxed">棣栭€夈€愭箹鍗楀崥鐗╅櫌銆戦潰瑙佽緵杩藉か浜猴紙闇€鎻愬墠7澶╁叕浼楀彿鎷兼墜閫熸姠绁級銆傝嫢鏃犵エ锛岃浆鎴樸€愯阿瀛愰緳褰卞儚鑹烘湳棣嗐€戠湅灞曞惞鍐锋皵锛屾瀬绠€鍑犱綍鍏夊奖鍑虹墖鐜囨瀬楂樸€?/p>
+                        <h3 class="font-bold text-title mb-1">避暑与人文考察</h3>
+                        <p class="text-sm text-gray-600 leading-relaxed">首选【湖南博物院】面见辛追夫人（需提前7天公众号拼手速抢票）。若无票，转战【谢子龙影像艺术馆】看展吹冷气，极简几何光影出片率极高。</p>
                     </div>
                 </div>
 
                 <div class="time-row flex flex-col sm:flex-row p-5">
                     <div class="sm:w-32 flex-shrink-0 mb-2 sm:mb-0">
-                        <span class="text-sm font-bold text-[#c29b62] serif">16:30 - 娣卞</span>
+                        <span class="text-sm font-bold text-[#c29b62] serif">16:30 - 深夜</span>
                     </div>
                     <div class="flex-1">
-                        <h3 class="font-bold text-title mb-1">鑴氶兘娲楃ぜ & 鐢插３绫诲鎴?/h3>
-                        <p class="text-sm text-gray-600 leading-relaxed">鎻愬墠鍗婂ぉ鍦ㄥぇ浼楃偣璇勯绾︺€愰鑰屽悍銆戜綋楠屾瑙勬帹鎷匡紝鏈熼棿鐙傞€犲厤璐逛緵搴旂殑鍗ょ矇涓庢帓楠ㄦ堡銆傛寜瀹屾墦杞﹀幓銆愬ぉ瀹濆厔寮熴€?strong>锛堝繀椤讳笅鍗?鐐瑰崐灏卞紑濮嬫墜鏈轰簯鎺掑彿锛?/strong>鍚冪垎鐐掑彛鍛宠櫨涓庣传鑻忔瀛愬銆?/p>
+                        <h3 class="font-bold text-title mb-1">脚都洗礼 & 甲壳类夜战</h3>
+                        <p class="text-sm text-gray-600 leading-relaxed">提前半天在大众点评预约【颐而康】体验正规推拿，期间狂造免费供应的卤粉与排骨汤。按完打车去【天宝兄弟】<strong>（必须下午4点半就开始手机云排号）</strong>吃爆炒口味虾与紫苏桃子姜。</p>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- 妯″潡 6锛欴5 琛岀▼ -->
+        <!-- 模块 6：D5 行程 -->
         <section id="d5" class="scroll-mt-8 mb-20">
             <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between border-b border-title pb-2 mb-4">
-                <h2 class="text-2xl font-black serif text-title">05 <span class="text-lg font-bold ml-2">姗樻床绉嬫€濓紝浼橀泤鍑棆</span></h2>
-                <div class="text-xs text-gray-500 mt-2 sm:mt-0 font-bold">5鏈?鏃?/ 浣撳姏娑堣€?<div class="energy-bar-bg"><div class="energy-bar-fill" style="width: 30%"></div></div></div>
+                <h2 class="text-2xl font-black serif text-title">05 <span class="text-lg font-bold ml-2">橘洲秋思，优雅凯旋</span></h2>
+                <div class="text-xs text-gray-500 mt-2 sm:mt-0 font-bold">5月5日 / 体力消耗 <div class="energy-bar-bg"><div class="energy-bar-fill" style="width: 30%"></div></div></div>
             </div>
             
             <div class="mag-card">
                 <div class="time-row flex flex-col sm:flex-row border-b border-line p-5">
                     <div class="sm:w-32 flex-shrink-0 mb-2 sm:mb-0">
-                        <span class="text-sm font-bold text-[#c29b62] serif">08:30 浼熶汉鏁呴噷</span>
+                        <span class="text-sm font-bold text-[#c29b62] serif">08:30 伟人故里</span>
                     </div>
                     <div class="flex-1">
-                        <h3 class="font-bold text-title mb-1">姗樺瓙娲插ご</h3>
-                        <p class="text-sm text-gray-600 leading-relaxed">鎻愬墠 3 澶╅绾︹€滃渤楹撳北姗樺瓙娲测€濋棬绁ㄣ€傚潗鍦伴搧鐩磋揪銆傚叆鍥悗<strong>绔嬪埢鑺?40 鍏冧拱灏忕伀杞︾エ鍧愬埌搴曠珯</strong>鎵撳崱闈掑勾闆曞儚銆傛櫙鍖烘瀬鍏跺簽澶э紝鍏ㄩ潬璧颁細瀵艰嚧浣撹兘鏋骞朵弗閲嶅欢璇笅鍗堥珮閾併€?/p>
+                        <h3 class="font-bold text-title mb-1">橘子洲头</h3>
+                        <p class="text-sm text-gray-600 leading-relaxed">提前 3 天预约“岳麓山橘子洲”门票。坐地铁直达。入园后<strong>立刻花 40 元买小火车票坐到底站</strong>打卡青年雕像。景区极其庞大，全靠走会导致体能枯竭并严重延误下午高铁。</p>
                     </div>
                 </div>
 
                 <div class="time-row flex flex-col sm:flex-row border-b border-line p-5">
                     <div class="sm:w-32 flex-shrink-0 mb-2 sm:mb-0">
-                        <span class="text-sm font-bold text-[#c29b62] serif">12:00 缁堝眬椁?/span>
+                        <span class="text-sm font-bold text-[#c29b62] serif">12:00 终局餐</span>
                     </div>
                     <div class="flex-1">
-                        <h3 class="font-bold text-title mb-1">缁堟瀬婀樿彍 & 浼存墜绀?/h3>
-                        <p class="text-sm text-gray-600 leading-relaxed">閫€鎴垮甫涓婅鏉庛€傚墠寰€銆愮钀濆崪娴忛槼鑿滈銆戯紙閰歌彍鐐掔矇鐨竴缁濓紝闇€鎻愬墠鍙栧彿锛夋垨銆愬９鐩忕伅銆戞瀬鍏朵笅楗€傞キ鍚庡湪浜斾竴骞垮満閲囪喘鑼堕鎮﹁壊鑼跺寘涓庛€愬ⅷ鑼夌偣蹇冨眬銆戦夯钖綔涓轰即鎵嬬ぜ銆?/p>
+                        <h3 class="font-bold text-title mb-1">终极湘菜 & 伴手礼</h3>
+                        <p class="text-sm text-gray-600 leading-relaxed">退房带上行李。前往【笨萝卜浏阳菜馆】（酸菜炒粉皮一绝，需提前取号）或【壹盏灯】极其下饭。饭后在五一广场采购茶颜悦色茶包与【墨茉点心局】麻薯作为伴手礼。</p>
                     </div>
                 </div>
 
                 <div class="time-row flex flex-col sm:flex-row p-5 bg-[#faf9f5]">
                     <div class="sm:w-32 flex-shrink-0 mb-2 sm:mb-0">
-                        <span class="text-sm font-bold text-[#6b8454] serif">16:00 鉃?17:23</span><br>
-                        <span class="text-[10px] text-white bg-[#6b8454] px-1 rounded mt-1 inline-block">楂橀搧 G254</span>
+                        <span class="text-sm font-bold text-[#6b8454] serif">16:00 ➔ 17:23</span><br>
+                        <span class="text-[10px] text-white bg-[#6b8454] px-1 rounded mt-1 inline-block">高铁 G254</span>
                     </div>
                     <div class="flex-1">
-                        <h3 class="font-bold text-[#6b8454] mb-1">鎾ょ鏄熷煄锛屼紭闆呮敹瀹?/h3>
-                        <p class="text-sm text-gray-600 leading-relaxed">涔樺湴閾?鍙风嚎鐩磋揪銆愰暱娌欏崡绔欍€戯紙棰勭暀鍏呰冻杩涚珯瀹夋鏃堕棿锛夈€?7:23 涔樺潗 G254 娆￠珮閾侊紝甯︾潃婀樿タ鐨勫北姘翠笌鏄熷煄鐨勭儫鐏紝21:55 鍑嗘椂鎶垫勃銆傜粨鏉熸剦蹇殑浜斾竴鍋囨湡銆?/p>
+                        <h3 class="font-bold text-[#6b8454] mb-1">撤离星城，优雅收官</h3>
+                        <p class="text-sm text-gray-600 leading-relaxed">乘地铁2号线直达【长沙南站】（预留充足进站安检时间）。17:23 乘坐 G254 次高铁，带着湘西的山水与星城的烟火，21:55 准时抵沪。结束愉快的五一假期。</p>
                     </div>
                 </div>
             </div>
@@ -442,7 +447,8 @@
     </main>
 
     <script>
-        // 婊氬姩鐩戝惉鏇存柊宸︿晶鑿滃崟婵€娲荤姸鎬?        document.addEventListener('DOMContentLoaded', () => {
+        // 滚动监听更新左侧菜单激活状态
+        document.addEventListener('DOMContentLoaded', () => {
             const sections = document.querySelectorAll('section[id]');
             const navLinks = document.querySelectorAll('.nav-link');
 
