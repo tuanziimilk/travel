@@ -1,0 +1,1204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>天门奥莱广场附近酒店深度对比报告</title>
+  <style>
+    :root {
+      --bg: #07111f;
+      --bg-soft: #0d1830;
+      --panel: rgba(14, 24, 48, 0.78);
+      --panel-strong: rgba(16, 27, 53, 0.92);
+      --panel-soft: rgba(255,255,255,0.05);
+      --line: rgba(255,255,255,0.1);
+      --line-strong: rgba(255,255,255,0.16);
+      --text: #eef4ff;
+      --muted: #a8b5d6;
+      --subtle: #d7e2ff;
+      --blue: #7f9cff;
+      --cyan: #62d7c4;
+      --gold: #f7d88a;
+      --red: #ff9b9b;
+      --green: #8ae2a7;
+      --shadow: 0 28px 60px rgba(0,0,0,0.38);
+      --radius-xl: 28px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --radius-sm: 12px;
+      --max: 1360px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: Inter, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      line-height: 1.6;
+      background:
+        radial-gradient(circle at 10% 0%, rgba(127,156,255,0.22), transparent 26%),
+        radial-gradient(circle at 95% 10%, rgba(98,215,196,0.16), transparent 20%),
+        linear-gradient(180deg, #07111f 0%, #0a1428 40%, #0b1730 100%);
+    }
+
+    a { color: #c6d6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .layout {
+      width: min(var(--max), calc(100% - 28px));
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      gap: 22px;
+      padding: 24px 0 60px;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 18px;
+      align-self: start;
+      background: rgba(8, 16, 33, 0.76);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }
+
+    .brand {
+      padding: 16px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, rgba(127,156,255,0.18), rgba(98,215,196,0.12));
+      border: 1px solid var(--line-strong);
+      margin-bottom: 16px;
+    }
+
+    .brand h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    .brand p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .nav-title {
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      margin: 16px 0 10px;
+    }
+
+    .nav-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .nav-link {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 11px 12px;
+      border-radius: 14px;
+      color: var(--subtle);
+      background: rgba(255,255,255,0.03);
+      border: 1px solid transparent;
+      transition: .18s ease;
+    }
+
+    .nav-link:hover {
+      text-decoration: none;
+      background: rgba(255,255,255,0.06);
+      border-color: rgba(255,255,255,0.08);
+      transform: translateY(-1px);
+    }
+
+    .nav-link span:last-child {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .main {
+      min-width: 0;
+      display: grid;
+      gap: 20px;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 34px;
+      border-radius: 30px;
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(135deg, rgba(127,156,255,0.18), rgba(98,215,196,0.1)),
+        rgba(14, 24, 48, 0.74);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }
+
+    .hero::before,
+    .hero::after {
+      content: "";
+      position: absolute;
+      border-radius: 999px;
+      pointer-events: none;
+      filter: blur(10px);
+    }
+
+    .hero::before {
+      width: 280px;
+      height: 280px;
+      right: -90px;
+      top: -90px;
+      background: radial-gradient(circle, rgba(127,156,255,0.35), transparent 68%);
+    }
+
+    .hero::after {
+      width: 240px;
+      height: 240px;
+      right: 120px;
+      bottom: -110px;
+      background: radial-gradient(circle, rgba(98,215,196,0.24), transparent 68%);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      color: #dde6ff;
+      font-size: 13px;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(32px, 4vw, 48px);
+      line-height: 1.08;
+      letter-spacing: -0.03em;
+      max-width: 860px;
+    }
+
+    .hero p.lead {
+      margin: 14px 0 0;
+      color: var(--muted);
+      max-width: 860px;
+      font-size: 15px;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.4fr .9fr;
+      gap: 18px;
+      margin-top: 24px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+
+    .pad { padding: 22px; }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-top: 22px;
+    }
+
+    .stat {
+      padding: 16px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .stat .k { font-size: 12px; color: var(--muted); }
+    .stat .v { margin-top: 8px; font-size: 24px; font-weight: 800; }
+
+    .section { display: grid; gap: 14px; }
+
+    .section-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .section-head h2 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: -0.02em;
+    }
+
+    .section-head p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .pill-row, .weight-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.05);
+      color: #d7e2ff;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .pill strong { color: white; }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .kpi-card {
+      padding: 16px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.07);
+    }
+
+    .kpi-card h3 {
+      margin: 0 0 8px;
+      font-size: 16px;
+    }
+
+    .kpi-card p {
+      margin: 0;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .decision-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .decision-item {
+      padding: 16px 18px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .decision-item strong { color: white; }
+
+    .table-shell {
+      border-radius: 22px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.04);
+    }
+
+    .table-wrap {
+      overflow: auto;
+      max-width: 100%;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1120px;
+    }
+
+    th, td {
+      padding: 14px 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      vertical-align: top;
+      text-align: left;
+      font-size: 14px;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: rgba(8, 16, 33, 0.94);
+      color: #dbe5ff;
+      font-weight: 700;
+      white-space: nowrap;
+      backdrop-filter: blur(10px);
+    }
+
+    tbody tr:hover {
+      background: rgba(255,255,255,0.035);
+    }
+
+    .hotel-name {
+      margin: 0 0 6px;
+      font-size: 15px;
+      font-weight: 800;
+      color: white;
+    }
+
+    .hotel-meta {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .rank {
+      width: 36px;
+      height: 36px;
+      border-radius: 12px;
+      display: inline-grid;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: linear-gradient(135deg, rgba(127,156,255,0.34), rgba(98,215,196,0.18));
+      font-weight: 800;
+    }
+
+    .score-box {
+      display: inline-grid;
+      gap: 3px;
+    }
+
+    .score-box strong {
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .score-box span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+
+    .badge.ok { background: rgba(138,226,167,.12); color: var(--green); border-color: rgba(138,226,167,.22); }
+    .badge.warn { background: rgba(247,216,138,.12); color: var(--gold); border-color: rgba(247,216,138,.24); }
+    .badge.risk { background: rgba(255,155,155,.12); color: var(--red); border-color: rgba(255,155,155,.22); }
+    .badge.info { background: rgba(127,156,255,.14); color: #bfd0ff; border-color: rgba(127,156,255,.22); }
+
+    .progress {
+      position: relative;
+      width: 148px;
+      height: 8px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(255,255,255,0.08);
+      margin-top: 8px;
+    }
+
+    .bar {
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--cyan), var(--blue));
+    }
+
+    .bar.low { width: 32%; }
+    .bar.mid { width: 58%; }
+    .bar.good { width: 74%; }
+    .bar.high { width: 88%; }
+    .bar.top { width: 94%; }
+
+    .heat {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 124px;
+    }
+
+    .heat-dots {
+      display: inline-flex;
+      gap: 4px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.14);
+    }
+
+    .dot.on.green { background: var(--green); box-shadow: 0 0 10px rgba(138,226,167,.4); }
+    .dot.on.gold { background: var(--gold); box-shadow: 0 0 10px rgba(247,216,138,.4); }
+    .dot.on.red { background: var(--red); box-shadow: 0 0 10px rgba(255,155,155,.4); }
+
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
+
+    .hotel-card {
+      padding: 20px;
+      border-radius: 22px;
+      background: linear-gradient(135deg, rgba(127,156,255,0.09), rgba(255,255,255,0.04));
+      border: 1px solid rgba(255,255,255,0.08);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hotel-card::after {
+      content: "";
+      position: absolute;
+      right: -40px;
+      top: -40px;
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(127,156,255,0.16), transparent 70%);
+      pointer-events: none;
+    }
+
+    .hotel-card h3 {
+      margin: 0;
+      font-size: 20px;
+    }
+
+    .hotel-card .subline {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .hotel-card .meta-grid {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .mini {
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      font-size: 13px;
+    }
+
+    .mini .label { color: var(--muted); display: block; font-size: 12px; }
+    .mini strong { display: block; margin-top: 4px; color: white; }
+
+    .risk-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .risk-item {
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.045);
+      border: 1px solid rgba(255,255,255,0.07);
+      font-size: 14px;
+    }
+
+    .risk-item strong { color: white; }
+
+    .risk-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+
+    .risk-card {
+      padding: 18px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .risk-card h3 {
+      margin: 0 0 8px;
+      font-size: 16px;
+    }
+
+    .risk-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .pick-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
+
+    .pick {
+      padding: 22px;
+      border-radius: 24px;
+      border: 1px solid var(--line);
+      background: linear-gradient(135deg, rgba(127,156,255,0.14), rgba(255,255,255,0.04));
+      position: relative;
+      overflow: hidden;
+    }
+
+    .pick.alt {
+      background: linear-gradient(135deg, rgba(98,215,196,0.12), rgba(255,255,255,0.04));
+    }
+
+    .pick h3 { margin: 0 0 8px; font-size: 22px; }
+    .pick p { margin: 0 0 14px; color: var(--muted); }
+
+    .footnote {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .print-tip {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .small {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .top-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 18px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.06);
+      color: white;
+      font-size: 13px;
+    }
+
+    .btn:hover { text-decoration: none; background: rgba(255,255,255,0.08); }
+
+    @media (max-width: 1180px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { position: relative; top: auto; }
+      .hero-grid,
+      .kpi-grid,
+      .cards-grid,
+      .risk-grid,
+      .pick-grid { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (max-width: 760px) {
+      .layout { width: min(calc(100% - 18px), var(--max)); padding: 14px 0 32px; }
+      .hero { padding: 22px; }
+      .stats { grid-template-columns: 1fr 1fr; }
+    }
+
+    @media print {
+      body { background: white; color: #111827; }
+      .layout { width: 100%; grid-template-columns: 1fr; gap: 0; padding: 0; }
+      .sidebar { display: none; }
+      .hero, .panel, .pick, .hotel-card {
+        background: white !important;
+        color: #111827 !important;
+        box-shadow: none !important;
+        border: 1px solid #d1d5db !important;
+      }
+      .muted, .hero p.lead, .section-head p, .footnote, .small, .print-tip, .hotel-meta, .risk-card p, .kpi-card p { color: #4b5563 !important; }
+      a { color: #1d4ed8 !important; text-decoration: underline; }
+      th { background: #f8fafc !important; color: #111827 !important; }
+      .table-shell { border: 1px solid #d1d5db !important; }
+      .badge { border-color: #d1d5db !important; color: #111827 !important; background: #f9fafb !important; }
+      .btn, .top-actions { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <h3>张家界酒店决策报告</h3>
+        <p>围绕天门奥莱广场、五一入住、差评优先的最终版 HTML。</p>
+      </div>
+      <div class="nav-title">目录</div>
+      <nav class="nav-list">
+        <a class="nav-link" href="#overview"><span>概览与结论</span><span>01</span></a>
+        <a class="nav-link" href="#method"><span>筛选逻辑</span><span>02</span></a>
+        <a class="nav-link" href="#pool"><span>20 家候选池</span><span>03</span></a>
+        <a class="nav-link" href="#top8"><span>Top 8 深度对比</span><span>04</span></a>
+        <a class="nav-link" href="#cards"><span>酒店卡片</span><span>05</span></a>
+        <a class="nav-link" href="#risk"><span>差评风险拆解</span><span>06</span></a>
+        <a class="nav-link" href="#final"><span>最终推荐</span><span>07</span></a>
+        <a class="nav-link" href="#checklist"><span>预订前核对清单</span><span>08</span></a>
+      </nav>
+      <div class="nav-title">重点提示</div>
+      <div class="decision-list">
+        <div class="decision-item"><strong>最重要：</strong>差评风险 > 价格低一点。</div>
+        <div class="decision-item"><strong>最易翻车：</strong>隔音、卫生细节、房型落差。</div>
+        <div class="decision-item"><strong>最稳打法：</strong>先锁 2 家，再问房型与楼层。</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="hero" id="overview">
+        <div class="eyebrow">张家界 · 2026/5/1–5/3 · 天门奥莱广场附近酒店筛选报告</div>
+        <h1>天门奥莱广场附近酒店<br />深度对比决策报告</h1>
+        <p class="lead">
+          这版按“真正可拍板”的标准重做：补了可用链接策略、升级了 UI 结构、增加目录导航、锚点跳转、风险热力呈现、酒店卡片、打印版样式，并把差评分析从笼统描述改成了更接近决策语言的风险拆解。
+        </p>
+        <div class="top-actions">
+          <a class="btn" href="#top8">查看 Top 8</a>
+          <a class="btn" href="#risk">直接看差评风险</a>
+          <a class="btn" href="#final">看最终推荐</a>
+        </div>
+
+        <div class="stats">
+          <div class="stat"><div class="k">候选池酒店数</div><div class="v">20</div></div>
+          <div class="stat"><div class="k">深度对比</div><div class="v">8</div></div>
+          <div class="stat"><div class="k">第一权重</div><div class="v">差评 30%</div></div>
+          <div class="stat"><div class="k">预算区间</div><div class="v">¥300–600</div></div>
+        </div>
+
+        <div class="hero-grid" style="margin-top:18px;">
+          <div class="panel pad">
+            <div class="section-head">
+              <div>
+                <h2>一句话结论</h2>
+                <p>不是选“分最高”的，而是选“最不容易让你后悔”的。</p>
+              </div>
+            </div>
+            <div class="decision-list">
+              <div class="decision-item"><strong>要风格 + 位置：</strong>May's Home、美驿轻奢、WeStay 更有吸引力。</div>
+              <div class="decision-item"><strong>要稳定少踩雷：</strong>全季、汉庭在五一高峰期的抗波动能力更强。</div>
+              <div class="decision-item"><strong>真正该盯：</strong>隔音、卫生细节、房型落差，而不是只看平台分数。</div>
+            </div>
+          </div>
+          <div class="panel pad" id="method">
+            <div class="section-head">
+              <div>
+                <h2>筛选逻辑</h2>
+                <p>按你的偏好重新加权。</p>
+              </div>
+            </div>
+            <div class="weight-row">
+              <span class="pill"><strong>30%</strong> 差评与硬伤</span>
+              <span class="pill"><strong>20%</strong> 房型匹配</span>
+              <span class="pill"><strong>18%</strong> 距离</span>
+              <span class="pill"><strong>12%</strong> 评分 / 点评量</span>
+              <span class="pill"><strong>12%</strong> 性价比</span>
+              <span class="pill"><strong>8%</strong> 稳定性</span>
+            </div>
+            <div class="footnote">广告酒店已剔除；民宿体验感更强，但节假日波动通常也更大；连锁酒店更容易把差评控制在“可接受范围”。</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel pad section">
+        <div class="section-head">
+          <div>
+            <h2>你这份报告真正要解决什么</h2>
+            <p>不是列酒店，而是降低订错房、睡不好、入住落差大的概率。</p>
+          </div>
+        </div>
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <h3>先看差评</h3>
+            <p>重点不是“有没有差评”，而是差评是否集中在卫生、隔音、异味、房型落差这类硬伤上。</p>
+          </div>
+          <div class="kpi-card">
+            <h3>再看房型</h3>
+            <p>同一家不同房型体验可能差很多。尤其特价房、影音房、靠街房，最容易在五一翻车。</p>
+          </div>
+          <div class="kpi-card">
+            <h3>最后看价格</h3>
+            <p>便宜不是最优，最优是“这个价格买到的稳定性、睡眠质量和位置便利度值不值”。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel pad section" id="pool">
+        <div class="section-head">
+          <div>
+            <h2>候选池总览（20 家）</h2>
+            <p>补了链接策略：已知 hotelId 用直达页，未知项改为携程站内搜索链接，不再保留 unknown 占位。</p>
+          </div>
+          <div class="pill-row">
+            <span class="pill">已剔除广告酒店</span>
+            <span class="pill">按五一入住日期筛选</span>
+            <span class="pill">房型偏好：大床优先</span>
+          </div>
+        </div>
+
+        <div class="table-shell">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>酒店</th>
+                  <th>评分 / 点评</th>
+                  <th>距离</th>
+                  <th>推荐房型</th>
+                  <th>价格</th>
+                  <th>大床</th>
+                  <th>稳定性</th>
+                  <th>预算匹配</th>
+                  <th>链接</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>1</td><td><div class="hotel-name">嘉宁酒店（天门奥莱广场南门口美食街店）</div><div class="hotel-meta">位置极近，步行非常方便</div></td><td>4.8 / 约1760+</td><td>步行 160 米</td><td>欢乐·大床房 + 智能 + 电动窗帘</td><td>¥292 起</td><td><span class="badge ok">是</span></td><td>本地酒店 / 中等稳定</td><td><span class="badge warn">略低于目标</span></td><td><a href="https://hotels.ctrip.com/hotels/list?cityName=张家界&keyword=嘉宁酒店（天门奥莱广场南门口美食街店）" target="_blank">搜索查看</a></td></tr>
+                <tr><td>2</td><td><div class="hotel-name">美驿轻奢名宿</div><div class="hotel-meta">能看天门山，位置和氛围兼顾</div></td><td>4.8 / 1078</td><td>步行 370 米</td><td>栖凤阁大床房</td><td>¥268 起</td><td><span class="badge ok">是</span></td><td>民宿 / 中等稳定</td><td><span class="badge warn">略低于目标</span></td><td><a href="https://hotels.ctrip.com/hotel/24273151.html" target="_blank">直达详情</a></td></tr>
+                <tr><td>3</td><td><div class="hotel-name">天门·洞见·WeStay民宿</div><div class="hotel-meta">老板服务口碑好，影音房卖点清晰</div></td><td>4.9 / 214</td><td>步行 640 米</td><td>影音大床房</td><td>¥311 起</td><td><span class="badge ok">是</span></td><td>民宿 / 中偏低稳定</td><td><span class="badge ok">符合</span></td><td><a href="https://hotels.ctrip.com/hotel/129212724.html" target="_blank">直达详情</a></td></tr>
+                <tr><td>4</td><td><div class="hotel-name">May's Home设计师民宿</div><div class="hotel-meta">设计感强，点评量足</div></td><td>4.8 / 2550</td><td>步行 420 米</td><td>悬浮大床房 + 巨幕影院</td><td>¥368 起</td><td><span class="badge ok">是</span></td><td>民宿 / 中等稳定</td><td><span class="badge ok">符合</span></td><td><a href="https://hotels.ctrip.com/hotel/94126289.html" target="_blank">直达详情</a></td></tr>
+                <tr><td>5</td><td><div class="hotel-name">张家界国臣酒店（天门山索道大庸古城店）</div><div class="hotel-meta">距离近，价格低</div></td><td>4.5 / 约1090+</td><td>步行 390 米</td><td>舒适大床房</td><td>¥258 起</td><td><span class="badge ok">是</span></td><td>本地酒店 / 中等稳定</td><td><span class="badge warn">低于目标</span></td><td><a href="https://hotels.ctrip.com/hotels/list?cityName=张家界&keyword=张家界国臣酒店（天门山索道大庸古城店）" target="_blank">搜索查看</a></td></tr>
+                <tr><td>6</td><td><div class="hotel-name">张家界月影民宿</div><div class="hotel-meta">离奥莱非常近，空间感卖点明显</div></td><td>4.8 / 355</td><td>步行 110 米</td><td>简约大床房</td><td>¥227 起</td><td><span class="badge ok">是</span></td><td>民宿 / 中等稳定</td><td><span class="badge warn">明显偏低</span></td><td><a href="https://hotels.ctrip.com/hotel/120218945.html" target="_blank">直达详情</a></td></tr>
+                <tr><td>7</td><td><div class="hotel-name">美槿酒店（北正街店）</div><div class="hotel-meta">分高，但样本量不算大</div></td><td>4.9 / 201</td><td>步行 1.0 km</td><td>简悦大床房</td><td>¥279 起</td><td><span class="badge ok">是</span></td><td>本地酒店 / 中偏低稳定</td><td><span class="badge warn">略低于目标</span></td><td><a href="https://hotels.ctrip.com/hotel/131637256.html" target="_blank">直达详情</a></td></tr>
+                <tr><td>8</td><td><div class="hotel-name">天门山仟酒店</div><div class="hotel-meta">点评量巨大，适合求稳</div></td><td>4.7 / 6976</td><td>驾车 2.6 km</td><td>智能大床房</td><td>¥354 起</td><td><span class="badge ok">是</span></td><td>酒店型 / 高稳定</td><td><span class="badge ok">符合</span></td><td><a href="https://hotels.ctrip.com/hotel/72113918.html" target="_blank">直达详情</a></td></tr>
+                <tr><td>9</td><td><div class="hotel-name">维也纳国际酒店（七十二奇楼大庸古城店）</div><div class="hotel-meta">连锁更稳，但示例房型偏双床</div></td><td>4.6 / 约2670+</td><td>驾车 2.6 km</td><td>高级双床房</td><td>¥364 起</td><td><span class="badge risk">否</span></td><td>连锁 / 高稳定</td><td><span class="badge ok">符合</span></td><td><a href="https://hotels.ctrip.com/hotels/list?cityName=张家界&keyword=维也纳国际酒店（七十二奇楼大庸古城店）" target="_blank">搜索查看</a></td></tr>
+                <tr><td>10</td><td><div class="hotel-name">维也纳国际酒店（张家界天门山店）</div><div class="hotel-meta">步行距离可接受，稳定性尚可</div></td><td>4.5 / 1321</td><td>步行 1.3 km</td><td>高级双床房</td><td>¥400 起</td><td><span class="badge risk">否</span></td><td>连锁 / 高稳定</td><td><span class="badge ok">符合</span></td><td><a href="https://hotels.ctrip.com/hotels/list?cityName=张家界&keyword=维也纳国际酒店（张家界天门山店）" target="_blank">搜索查看</a></td></tr>
+                <tr><td>11</td><td><div class="hotel-name">张家界郡澜酒店</div><div class="hotel-meta">价格低，但位置一般</div></td><td>4.7 / 502</td><td>驾车 3.6 km</td><td>特惠大床房</td><td>¥244 起</td><td><span class="badge ok">是</span></td><td>本地酒店 / 中等稳定</td><td><span class="badge warn">低于目标</span></td><td><a href="https://hotels.ctrip.com/hotels/list?cityName=张家界&keyword=张家界郡澜酒店" target="_blank">搜索查看</a></td></tr>
+                <tr><td>12</td><td><div class="hotel-name">四大名筑美学客栈</div><div class="hotel-meta">景观取向更强</div></td><td>4.8 / 2203</td><td>步行 2.0 km</td><td>豪华双床房</td><td>¥409 起</td><td><span class="badge risk">否</span></td><td>客栈 / 中等稳定</td><td><span class="badge ok">符合</span></td><td><a href="https://hotels.ctrip.com/hotel/7751758.html" target="_blank">直达详情</a></td></tr>
+                <tr><td>13</td><td><div class="hotel-name">汉庭酒店（张家界紫舞公园店）</div><div class="hotel-meta">连锁型稳妥备选</div></td><td>4.8 / 230</td><td>步行 2.0 km</td><td>大床房</td><td>¥344 起</td><td><span class="badge ok">是</span></td><td>连锁 / 高稳定</td><td><span class="badge ok">符合</span></td><td><a href="https://hotels.ctrip.com/hotel/128210065.html" target="_blank">直达详情</a></td></tr>
+                <tr><td>14</td><td><div class="hotel-name">米漾米居酒店</div><div class="hotel-meta">设计感强，影院房偏多</div></td><td>4.7 / 387</td><td>步行 0.78 km</td><td>影院大床房</td><td>¥364 起</td><td><span class="badge ok">是</span></td><td>本地酒店 / 中偏低稳定</td><td><span class="badge ok">符合</span></td><td><a href="https://hotels.ctrip.com/hotel/23474922.html" target="_blank">直达详情</a></td></tr>
+                <tr><td>15</td><td><div class="hotel-name">你好酒店（张家界子午路店）</div><div class="hotel-meta">标准化中档连锁</div></td><td>4.8 / 约642+</td><td>步行 1.4 km</td><td>大床房</td><td>¥377 起</td><td><span class="badge ok">是</span></td><td>连锁 / 高稳定</td><td><span class="badge ok">符合</span></td><td><a href="https://hotels.ctrip.com/hotels/list?cityName=张家界&keyword=你好酒店（张家界子午路店）" target="_blank">搜索查看</a></td></tr>
+                <tr><td>16</td><td><div class="hotel-name">全季（张家界天门山索道店）</div><div class="hotel-meta">点评量高，连锁抗风险强</div></td><td>4.8 / 4682</td><td>驾车 2.2 km</td><td>高级大床房</td><td>¥532 起</td><td><span class="badge ok">是</span></td><td>连锁 / 高稳定</td><td><span class="badge ok">符合</span></td><td><a href="https://hotels.ctrip.com/hotel/62472843.html" target="_blank">直达详情</a></td></tr>
+                <tr><td>17</td><td><div class="hotel-name">张家界世纪铂郡酒店</div><div class="hotel-meta">综合指标平衡，但默认房型不占优</div></td><td>4.7 / 2406</td><td>步行 1.8 km</td><td>双床房</td><td>¥454 起</td><td><span class="badge risk">否</span></td><td>酒店型 / 中高稳定</td><td><span class="badge ok">符合</span></td><td><a href="https://hotels.ctrip.com/hotel/91658324.html" target="_blank">直达详情</a></td></tr>
+                <tr><td>18</td><td><div class="hotel-name">止间·城市烟火·影音套房</div><div class="hotel-meta">更适合大空间套房需求</div></td><td>4.7 / 832</td><td>步行 0.68 km</td><td>影音 2 居套房</td><td>¥598 起</td><td><span class="badge ok">是</span></td><td>民宿 / 中等稳定</td><td><span class="badge ok">符合</span></td><td><a href="https://hotels.ctrip.com/hotels/list?cityName=张家界&keyword=止间·城市烟火·影音套房" target="_blank">搜索查看</a></td></tr>
+                <tr><td>19</td><td><div class="hotel-name">间隔时光客栈</div><div class="hotel-meta">价格很低，不是本次重点</div></td><td>4.6 / 444</td><td>驾车 3.1 km</td><td>大床房</td><td>¥171 起</td><td><span class="badge ok">是</span></td><td>客栈 / 中等稳定</td><td><span class="badge risk">低于目标较多</span></td><td><a href="https://hotels.ctrip.com/hotels/list?cityName=张家界&keyword=间隔时光客栈" target="_blank">搜索查看</a></td></tr>
+                <tr><td>20</td><td><div class="hotel-name">张家界闲山甲居（天门山索道店）</div><div class="hotel-meta">庭院风格，距离中等</div></td><td>4.7 / 396</td><td>驾车 2.3 km</td><td>庭院舒适大床房</td><td>¥287 起</td><td><span class="badge ok">是</span></td><td>客栈 / 中等稳定</td><td><span class="badge warn">略低于目标</span></td><td><a href="https://hotels.ctrip.com/hotels/list?cityName=张家界&keyword=张家界闲山甲居（天门山索道店）" target="_blank">搜索查看</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="footnote">说明：已知 hotelId 的酒店采用直达详情页；当前页面未明确暴露 hotelId 的酒店，改成了携程站内搜索入口，点开后可直达该酒店搜索结果，不再保留无法使用的 unknown 占位链接。</div>
+      </section>
+
+      <section class="panel pad section" id="top8">
+        <div class="section-head">
+          <div>
+            <h2>Top 8 深度对比</h2>
+            <p>按“差评风险优先”的逻辑重新排，不是单纯看分数高低。</p>
+          </div>
+          <div class="pill-row">
+            <span class="pill">大床优先</span>
+            <span class="pill">有窗优先</span>
+            <span class="pill">宽敞优先</span>
+            <span class="pill">差评优先</span>
+          </div>
+        </div>
+
+        <div class="table-shell">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>排名</th>
+                  <th>酒店</th>
+                  <th>综合分</th>
+                  <th>位置</th>
+                  <th>房型匹配</th>
+                  <th>价格</th>
+                  <th>稳定性</th>
+                  <th>挑选原因</th>
+                  <th>差评重点</th>
+                  <th>链接</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="rank">1</span></td>
+                  <td><div class="hotel-name">May's Home设计师民宿</div><div class="hotel-meta">设计感强，点评量足，位置与体验平衡</div></td>
+                  <td>
+                    <div class="score-box"><strong>9.1</strong><span>综合推荐</span></div>
+                    <div class="progress"><div class="bar top"></div></div>
+                  </td>
+                  <td>步行 420 米</td>
+                  <td>大床 ✅ / 有窗概率高 / 空间感中上</td>
+                  <td>¥368 起</td>
+                  <td><span class="badge info">中</span></td>
+                  <td>它最大的优势是“不会显得普通”，而且点评量大，说明高分不是完全靠样本少堆出来的，适合想住得有点设计感、又不想离奥莱太远的人。</td>
+                  <td>高频关注：<strong>隔音、卫生细节、部分房型偏小</strong>。不是硬核脏乱差型差评，更像“整体不错但细节不满”。</td>
+                  <td><a href="https://hotels.ctrip.com/hotel/94126289.html" target="_blank">直达详情</a></td>
+                </tr>
+                <tr>
+                  <td><span class="rank">2</span></td>
+                  <td><div class="hotel-name">美驿轻奢名宿</div><div class="hotel-meta">近、便宜、景观感不错</div></td>
+                  <td>
+                    <div class="score-box"><strong>8.9</strong><span>性价比高</span></div>
+                    <div class="progress"><div class="bar high"></div></div>
+                  </td>
+                  <td>步行 370 米</td>
+                  <td>大床 ✅ / 窗景卖点明显 / 空间感中等</td>
+                  <td>¥268 起</td>
+                  <td><span class="badge info">中</span></td>
+                  <td>近、便宜、有天门山视野，是那种很容易让人下单的酒店。对于预算敏感但又不想住得太普通的人，吸引力很强。</td>
+                  <td>高频关注：<strong>卫生、异味、隔音</strong>。如果碰到通风一般或临街房型，体验会明显下滑。</td>
+                  <td><a href="https://hotels.ctrip.com/hotel/24273151.html" target="_blank">直达详情</a></td>
+                </tr>
+                <tr>
+                  <td><span class="rank">3</span></td>
+                  <td><div class="hotel-name">天门·洞见·WeStay民宿</div><div class="hotel-meta">高分，影音房卖点清晰</div></td>
+                  <td>
+                    <div class="score-box"><strong>8.8</strong><span>高分民宿</span></div>
+                    <div class="progress"><div class="bar high"></div></div>
+                  </td>
+                  <td>步行 640 米</td>
+                  <td>大床 ✅ / 影音房 / 配套丰富</td>
+                  <td>¥311 起</td>
+                  <td><span class="badge warn">中偏低</span></td>
+                  <td>评分亮眼，老板服务口碑好，房型标签很明确，适合喜欢投影、洗衣机、冰箱这类功能性配置的人。</td>
+                  <td>高频关注：<strong>卫生细节、潮味、隔音</strong>。影音房更吃房型和楼层，挑得好会很舒服，挑不好落差会更明显。</td>
+                  <td><a href="https://hotels.ctrip.com/hotel/129212724.html" target="_blank">直达详情</a></td>
+                </tr>
+                <tr>
+                  <td><span class="rank">4</span></td>
+                  <td><div class="hotel-name">汉庭酒店（张家界紫舞公园店）</div><div class="hotel-meta">稳妥型备选</div></td>
+                  <td>
+                    <div class="score-box"><strong>8.6</strong><span>求稳选手</span></div>
+                    <div class="progress"><div class="bar good"></div></div>
+                  </td>
+                  <td>步行 2.0 km</td>
+                  <td>大床 ✅ / 采光正常 / 空间感中等</td>
+                  <td>¥344 起</td>
+                  <td><span class="badge ok">高</span></td>
+                  <td>这类连锁的价值不在“惊艳”，而在“稳”。特别是五一这种高峰期，它更不容易出现入住流程混乱和卫生标准漂移。</td>
+                  <td>高频关注：<strong>房间尺寸、隔音</strong>。一般不是致命雷，但容易让体验上限不高。</td>
+                  <td><a href="https://hotels.ctrip.com/hotel/128210065.html" target="_blank">直达详情</a></td>
+                </tr>
+                <tr>
+                  <td><span class="rank">5</span></td>
+                  <td><div class="hotel-name">全季（张家界天门山索道店）</div><div class="hotel-meta">连锁、点评量高、整体更稳</div></td>
+                  <td>
+                    <div class="score-box"><strong>8.5</strong><span>稳妥上限高</span></div>
+                    <div class="progress"><div class="bar good"></div></div>
+                  </td>
+                  <td>驾车 2.2 km</td>
+                  <td>大床 ✅ / 标准化强 / 空间感中上</td>
+                  <td>¥532 起</td>
+                  <td><span class="badge ok">高</span></td>
+                  <td>如果你更怕翻车，不怕多花一点，这家会很稳。点评量高，本身就说明它更经得住大样本检验。</td>
+                  <td>高频关注：<strong>入住等待、隔音、个别房型差异</strong>。整体风险最低一档，但不代表没有小毛病。</td>
+                  <td><a href="https://hotels.ctrip.com/hotel/62472843.html" target="_blank">直达详情</a></td>
+                </tr>
+                <tr>
+                  <td><span class="rank">6</span></td>
+                  <td><div class="hotel-name">美槿酒店（北正街店）</div><div class="hotel-meta">高分但样本偏少</div></td>
+                  <td>
+                    <div class="score-box"><strong>8.3</strong><span>潜力型</span></div>
+                    <div class="progress"><div class="bar mid"></div></div>
+                  </td>
+                  <td>步行 1.0 km</td>
+                  <td>大床 ✅ / 采光卖点 / 两人入住可行</td>
+                  <td>¥279 起</td>
+                  <td><span class="badge warn">中偏低</span></td>
+                  <td>如果你能接受它不是那种点评量特别大的酒店，这家在视觉观感和价格上其实挺好下手。</td>
+                  <td>高频关注：<strong>卫生细节、隔音、房型一致性</strong>。高分不等于稳定，尤其样本少时更要谨慎。</td>
+                  <td><a href="https://hotels.ctrip.com/hotel/131637256.html" target="_blank">直达详情</a></td>
+                </tr>
+                <tr>
+                  <td><span class="rank">7</span></td>
+                  <td><div class="hotel-name">米漾米居酒店</div><div class="hotel-meta">位置好，偏设计感</div></td>
+                  <td>
+                    <div class="score-box"><strong>8.1</strong><span>氛围取向</span></div>
+                    <div class="progress"><div class="bar mid"></div></div>
+                  </td>
+                  <td>步行 780 米</td>
+                  <td>大床 ✅ / 影院房 / 空间感一般</td>
+                  <td>¥364 起</td>
+                  <td><span class="badge warn">中偏低</span></td>
+                  <td>它更适合轻行李、重氛围的人，价格、位置、风格在一个比较顺手的区间里。</td>
+                  <td>高频关注：<strong>房型偏小、卫生细节、隔音</strong>。如果你特别在意“宽敞”，它不是最优先。</td>
+                  <td><a href="https://hotels.ctrip.com/hotel/23474922.html" target="_blank">直达详情</a></td>
+                </tr>
+                <tr>
+                  <td><span class="rank">8</span></td>
+                  <td><div class="hotel-name">张家界月影民宿</div><div class="hotel-meta">距离极近，空间卖点明确</div></td>
+                  <td>
+                    <div class="score-box"><strong>8.0</strong><span>位置优先</span></div>
+                    <div class="progress"><div class="bar mid"></div></div>
+                  </td>
+                  <td>步行 110 米</td>
+                  <td>大床 ✅ / 距离优势 / 宽敞反馈较多</td>
+                  <td>¥227 起</td>
+                  <td><span class="badge info">中</span></td>
+                  <td>如果你把“离得近”排在最前面，这家天然有优势，省心是真的省心。</td>
+                  <td>高频关注：<strong>隔音、卫生细节、房型落差</strong>。位置越近，越要防周边噪音。</td>
+                  <td><a href="https://hotels.ctrip.com/hotel/120218945.html" target="_blank">直达详情</a></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel pad section" id="cards">
+        <div class="section-head">
+          <div>
+            <h2>Top 4 酒店卡片</h2>
+            <p>把表格里最关键的信息收束成更直观的卡片，方便快速二选一。</p>
+          </div>
+        </div>
+        <div class="cards-grid">
+          <article class="hotel-card">
+            <h3>May's Home设计师民宿</h3>
+            <div class="subline">适合：想住得有感觉、同时不想离天门奥莱太远的人</div>
+            <div class="meta-grid">
+              <div class="mini"><span class="label">价格</span><strong>¥368 起</strong></div>
+              <div class="mini"><span class="label">距离</span><strong>步行 420 米</strong></div>
+              <div class="mini"><span class="label">评分 / 点评</span><strong>4.8 / 2550</strong></div>
+              <div class="mini"><span class="label">房型偏好</span><strong>大床、有窗概率高</strong></div>
+            </div>
+            <div class="risk-list">
+              <div class="risk-item"><strong>最大优点：</strong>体验感、设计感、位置平衡得不错。</div>
+              <div class="risk-item"><strong>最大风险：</strong>隔音和房型面积有波动。</div>
+              <div class="risk-item"><strong>建议：</strong>优先高楼层、有窗、远离临街面。</div>
+            </div>
+          </article>
+
+          <article class="hotel-card">
+            <h3>美驿轻奢名宿</h3>
+            <div class="subline">适合：预算更敏感，但仍想要景观感和位置优势的人</div>
+            <div class="meta-grid">
+              <div class="mini"><span class="label">价格</span><strong>¥268 起</strong></div>
+              <div class="mini"><span class="label">距离</span><strong>步行 370 米</strong></div>
+              <div class="mini"><span class="label">评分 / 点评</span><strong>4.8 / 1078</strong></div>
+              <div class="mini"><span class="label">房型偏好</span><strong>大床、窗景卖点强</strong></div>
+            </div>
+            <div class="risk-list">
+              <div class="risk-item"><strong>最大优点：</strong>性价比和位置组合很诱人。</div>
+              <div class="risk-item"><strong>最大风险：</strong>异味 / 通风 / 隔音，一旦踩中房型会比较闹心。</div>
+              <div class="risk-item"><strong>建议：</strong>下单前问清窗型、朝向、通风情况。</div>
+            </div>
+          </article>
+
+          <article class="hotel-card">
+            <h3>全季（张家界天门山索道店）</h3>
+            <div class="subline">适合：最怕翻车，希望五一高峰期也稳一点的人</div>
+            <div class="meta-grid">
+              <div class="mini"><span class="label">价格</span><strong>¥532 起</strong></div>
+              <div class="mini"><span class="label">距离</span><strong>驾车 2.2 km</strong></div>
+              <div class="mini"><span class="label">评分 / 点评</span><strong>4.8 / 4682</strong></div>
+              <div class="mini"><span class="label">房型偏好</span><strong>大床、标准化强</strong></div>
+            </div>
+            <div class="risk-list">
+              <div class="risk-item"><strong>最大优点：</strong>节假日抗波动能力强，整体更放心。</div>
+              <div class="risk-item"><strong>最大风险：</strong>价格高一些，且入住高峰可能等待。</div>
+              <div class="risk-item"><strong>建议：</strong>若你最在意睡眠和卫生，这家值得列首选。</div>
+            </div>
+          </article>
+
+          <article class="hotel-card">
+            <h3>汉庭酒店（张家界紫舞公园店）</h3>
+            <div class="subline">适合：预算适中，想要连锁标准化但不想上探太贵的人</div>
+            <div class="meta-grid">
+              <div class="mini"><span class="label">价格</span><strong>¥344 起</strong></div>
+              <div class="mini"><span class="label">距离</span><strong>步行 2.0 km</strong></div>
+              <div class="mini"><span class="label">评分 / 点评</span><strong>4.8 / 230</strong></div>
+              <div class="mini"><span class="label">房型偏好</span><strong>大床、采光正常</strong></div>
+            </div>
+            <div class="risk-list">
+              <div class="risk-item"><strong>最大优点：</strong>不花里胡哨，但更少踩雷。</div>
+              <div class="risk-item"><strong>最大风险：</strong>房间尺寸与隔音，可能让体验显得不够惊喜。</div>
+              <div class="risk-item"><strong>建议：</strong>浅睡人群优先远离电梯、走廊口。</div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel pad section" id="risk">
+        <div class="section-head">
+          <div>
+            <h2>差评风险拆解</h2>
+            <p>你最看重差评，所以我把风险拆成可判断、可避开的几类，而不是只写“卫生一般”“隔音一般”。</p>
+          </div>
+        </div>
+
+        <div class="risk-grid">
+          <div class="risk-card"><h3>卫生类</h3><p>重点关注毛发、床品洁净度、卫生间味道。民宿通常最容易翻在“整体不错，但局部不到位”。</p></div>
+          <div class="risk-card"><h3>隔音类</h3><p>临街、低楼层、靠走廊、电梯附近，都是睡眠风险高发点。浅睡人群必须重点筛。</p></div>
+          <div class="risk-card"><h3>房型落差</h3><p>同一家不同房型，体验可能完全不是一回事。特价房和影音房最容易出现宣传与体感落差。</p></div>
+          <div class="risk-card"><h3>节假日波动</h3><p>五一会放大所有管理问题。连锁酒店的优势就是把这种波动尽量压低。</p></div>
+        </div>
+
+        <div class="table-shell" style="margin-top: 2px;">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>酒店</th>
+                  <th>卫生风险</th>
+                  <th>隔音风险</th>
+                  <th>异味 / 潮湿</th>
+                  <th>房型落差</th>
+                  <th>服务风险</th>
+                  <th>综合热度</th>
+                  <th>结论</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><div class="hotel-name">May's Home</div></td>
+                  <td>中：多为细节型问题，不像严重卫生事故型。</td>
+                  <td>中：靠街、低楼层更容易影响睡眠。</td>
+                  <td>低：不是最突出的吐槽点。</td>
+                  <td>中：部分房型偏小，图片与体感可能有差距。</td>
+                  <td>低：整体服务口碑不差。</td>
+                  <td><div class="heat"><span>中</span><span class="heat-dots"><i class="dot on gold"></i><i class="dot on gold"></i><i class="dot"></i><i class="dot"></i></span></div></td>
+                  <td>属于“可选，但要挑房”的酒店，挑对房型体验会很好。</td>
+                </tr>
+                <tr>
+                  <td><div class="hotel-name">美驿轻奢</div></td>
+                  <td>中：卫生细节反馈要重点看。</td>
+                  <td>中：位置近的同时，也带来噪音概率。</td>
+                  <td>中：通风与异味是核心警惕项。</td>
+                  <td>中：不同房型落差会被放大。</td>
+                  <td>低：服务不算主要矛盾。</td>
+                  <td><div class="heat"><span>中偏高</span><span class="heat-dots"><i class="dot on gold"></i><i class="dot on gold"></i><i class="dot on gold"></i><i class="dot"></i></span></div></td>
+                  <td>高性价比，但一定要提前问清楚窗型、朝向和通风。</td>
+                </tr>
+                <tr>
+                  <td><div class="hotel-name">WeStay</div></td>
+                  <td>中：细节卫生是主要分水岭。</td>
+                  <td>中：影音房更吃楼层和隔音条件。</td>
+                  <td>中：潮味是这一类房型的常见弱点。</td>
+                  <td>中：挑得好很爽，挑不好很别扭。</td>
+                  <td>低：老板服务口碑相对好。</td>
+                  <td><div class="heat"><span>中偏高</span><span class="heat-dots"><i class="dot on gold"></i><i class="dot on gold"></i><i class="dot on gold"></i><i class="dot"></i></span></div></td>
+                  <td>更像“有潜力的体验型选择”，但必须做房型确认。</td>
+                </tr>
+                <tr>
+                  <td><div class="hotel-name">汉庭</div></td>
+                  <td>低：标准化更稳。</td>
+                  <td>中：连锁也无法完全解决结构性隔音。</td>
+                  <td>低：不是主要槽点。</td>
+                  <td>中：房间偏规矩，也可能偏普通。</td>
+                  <td>低：服务流程相对稳定。</td>
+                  <td><div class="heat"><span>中低</span><span class="heat-dots"><i class="dot on green"></i><i class="dot on green"></i><i class="dot"></i><i class="dot"></i></span></div></td>
+                  <td>适合求稳，差评通常不至于非常刺眼。</td>
+                </tr>
+                <tr>
+                  <td><div class="hotel-name">全季</div></td>
+                  <td>低：整体最稳的一档。</td>
+                  <td>中：主要是高峰期客流和结构性噪音。</td>
+                  <td>低：不算高频雷点。</td>
+                  <td>低：标准化更强，落差相对小。</td>
+                  <td>低：流程更可靠。</td>
+                  <td><div class="heat"><span>低</span><span class="heat-dots"><i class="dot on green"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i></span></div></td>
+                  <td>如果你最怕翻车，这家是最像“闭眼可冲”的存在。</td>
+                </tr>
+                <tr>
+                  <td><div class="hotel-name">美槿</div></td>
+                  <td>中：高分但样本偏少，卫生细节更要谨慎看。</td>
+                  <td>中：隔音属于典型中等风险。</td>
+                  <td>低：不是主槽点。</td>
+                  <td>中：分高不代表稳定，尤其在样本少时。</td>
+                  <td>低：服务问题不突出。</td>
+                  <td><div class="heat"><span>中</span><span class="heat-dots"><i class="dot on gold"></i><i class="dot on gold"></i><i class="dot"></i><i class="dot"></i></span></div></td>
+                  <td>值得看，但不能只被 4.9 这个数字迷惑。</td>
+                </tr>
+                <tr>
+                  <td><div class="hotel-name">米漾</div></td>
+                  <td>中：设计型酒店常见的细节卫生问题。</td>
+                  <td>中：影院房容易伴随隔音和设备噪音。</td>
+                  <td>低：一般不是头号问题。</td>
+                  <td>中：房型偏小是核心体验扣分点。</td>
+                  <td>低：服务不是主要痛点。</td>
+                  <td><div class="heat"><span>中</span><span class="heat-dots"><i class="dot on gold"></i><i class="dot on gold"></i><i class="dot"></i><i class="dot"></i></span></div></td>
+                  <td>适合想要氛围感的人，不适合特别在意宽敞感的人。</td>
+                </tr>
+                <tr>
+                  <td><div class="hotel-name">月影</div></td>
+                  <td>中：距离近的酒店也常伴随使用频率高带来的清洁波动。</td>
+                  <td>中：离商圈太近，噪音概率更值得警惕。</td>
+                  <td>低：不是主要问题。</td>
+                  <td>中：不同房型和价格段差异感明显。</td>
+                  <td>低：服务不是主雷。</td>
+                  <td><div class="heat"><span>中</span><span class="heat-dots"><i class="dot on gold"></i><i class="dot on gold"></i><i class="dot"></i><i class="dot"></i></span></div></td>
+                  <td>位置特别香，但越近越要防噪音，适合“位置优先”的选择逻辑。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="footnote">差评的真正用法不是“一票否决”，而是告诉你：哪家更需要挑房型，哪家更适合睡眠敏感人群，哪家更容易在节假日暴露问题。</div>
+      </section>
+
+      <section class="panel pad section" id="final">
+        <div class="section-head">
+          <div>
+            <h2>最终推荐</h2>
+            <p>给你两条决策路线：一种求稳，一种追求位置和体验。</p>
+          </div>
+        </div>
+        <div class="pick-grid">
+          <div class="pick">
+            <h3>最终推荐 A：稳妥型</h3>
+            <p>适合把“少踩雷、睡得稳、流程顺”放在第一位的人。</p>
+            <div class="decision-list">
+              <div class="decision-item"><strong>主推：</strong>全季（张家界天门山索道店）</div>
+              <div class="decision-item"><strong>备选：</strong>汉庭酒店（张家界紫舞公园店）</div>
+              <div class="decision-item"><strong>原因：</strong>五一波动下，连锁酒店在卫生、入住流程、异常处理上的稳定性更强，差评更容易控制在“小瑕疵”层面。</div>
+            </div>
+          </div>
+          <div class="pick alt">
+            <h3>最终推荐 B：位置 + 体验型</h3>
+            <p>适合把“离得近、住得好看、有氛围感”放在第一位的人。</p>
+            <div class="decision-list">
+              <div class="decision-item"><strong>主推：</strong>May's Home设计师民宿</div>
+              <div class="decision-item"><strong>备选：</strong>美驿轻奢名宿 / 天门·洞见·WeStay</div>
+              <div class="decision-item"><strong>原因：</strong>位置、评分、房型吸引力更高，但要在下单前主动规避隔音与房型落差，不然“看起来最香”的也可能变成最闹心的。</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel pad section" id="checklist">
+        <div class="section-head">
+          <div>
+            <h2>预订前核对清单</h2>
+            <p>你只要把这 4 个问题问清楚，基本就能避开一大半差评场景。</p>
+          </div>
+        </div>
+        <div class="decision-list">
+          <div class="decision-item"><strong>1.</strong> 这次预订的具体房型是否有窗？朝向哪里？是否临街？</div>
+          <div class="decision-item"><strong>2.</strong> 能否尽量安排高楼层、远离电梯和走廊尽头的房间？</div>
+          <div class="decision-item"><strong>3.</strong> 五一期间是否有团队入住、装修、婚宴、聚会、楼层噪音、停车紧张等特殊情况？</div>
+          <div class="decision-item"><strong>4.</strong> 如果我对房间通风、异味、采光不满意，现场能否调房？</div>
+        </div>
+        <div class="footnote">真正成熟的酒店筛选，不是选一间“看上去最好”的，而是选一间“最不容易在你的关键诉求上翻车”的。</div>
+        <div class="print-tip">打印说明：此页面已加入打印样式，导出 PDF 或直接打印时，会自动切换为浅色可读版。</div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
