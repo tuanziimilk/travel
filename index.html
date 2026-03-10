@@ -3,20 +3,104 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Travel Pages</title>
+  <title>Travel 报告入口</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
-    h1 { margin-bottom: 16px; }
-    ul { padding-left: 20px; }
-    a { color: #0a66c2; text-decoration: none; }
-    a:hover { text-decoration: underline; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+      color: #1f2a44;
+      background: radial-gradient(circle at 20% 20%, #e8f1ff, #f7fbff 40%, #eef4ff 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .container {
+      width: min(920px, 100%);
+      background: rgba(255, 255, 255, 0.86);
+      backdrop-filter: blur(10px);
+      border: 1px solid #dde7fb;
+      border-radius: 24px;
+      padding: 36px;
+      box-shadow: 0 16px 40px rgba(52, 85, 160, 0.12);
+    }
+    .badge {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: #eaf2ff;
+      color: #2f5db8;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 14px;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(28px, 4vw, 40px);
+      line-height: 1.2;
+    }
+    p {
+      margin: 0 0 28px;
+      color: #4e6087;
+      font-size: 16px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 16px;
+    }
+    .card {
+      display: block;
+      text-decoration: none;
+      color: inherit;
+      border: 1px solid #dce7ff;
+      border-radius: 16px;
+      padding: 20px;
+      background: linear-gradient(180deg, #ffffff, #f7faff);
+      transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+    }
+    .card:hover {
+      transform: translateY(-4px);
+      border-color: #b6ccff;
+      box-shadow: 0 12px 26px rgba(58, 105, 214, 0.16);
+    }
+    .card h2 {
+      margin: 0 0 8px;
+      font-size: 20px;
+    }
+    .card p {
+      margin: 0;
+      font-size: 14px;
+      color: #60739c;
+    }
+    .footer {
+      margin-top: 20px;
+      font-size: 13px;
+      color: #7386ad;
+    }
   </style>
 </head>
 <body>
-  <h1>Travel HTML 椤甸潰鍏ュ彛</h1>
-  <ul>
-    <li><a href="./hotel_comparison_report_zhangjiajie.html">hotel_comparison_report_zhangjiajie.html</a></li>
-    <li><a href="./ai_studio_code_6.html">ai_studio_code_6.html</a></li>
-  </ul>
+  <main class="container">
+    <span class="badge">Travel Dashboard</span>
+    <h1>旅游报告入口</h1>
+    <p>点击下方卡片，快速访问你的两个 HTML 报告页面。</p>
+
+    <section class="grid">
+      <a class="card" href="./hotel_comparison_report_zhangjiajie.html">
+        <h2>酒店对比报告</h2>
+        <p>张家界酒店维度分析与对比展示页面。</p>
+      </a>
+
+      <a class="card" href="./ai_studio_code_6.html">
+        <h2>AI Studio 页面</h2>
+        <p>AI 生成页面展示与内容预览入口。</p>
+      </a>
+    </section>
+
+    <div class="footer">Hosted on GitHub Pages · tuanziimilk/travel</div>
+  </main>
 </body>
 </html>
