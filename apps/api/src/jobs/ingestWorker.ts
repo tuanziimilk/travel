@@ -73,8 +73,31 @@ function rowSignatureFromStored(row: {
   return [row.termId || "", row.domain || "", row.hashOnline || "", row.hashAi || "", row.hashOp || ""].join("|");
 }
 
-async function backfillMissingErrorRows(batchId: string, rows: ParsedUploadRow[], reason: string) {
+function toTimestampMs(value: unknown) {
+  const ts = new Date(value as string | Date).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function dedupeStoredRowsKeepLatest(rows: RowSelect[]) {
+  const sorted = [...rows].sort((a, b) => toTimestampMs(a.createdAt) - toTimestampMs(b.createdAt));
+  const latestBySignature = new Map<string, RowSelect>();
+
+  for (const row of sorted) {
+    latestBySignature.set(rowSignatureFromStored(row), row);
+  }
+
+  return Array.from(latestBySignature.values()).sort((a, b) => toTimestampMs(a.createdAt) - toTimestampMs(b.createdAt));
+}
+
+async function backfillMissingErrorRows(
+  batchId: string,
+  rows: ParsedUploadRow[],
+  reason: string,
+  options?: { since?: Date | string | null },
+) {
   if (!rows.length) return;
+
+  const sinceMs = options?.since ? new Date(options.since).getTime() : 0;
 
   const existingRows = await db
     .select({
@@ -83,38 +106,31 @@ async function backfillMissingErrorRows(batchId: string, rows: ParsedUploadRow[]
       hashOnline: aboutScoreRows.hashOnline,
       hashAi: aboutScoreRows.hashAi,
       hashOp: aboutScoreRows.hashOp,
+      createdAt: aboutScoreRows.createdAt,
     })
     .from(aboutScoreRows)
     .where(eq(aboutScoreRows.batchId, batchId));
 
-  const stock = new Map<string, number>();
+  const touchedSignatures = new Set<string>();
   for (const item of existingRows) {
     const signature = rowSignatureFromStored(item);
-    stock.set(signature, (stock.get(signature) || 0) + 1);
+    const createdAtMs = new Date(item.createdAt as unknown as string | Date).getTime();
+    if (Number.isFinite(createdAtMs) && createdAtMs >= sinceMs) {
+      touchedSignatures.add(signature);
+    }
   }
 
-  const targetMissingCount = Math.max(0, rows.length - existingRows.length);
-  if (targetMissingCount <= 0) return;
-
-  let insertedMissingCount = 0;
   for (const row of rows) {
-    if (insertedMissingCount >= targetMissingCount) break;
     const signature = rowSignatureFromInput(row);
-    const remain = stock.get(signature) || 0;
-    if (remain > 0) {
-      stock.set(signature, remain - 1);
-      continue;
-    }
+    if (touchedSignatures.has(signature)) continue;
     await insertErrorRow(batchId, row, reason);
-    insertedMissingCount += 1;
+    touchedSignatures.add(signature);
   }
 }
 
 async function aggregateBatchRows(batchId: string) {
-  const rows = await db
-    .select({ errorReason: aboutScoreRows.errorReason })
-    .from(aboutScoreRows)
-    .where(eq(aboutScoreRows.batchId, batchId));
+  const rawRows = await db.select().from(aboutScoreRows).where(eq(aboutScoreRows.batchId, batchId));
+  const rows = dedupeStoredRowsKeepLatest(rawRows).map((item) => ({ errorReason: item.errorReason }));
   const doneRows = rows.length;
   const failedRows = rows.filter((item) => Boolean(item.errorReason)).length;
   const successRows = Math.max(0, doneRows - failedRows);
@@ -426,7 +442,7 @@ async function processPendingIngestJobs(moduleId: ModuleId) {
         await runIngest(next.jobId, next.batchId, next.rows);
       } catch (error) {
         const reason = `job failed: ${errorMessage(error)}`.slice(0, 512);
-        await backfillMissingErrorRows(next.batchId, next.rows, reason);
+        await backfillMissingErrorRows(next.batchId, next.rows, reason, { since: startedRows[0]?.startedAt });
         const stats = await aggregateBatchRows(next.batchId);
         const totalRows = Math.max(0, Number(startedRows[0]?.totalRows || next.rows.length));
         const doneRows = totalRows > 0 ? Math.min(stats.doneRows, totalRows) : stats.doneRows;
@@ -505,7 +521,8 @@ async function scoreWithRetries(input: ManualScoreInput, options?: { maxRetries?
 async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]) {
   const batchRows = await db.select().from(uploadBatches).where(eq(uploadBatches.id, batchId));
   const moduleId = (batchRows[0]?.moduleId || "about") as "about" | "faq";
-  let done = 0;
+  let finalizedDone = 0;
+  let primaryProcessed = 0;
   let failed = 0;
   let success = 0;
   let promptTokensSum = 0;
@@ -534,16 +551,18 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
     if (!force && now - lastFlushAt < env.ingestProgressFlushMs) return;
     lastFlushAt = now;
     const elapsedMs = now - startedAtMs;
-    const avgRowMs = done > 0 ? elapsedMs / done : 0;
-    const remainRows = Math.max(0, rows.length - done);
+    const avgRowMs = primaryProcessed > 0 ? elapsedMs / primaryProcessed : 0;
+    const remainRows = Math.max(0, rows.length - finalizedDone);
     const etaSeconds = Math.max(0, Math.round((avgRowMs * remainRows) / 1000));
-    const predictedTotalTokens = done > 0 ? Math.round(totalTokensSum + (totalTokensSum / done) * remainRows) : 0;
-    const predictedCostUsd = done > 0 ? estimatedCostUsdSum + (estimatedCostUsdSum / done) * remainRows : 0;
+    const predictedTotalTokens =
+      primaryProcessed > 0 ? Math.round(totalTokensSum + (totalTokensSum / primaryProcessed) * remainRows) : 0;
+    const predictedCostUsd =
+      primaryProcessed > 0 ? estimatedCostUsdSum + (estimatedCostUsdSum / primaryProcessed) * remainRows : 0;
 
     await db
       .update(ingestJobs)
       .set({
-        doneRows: done,
+        doneRows: finalizedDone,
         failedRows: failed,
         elapsedMs,
         etaSeconds,
@@ -598,6 +617,7 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
 
         await insertScoreRow(batchId, row, scored.output);
         success += 1;
+        finalizedDone += 1;
         promptTokensSum += scored.runtime.promptTokens;
         completionTokensSum += scored.runtime.completionTokens;
         totalTokensSum += scored.runtime.totalTokens;
@@ -621,7 +641,7 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
         }
       }
 
-      done += 1;
+      primaryProcessed += 1;
       await flushProgress(false);
     }
   };
@@ -636,37 +656,56 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
 
     const nextFailures: typeof pendingFailures = [];
     const passBaseMs = env.ingestRowRetryBaseMs * (pass + 1);
+    let passCursor = 0;
+    const finalRetryConcurrency = Math.max(
+      1,
+      Math.min(env.ingestFinalRetryConcurrency, concurrency, pendingFailures.length),
+    );
 
-    for (const candidate of pendingFailures) {
-      if (await isCancelled()) break;
-      try {
-        const scored = await scoreWithRetries(candidate.input, {
-          maxRetries: env.ingestRowMaxRetries + 1,
-          baseMs: passBaseMs,
-          maxMs: env.ingestRowRetryMaxMs * 2,
-        });
+    const retryWorker = async () => {
+      while (true) {
+        if (await isCancelled()) return;
+        const index = passCursor;
+        passCursor += 1;
+        if (index >= pendingFailures.length) return;
+        const candidate = pendingFailures[index];
 
-        if (await isCancelled()) break;
+        try {
+          const scored = await scoreWithRetries(candidate.input, {
+            maxRetries: env.ingestRowMaxRetries + 1,
+            baseMs: passBaseMs,
+            maxMs: env.ingestRowRetryMaxMs * 2,
+          });
 
-        await insertScoreRow(batchId, candidate.row, scored.output);
-        success += 1;
-        promptTokensSum += scored.runtime.promptTokens;
-        completionTokensSum += scored.runtime.completionTokens;
-        totalTokensSum += scored.runtime.totalTokens;
-        estimatedCostUsdSum += scored.runtime.estimatedCostUsd;
-      } catch (error) {
-        nextFailures.push({ row: candidate.row, input: candidate.input, error });
+          if (await isCancelled()) return;
+
+          await insertScoreRow(batchId, candidate.row, scored.output);
+          success += 1;
+          finalizedDone += 1;
+          promptTokensSum += scored.runtime.promptTokens;
+          completionTokensSum += scored.runtime.completionTokens;
+          totalTokensSum += scored.runtime.totalTokens;
+          estimatedCostUsdSum += scored.runtime.estimatedCostUsd;
+        } catch (error) {
+          nextFailures.push({ row: candidate.row, input: candidate.input, error });
+        }
+
+        await flushProgress(false);
       }
-    }
+    };
+
+    await Promise.all(Array.from({ length: finalRetryConcurrency }, () => retryWorker()));
 
     pendingFailures = nextFailures;
-    await flushProgress(false);
+    await flushProgress(true);
   }
 
   for (const candidate of pendingFailures) {
     if (await isCancelled()) break;
     await insertErrorRow(batchId, candidate.row, candidate.error);
     failed += 1;
+    finalizedDone += 1;
+    await flushProgress(false);
   }
 
   await flushProgress(true);
@@ -914,7 +953,6 @@ export async function retryIngestJob(jobId: string) {
     throw new Error("当前任务不可重试，请重新上传文件");
   }
 
-  await db.delete(aboutScoreRows).where(eq(aboutScoreRows.batchId, job.batchId));
   await db.update(uploadBatches).set({ rowCount: 0 }).where(eq(uploadBatches.id, job.batchId));
 
   const newJobId = makeId();
@@ -954,13 +992,29 @@ async function markStalledJobsAsFailed() {
     .select()
     .from(ingestJobs)
     .where(inArray(ingestJobs.status, ["pending", "running"]));
+  const batchRows = await db.select().from(uploadBatches);
+  const moduleByBatchId = new Map(batchRows.map((item) => [item.id, String(item.moduleId || "about")]));
+
+  const runningModules = new Set(
+    pendingOrRunningRows
+      .filter((item) => item.status === "running")
+      .map((item) => moduleByBatchId.get(item.batchId) || "about"),
+  );
+
   const nowMs = Date.now();
   for (const row of pendingOrRunningRows) {
+    if (row.status === "pending") {
+      const moduleId = moduleByBatchId.get(row.batchId) || "about";
+      if (runningModules.has(moduleId)) {
+        continue;
+      }
+    }
+
     const updatedAtMs = new Date(row.updatedAt as unknown as string | Date).getTime();
     if (nowMs - updatedAtMs > ingestJobStallMs) {
       const reason = `job stalled over ${Math.round(ingestJobStallMs / 1000)}s and marked as failed`;
       const payloadRows = ingestPayloadByBatch.get(row.batchId) || [];
-      await backfillMissingErrorRows(row.batchId, payloadRows, reason);
+      await backfillMissingErrorRows(row.batchId, payloadRows, reason, { since: row.startedAt });
       const stats = await aggregateBatchRows(row.batchId);
       const totalRows = Math.max(0, Number(row.totalRows || 0));
       const doneRows = totalRows > 0 ? Math.min(stats.doneRows, totalRows) : stats.doneRows;
@@ -983,7 +1037,8 @@ async function markStalledJobsAsFailed() {
 
 export async function getBatchResult(batchId: string) {
   await ensureAboutScoreRowsColumns();
-  const rows = await db.select().from(aboutScoreRows).where(eq(aboutScoreRows.batchId, batchId));
+  const rawRows = await db.select().from(aboutScoreRows).where(eq(aboutScoreRows.batchId, batchId));
+  const rows = dedupeStoredRowsKeepLatest(rawRows);
   const validRows = rows.filter((row) => !row.errorReason);
   const failedRows = rows.filter((row) => row.errorReason);
   const passMetrics = collectPassMetrics(validRows);
@@ -1409,7 +1464,6 @@ export async function listBatches(filters: {
 
   const matched = all.filter((item) => {
     const latestJob = latestJobByBatch.get(item.id);
-    if (latestJob?.status === "cancelled") return false;
     if (filters.moduleId && String(item.moduleId || "about") !== filters.moduleId) return false;
     if (filters.uploader && item.uploader !== filters.uploader) return false;
     if (filters.batchId && item.id !== filters.batchId) return false;
@@ -1459,7 +1513,7 @@ export async function listBatches(filters: {
   }
 
   for (const batch of matched) {
-    const rows = rowsByBatch.get(batch.id) || [];
+    const rows = dedupeStoredRowsKeepLatest(rowsByBatch.get(batch.id) || []);
     const scopedRows = filters.country ? rows.filter((item) => item.country === filters.country) : rows;
     const validRows = scopedRows.filter((item) => !item.errorReason);
     if (!validRows.length) continue;
@@ -1563,7 +1617,8 @@ export async function listBatches(filters: {
 export async function getBatchDetail(batchId: string, page: number, pageSize: number) {
   await ensureAboutScoreRowsColumns();
   const offset = (page - 1) * pageSize;
-  const rows = await db.select().from(aboutScoreRows).where(eq(aboutScoreRows.batchId, batchId));
+  const rawRows = await db.select().from(aboutScoreRows).where(eq(aboutScoreRows.batchId, batchId));
+  const rows = dedupeStoredRowsKeepLatest(rawRows);
   return {
     total: rows.length,
     page,
@@ -1584,7 +1639,8 @@ export async function analyticsSummary(filters: {
   const batches = await listBatches({ ...filters, unpaged: true, moduleId: filters.moduleId });
   const batchIds = new Set(batches.rows.map((item) => item.id));
   const allRows = await db.select().from(aboutScoreRows);
-  const rows = allRows.filter((item) => batchIds.has(item.batchId));
+  const dedupedRows = dedupeStoredRowsKeepLatest(allRows);
+  const rows = dedupedRows.filter((item) => batchIds.has(item.batchId));
   const scopedRows = filters.country ? rows.filter((item) => item.country === filters.country) : rows;
   const validRows = scopedRows.filter((item) => !item.errorReason);
   const passMetrics = collectPassMetrics(validRows);
