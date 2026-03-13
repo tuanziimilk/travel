@@ -149,7 +149,20 @@ function buildCompactSkillMd(skillMd: string) {
     .trim();
 }
 
-function buildCompactRubricCheatsheet() {
+function buildCompactRubricCheatsheet(moduleId: "about" | "faq") {
+  if (moduleId === "faq") {
+    return [
+      "Compact rubric reminder:",
+      "A: FAQ structure and scannability. Questions should be searchable; answers should be direct and organized.",
+      "B: policy accuracy and actionability. Conditions, exclusions, stacking, timing, troubleshooting, and next steps must be clear when applicable.",
+      "C: localization and expression quality. Match Country language and local phrasing; avoid template tone.",
+      "D: SEO and discoverability. Search-intent-aligned questions and natural keyword coverage only.",
+      "Hard caps:",
+      "If high-risk policy, eligibility, scope, stacking, refund, or timing gaps exist, pass_for_publish must be false, B <= 3.4, total <= 7.9.",
+      "If SEO-negative signals exist, D cannot be 1.0.",
+    ].join("\n");
+  }
+
   return [
     "Compact rubric reminder:",
     "A: hard quality gates. Must use {Mer.}; no first-person; no broken language; match Country language; penalize too short/too long.",
@@ -162,7 +175,7 @@ function buildCompactRubricCheatsheet() {
   ].join("\n");
 }
 
-function buildCompactRefs(input: ManualScoreInput, refs: PromptRefs) {
+function buildCompactRefs(input: ManualScoreInput, refs: PromptRefs, moduleId: "about" | "faq") {
   const compactRefs: PromptRefs = {};
   const rawCountryMap = refs["country-language-map.json"];
   if (rawCountryMap) {
@@ -176,7 +189,7 @@ function buildCompactRefs(input: ManualScoreInput, refs: PromptRefs) {
     }
   }
 
-  compactRefs["rubric-cheatsheet.md"] = buildCompactRubricCheatsheet();
+  compactRefs["rubric-cheatsheet.md"] = buildCompactRubricCheatsheet(moduleId);
 
   return compactRefs;
 }
@@ -201,9 +214,10 @@ export function buildPrompt(
   skillMd: string,
   refs: Record<string, string>,
   outputMode: OutputMode = "full",
+  moduleId: "about" | "faq" = "about",
 ) {
   const promptSkillMd = outputMode === "compact" ? buildCompactSkillMd(skillMd) : skillMd;
-  const promptRefs = outputMode === "compact" ? buildCompactRefs(input, refs) : refs;
+  const promptRefs = outputMode === "compact" ? buildCompactRefs(input, refs, moduleId) : refs;
   const userPayload = {
     ...input,
     About_op: input.About_op || "",
@@ -451,7 +465,7 @@ function validateCandidate(candidate: string, input: ManualScoreInput, outputMod
 
 export async function scoreAboutByAi(input: ManualScoreInput): Promise<ScoreOutput> {
   const skill = await skillRegistry.getAboutSkill();
-  const prompt = buildPrompt(input, skill.skillMd, skill.references, "full");
+  const prompt = buildPrompt(input, skill.skillMd, skill.references, "full", "about");
   const executed = await aiExecutor.execute<ValidatedScorePayload>({
     maxRetries: env.aiExecutorMaxRetries,
     buildMessages: () => prompt,
@@ -470,7 +484,7 @@ export async function scoreAboutByAiWithMeta(
   const outputMode = options?.outputMode ?? "full";
   const skill = await skillRegistry.getModuleSkill(moduleId);
   const moduleSkill = await getModuleSkillMd(moduleId);
-  const prompt = buildPrompt(input, moduleSkill.skillMd || skill.skillMd, skill.references, outputMode);
+  const prompt = buildPrompt(input, moduleSkill.skillMd || skill.skillMd, skill.references, outputMode, moduleId);
 
   const executed = await aiExecutor.execute<ValidatedScorePayload>({
     maxRetries: env.aiExecutorMaxRetries,
