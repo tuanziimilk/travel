@@ -82,7 +82,7 @@ function MetricCard({ title, subtitle, avg, share, sampleLabel }: { title: strin
       </div>
 
       <div className="metric-block">
-        <div className="metric-title">最佳版本占比（100%堆叠）</div>
+        <div className="metric-title">最佳版本占比（100% 堆叠）</div>
         <StackedShare data={share} />
       </div>
     </div>
@@ -91,16 +91,11 @@ function MetricCard({ title, subtitle, avg, share, sampleLabel }: { title: strin
 
 export function FaqAnalyticsPage() {
   const [draftUploader, setDraftUploader] = useState<"" | (typeof uploaderOptions)[number]>("");
-  const [draftCountry, setDraftCountry] = useState<string>("");
-  const [draftStartDate, setDraftStartDate] = useState<string>("");
-  const [draftEndDate, setDraftEndDate] = useState<string>("");
-  const [appliedFilters, setAppliedFilters] = useState<{
-    uploader: "" | (typeof uploaderOptions)[number];
-    country: string;
-    startDate: string;
-    endDate: string;
-  }>({
-    uploader: "",
+  const [draftCountry, setDraftCountry] = useState("");
+  const [draftStartDate, setDraftStartDate] = useState("");
+  const [draftEndDate, setDraftEndDate] = useState("");
+  const [appliedFilters, setAppliedFilters] = useState({
+    uploader: "" as "" | (typeof uploaderOptions)[number],
     country: "",
     startDate: "",
     endDate: "",
@@ -175,6 +170,8 @@ export function FaqAnalyticsPage() {
     return { byVersion, maxCount };
   }, [distributionByVersion]);
 
+  const versions: Array<"online" | "ai" | "op"> = ["online", "ai", "op"];
+
   function clearFilters() {
     setDraftUploader("");
     setDraftCountry("");
@@ -192,14 +189,17 @@ export function FaqAnalyticsPage() {
     });
   }
 
-  const versions: Array<"online" | "ai" | "op"> = ["online", "ai", "op"];
-
   return (
     <>
       <div className="card analytics-filter-shell faq-card">
         <h2>FAQ 评估看板</h2>
 
         <section className="filter-panel analytics-filters">
+          <div className="filter-panel-head">
+            <h3>筛选条件</h3>
+            <span />
+          </div>
+
           <div className="grid grid-2">
             <div className="field">
               <label>上传人</label>
@@ -208,7 +208,7 @@ export function FaqAnalyticsPage() {
                 onValueChange={(value) => setDraftUploader(value === "all" ? "" : (value as (typeof uploaderOptions)[number]))}
               >
                 <Select.Trigger className="select-trigger" aria-label="uploader-filter">
-                  <Select.Value />
+                  <Select.Value placeholder="全部上传人" />
                 </Select.Trigger>
                 <Select.Portal>
                   <Select.Content className="select-content" position="popper" sideOffset={8}>
@@ -231,7 +231,7 @@ export function FaqAnalyticsPage() {
               <label>国家</label>
               <Select.Root value={draftCountry || "all"} onValueChange={(value) => setDraftCountry(value === "all" ? "" : value)}>
                 <Select.Trigger className="select-trigger" aria-label="country-filter">
-                  <Select.Value />
+                  <Select.Value placeholder="全部国家" />
                 </Select.Trigger>
                 <Select.Portal>
                   <Select.Content className="select-content" position="popper" sideOffset={8}>
@@ -277,7 +277,7 @@ export function FaqAnalyticsPage() {
 
         <div className="kpi-row">
           <div className="kpi-card">
-            <span className="kpi-label">有效FAQ行</span>
+            <span className="kpi-label">有效 FAQ 行</span>
             <strong className="kpi-value">{totalValidRows}</strong>
           </div>
           <div className="kpi-card">
@@ -341,7 +341,7 @@ export function FaqAnalyticsPage() {
               {distributionView === "heatmap" ? (
                 <div className="heatmap-grid-wrap">
                   <div className="heatmap-header-row">
-                    <span className="heatmap-corner">版本 / 分桶</span>
+                    <span className="heatmap-corner">版本 / 分档</span>
                     {heatmapData.byVersion.ai.map((bucket) => (
                       <span className="heatmap-col-header" key={bucket.label}>
                         {bucket.label}

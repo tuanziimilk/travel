@@ -53,6 +53,16 @@ function hasSeoNegativeSignal(item: ScoreOutput["results"][number]) {
 export type ValidateOptions = {
   termName?: string;
   expectOp: boolean;
+  forcedFlagsByVersion?: Partial<
+    Record<
+      "online" | "ai" | "op",
+      {
+        highRisk?: boolean;
+        seoNegative?: boolean;
+        termNameLeak?: boolean;
+      }
+    >
+  >;
 };
 
 export function sortVersionsForTie(results: ScoreOutput["results"]) {
@@ -112,6 +122,7 @@ export function validateScoreOutput(
   doc.meta.versions_present = (["online", "ai", "op"] as const).filter((version) => resultVersions.has(version));
 
   for (const row of doc.results) {
+    const forcedFlags = options.forcedFlagsByVersion?.[row.version];
     const leakInRowText = termName
       ? hasTermNameLeak(
           JSON.stringify({
@@ -137,7 +148,10 @@ export function validateScoreOutput(
       row.score_total = sum;
     }
 
-    const highRisk = hasResultHighRisk(row);
+    const highRiskDetected = hasResultHighRisk(row);
+    const highRisk = forcedFlags?.highRisk
+      ? { hit: true, sources: ["forced_flags.highRisk"] }
+      : highRiskDetected;
 
     if (highRisk.hit) {
       if (row.score_breakdown.B > 3.4) {
@@ -149,7 +163,8 @@ export function validateScoreOutput(
       row.score_total = Math.min(7.9, cappedTotal);
     }
 
-    if (row.score_breakdown.D >= 1.0 && hasSeoNegativeSignal(row)) {
+    const hasSeoNegative = Boolean(forcedFlags?.seoNegative) || hasSeoNegativeSignal(row);
+    if (row.score_breakdown.D >= 1.0 && hasSeoNegative) {
       row.score_breakdown.D = 0.8;
       row.score_total = round1(
         row.score_breakdown.A + row.score_breakdown.B + row.score_breakdown.C + row.score_breakdown.D,
@@ -159,7 +174,8 @@ export function validateScoreOutput(
       }
     }
 
-    if (leakInRowText) {
+    const hasTermNameLeakSignal = Boolean(forcedFlags?.termNameLeak) || leakInRowText;
+    if (hasTermNameLeakSignal) {
       row.score_breakdown.A = round1(Math.max(0, row.score_breakdown.A - 1.0));
       row.score_total = round1(
         row.score_breakdown.A + row.score_breakdown.B + row.score_breakdown.C + row.score_breakdown.D,

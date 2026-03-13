@@ -2,11 +2,11 @@ import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import { ManualScoreInput, ScoreOutput, uploaderSchema } from "@about-demo/trpc";
+import { ManualScoreInput, type OutputMode, ScoreOutput, uploaderSchema } from "@about-demo/trpc";
 import { db } from "../db/client";
 import { aboutScoreRows, ingestJobs, uploadBatches } from "../db/schema";
 import { makeId } from "../utils/id";
-import { scoreAboutByAiWithMeta } from "../scoring/aboutAiScorer";
+import { scoreAboutByAiWithMeta, type ScoreIssueFlags } from "../scoring/aboutAiScorer";
 import { env } from "../env";
 import { sha256 } from "../utils/hash";
 import { collectPassMetrics } from "./passMetrics";
@@ -40,7 +40,13 @@ type RowSelect = typeof aboutScoreRows.$inferSelect;
 type ModuleId = "about" | "faq";
 
 const ingestPayloadByBatch = new Map<string, ParsedUploadRow[]>();
-type PendingIngestJob = { jobId: string; batchId: string; rows: ParsedUploadRow[]; moduleId: ModuleId };
+type PendingIngestJob = {
+  jobId: string;
+  batchId: string;
+  rows: ParsedUploadRow[];
+  moduleId: ModuleId;
+  outputMode: OutputMode;
+};
 const pendingIngestJobsByModule: Record<ModuleId, PendingIngestJob[]> = {
   about: [],
   faq: [],
@@ -271,6 +277,7 @@ export async function createBatchWithMeta(params: {
   uploader: string;
   note?: string;
   source?: "upload" | "manual";
+  outputMode?: OutputMode;
 }) {
   uploaderSchema.parse(params.uploader);
   const id = makeId();
@@ -280,6 +287,7 @@ export async function createBatchWithMeta(params: {
     await db.insert(uploadBatches).values({
       id,
       moduleId: params.moduleId ?? "about",
+      outputMode: params.outputMode ?? "full",
       uploader: params.uploader,
       source: params.source ?? "upload",
       note: (params.note ?? "").slice(0, 255),
@@ -290,6 +298,7 @@ export async function createBatchWithMeta(params: {
     await db.insert(uploadBatches).values({
       id,
       moduleId: params.moduleId ?? "about",
+      outputMode: params.outputMode ?? "full",
       uploader: params.uploader,
       rowCount: 0,
     });
@@ -322,6 +331,15 @@ async function ensureUploadBatchesColumns() {
     const message = error instanceof Error ? error.message : String(error);
     if (!message.toLowerCase().includes("duplicate") && !message.toLowerCase().includes("exists")) {
       // 忽略，后续仍有插入兜底
+    }
+  }
+
+  try {
+    await db.execute(sql`ALTER TABLE upload_batches ADD COLUMN output_mode varchar(16) NOT NULL DEFAULT 'full'`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.toLowerCase().includes("duplicate") && !message.toLowerCase().includes("exists")) {
+      // ignore and continue fallback
     }
   }
 }
@@ -386,6 +404,7 @@ export async function saveManualScoreToBatch(params: {
 export async function startIngestJob(batchId: string, fileName: string, fileBase64: string) {
   const batchRows = await db.select().from(uploadBatches).where(eq(uploadBatches.id, batchId));
   const moduleId = (batchRows[0]?.moduleId || "about") as "about" | "faq";
+  const outputMode = (batchRows[0]?.outputMode || "full") as OutputMode;
   const rows = moduleId === "faq" ? parseFaqUploadFile(fileName, fileBase64) : parseUploadFile(fileName, fileBase64);
   const merchantTotal =
     moduleId === "faq"
@@ -412,7 +431,7 @@ export async function startIngestJob(batchId: string, fileName: string, fileBase
     predictedCostUsd: "0",
     errorReason: null,
   });
-  pendingIngestJobsByModule[moduleId].push({ jobId, batchId, rows, moduleId });
+  pendingIngestJobsByModule[moduleId].push({ jobId, batchId, rows, moduleId, outputMode });
   void processPendingIngestJobs(moduleId);
   return { jobId, totalRows: rows.length };
 }
@@ -439,7 +458,7 @@ async function processPendingIngestJobs(moduleId: ModuleId) {
       const startedRows = await db.select().from(ingestJobs).where(eq(ingestJobs.id, next.jobId));
       if (startedRows[0]?.status !== "running") continue;
       try {
-        await runIngest(next.jobId, next.batchId, next.rows);
+        await runIngest(next.jobId, next.batchId, next.rows, next.outputMode);
       } catch (error) {
         const reason = `job failed: ${errorMessage(error)}`.slice(0, 512);
         await backfillMissingErrorRows(next.batchId, next.rows, reason, { since: startedRows[0]?.startedAt });
@@ -497,7 +516,10 @@ function isTransientFailureMessage(messageRaw: string) {
   );
 }
 
-async function scoreWithRetries(input: ManualScoreInput, options?: { maxRetries?: number; baseMs?: number; maxMs?: number }) {
+async function scoreWithRetries(
+  input: ManualScoreInput,
+  options?: { maxRetries?: number; baseMs?: number; maxMs?: number; outputMode?: OutputMode },
+) {
   const maxRetries = Math.max(0, options?.maxRetries ?? env.ingestRowMaxRetries);
   const baseMs = Math.max(100, options?.baseMs ?? env.ingestRowRetryBaseMs);
   const maxMs = Math.max(baseMs, options?.maxMs ?? env.ingestRowRetryMaxMs);
@@ -507,7 +529,7 @@ async function scoreWithRetries(input: ManualScoreInput, options?: { maxRetries?
 
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     try {
-      return await scoreAboutByAiWithMeta(input, { requestTimeoutMs });
+      return await scoreAboutByAiWithMeta(input, { requestTimeoutMs, outputMode: options?.outputMode ?? "full" });
     } catch (error) {
       errors.push(`attempt${attempt + 1}: ${errorMessage(error)}`);
       if (attempt >= maxRetries) break;
@@ -518,7 +540,7 @@ async function scoreWithRetries(input: ManualScoreInput, options?: { maxRetries?
   throw new Error(`row retries exhausted: ${errors.join(" | ")}`);
 }
 
-async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]) {
+async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[], outputMode: OutputMode) {
   const batchRows = await db.select().from(uploadBatches).where(eq(uploadBatches.id, batchId));
   const moduleId = (batchRows[0]?.moduleId || "about") as "about" | "faq";
   let finalizedDone = 0;
@@ -611,11 +633,11 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
       };
 
       try {
-        const scored = await scoreWithRetries(input);
+        const scored = await scoreWithRetries(input, { outputMode });
 
         if (await isCancelled()) return;
 
-        await insertScoreRow(batchId, row, scored.output);
+        await insertScoreRow(batchId, row, scored.output, scored.diagnostics?.issueFlags);
         success += 1;
         finalizedDone += 1;
         promptTokensSum += scored.runtime.promptTokens;
@@ -675,11 +697,12 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
             maxRetries: env.ingestRowMaxRetries + 1,
             baseMs: passBaseMs,
             maxMs: env.ingestRowRetryMaxMs * 2,
+            outputMode,
           });
 
           if (await isCancelled()) return;
 
-          await insertScoreRow(batchId, candidate.row, scored.output);
+          await insertScoreRow(batchId, candidate.row, scored.output, scored.diagnostics?.issueFlags);
           success += 1;
           finalizedDone += 1;
           promptTokensSum += scored.runtime.promptTokens;
@@ -775,7 +798,12 @@ async function ensureAboutScoreRowsColumns() {
   }
 }
 
-async function insertScoreRow(batchId: string, row: ParsedUploadRow, scored: ScoreOutput) {
+async function insertScoreRow(
+  batchId: string,
+  row: ParsedUploadRow,
+  scored: ScoreOutput,
+  issueFlagsOverride?: ScoreIssueFlags,
+) {
   await ensureAboutScoreRowsColumns();
   const byVersion = Object.fromEntries(scored.results.map((item) => [item.version, item])) as Record<string, ScoreOutput["results"][number]>;
   const online = byVersion.online;
@@ -813,7 +841,7 @@ async function insertScoreRow(batchId: string, row: ParsedUploadRow, scored: Sco
     passAi: ai.pass_for_publish ? 1 : 0,
     passOp: op ? (op.pass_for_publish ? 1 : 0) : null,
     keyDeltas,
-    issuesFlags: buildIssueFlags(scored),
+    issuesFlags: issueFlagsOverride ?? buildIssueFlags(scored),
     aiModel: env.aiModel,
     aiPromptVersion: env.aiPromptVersion,
     snapshotOnline: snapshotText(row.About_online),
@@ -958,6 +986,7 @@ export async function retryIngestJob(jobId: string) {
   const newJobId = makeId();
   const batchRows = await db.select().from(uploadBatches).where(eq(uploadBatches.id, job.batchId));
   const moduleId = (batchRows[0]?.moduleId || "about") as "about" | "faq";
+  const outputMode = (batchRows[0]?.outputMode || "full") as OutputMode;
   const merchantTotal =
     moduleId === "faq"
       ? new Set(payloadRows.map((row) => String(row.TermID || "").trim() || String(row.Domain || "").trim())).size
@@ -980,7 +1009,7 @@ export async function retryIngestJob(jobId: string) {
     predictedCostUsd: "0",
     errorReason: null,
   });
-  pendingIngestJobsByModule[moduleId].push({ jobId: newJobId, batchId: job.batchId, rows: payloadRows, moduleId });
+  pendingIngestJobsByModule[moduleId].push({ jobId: newJobId, batchId: job.batchId, rows: payloadRows, moduleId, outputMode });
   void processPendingIngestJobs(moduleId);
 
   return { ok: true, newJobId };

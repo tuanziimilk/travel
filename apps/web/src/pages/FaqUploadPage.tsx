@@ -22,7 +22,7 @@ function formatDuration(ms?: number | null) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   if (minutes <= 0) return `${seconds}秒`;
-  return `${minutes}分${seconds}秒`;
+  return `${minutes}分 ${seconds}秒`;
 }
 
 function formatEta(seconds?: number | null) {
@@ -50,6 +50,7 @@ export function FaqUploadPage() {
   const utils = trpc.useUtils();
   const [uploader, setUploader] = useState<(typeof uploaderOptions)[number]>("Ella");
   const [note, setNote] = useState("");
+  const [outputMode, setOutputMode] = useState<"full" | "compact">("full");
   const [file, setFile] = useState<File | null>(null);
   const [batchId, setBatchId] = useState("");
   const [jobId, setJobId] = useState("");
@@ -111,7 +112,7 @@ export function FaqUploadPage() {
 
   async function runUpload() {
     if (!file) return;
-    const created = await createBatch.mutateAsync({ moduleId: "faq", uploader, note, source: "upload" });
+    const created = await createBatch.mutateAsync({ moduleId: "faq", uploader, note, source: "upload", outputMode });
     setBatchId(created.batchId);
     const fileBase64 = await toBase64(file);
     const started = await startIngest.mutateAsync({
@@ -163,7 +164,7 @@ export function FaqUploadPage() {
     <div className="faq-panel">
       <div className="section-header">
         <h2>FAQ 批量上传</h2>
-        <p>模板字段：单行 subclass + Q + A（online/ai/op）</p>
+        <p>模板字段为单行 subclass + Q + A，分别支持 online、ai、op 三组内容。</p>
       </div>
 
       <div className="card faq-card">
@@ -171,8 +172,8 @@ export function FaqUploadPage() {
           <div className="field">
             <label>上传人</label>
             <Select.Root value={uploader} onValueChange={(value) => setUploader(value as (typeof uploaderOptions)[number])}>
-              <Select.Trigger className="select-trigger">
-                <Select.Value />
+              <Select.Trigger className="select-trigger" aria-label="uploader-faq-upload">
+                <Select.Value placeholder="选择上传人" />
               </Select.Trigger>
               <Select.Portal>
                 <Select.Content className="select-content" position="popper" sideOffset={8}>
@@ -189,13 +190,38 @@ export function FaqUploadPage() {
           </div>
 
           <div className="field">
-            <label>备注</label>
-            <input value={note} onChange={(event) => setNote(event.target.value)} />
+            <label>批次备注（可选）</label>
+            <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="例如：FAQ 新规则验证" />
           </div>
 
           <div className="field">
-            <label>文件</label>
+            <label>上传文件（.csv / .xlsx）</label>
             <input type="file" accept=".csv,.xlsx" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+          </div>
+
+          <div className="field field-emphasis">
+            <div className="field-emphasis-head">
+              <label>评分输出模式</label>
+              <span className="field-emphasis-badge">Token 策略</span>
+            </div>
+            <Select.Root value={outputMode} onValueChange={(value) => setOutputMode(value as "full" | "compact")}>
+              <Select.Trigger className="select-trigger" aria-label="output-mode-faq-upload">
+                <Select.Value />
+              </Select.Trigger>
+              <Select.Portal>
+                <Select.Content className="select-content" position="popper" sideOffset={8}>
+                  <Select.Viewport className="select-viewport">
+                    <Select.Item className="select-item" value="full">
+                      <Select.ItemText>完整模式：保留详细解释</Select.ItemText>
+                    </Select.Item>
+                    <Select.Item className="select-item" value="compact">
+                      <Select.ItemText>紧凑模式：仅保留下载所需字段</Select.ItemText>
+                    </Select.Item>
+                  </Select.Viewport>
+                </Select.Content>
+              </Select.Portal>
+            </Select.Root>
+            <p className="field-emphasis-tip">FAQ 批量评分也遵循同一套评分规则；紧凑模式仅缩减输出字段，不改变评分判断。</p>
           </div>
 
           <div className="upload-actions">
@@ -229,11 +255,10 @@ export function FaqUploadPage() {
           )}
           <h3>任务进度</h3>
           <div className="job-meta-bar">
-            <span className="job-meta-item">任务ID：{formatJobId(jobId)}</span>
+            <span className="job-meta-item">任务 ID：{formatJobId(jobId)}</span>
             <span className={`job-status-pill status-${statusQuery.data.status}`}>{queueStatusText[statusQuery.data.status] ?? statusQuery.data.status}</span>
             <span className="job-meta-item">
-              商家：{statusQuery.data.merchantTotal || 0} · FAQ：{statusQuery.data.doneRows}/{statusQuery.data.totalRows} · 失败：
-              {statusQuery.data.failedRows}
+              商家数：{statusQuery.data.merchantTotal || 0}，FAQ：{statusQuery.data.doneRows}/{statusQuery.data.totalRows}，失败 {statusQuery.data.failedRows}
             </span>
           </div>
 
@@ -246,12 +271,12 @@ export function FaqUploadPage() {
             <div className="receipt-item">
               <span className="receipt-label">Token</span>
               <span className="receipt-val token-blue">{statusQuery.data.totalTokensSum}</span>
-              <div className="receipt-sub">真实消耗</div>
+              <div className="receipt-sub">模型消耗</div>
             </div>
             <div className="receipt-item">
               <span className="receipt-label">费用</span>
               <span className="receipt-val token-pink">{formatUsd(statusQuery.data.estimatedCostUsdSum)}</span>
-              <div className="receipt-sub">≈ {formatCny(statusQuery.data.estimatedCostUsdSum)}</div>
+              <div className="receipt-sub">约 {formatCny(statusQuery.data.estimatedCostUsdSum)}</div>
             </div>
           </div>
 
@@ -266,19 +291,19 @@ export function FaqUploadPage() {
       )}
 
       <div className="card faq-card" style={{ marginTop: 16 }}>
-        <h3>FAQ 任务队列</h3>
+        <h3>FAQ 历史任务队列</h3>
         <table className="history-table queue-table faq-queue-table">
           <thead>
             <tr>
-              <th>任务ID</th>
+              <th>任务 ID</th>
               <th>状态</th>
               <th>商家数</th>
-              <th>FAQ进度</th>
+              <th>FAQ 进度</th>
               <th>ETA</th>
               <th>耗时</th>
               <th>Token</th>
               <th className="queue-col-reason">失败原因</th>
-              <th>费用(USD)</th>
+              <th>费用</th>
               <th>开始时间</th>
               <th>操作</th>
             </tr>
@@ -291,17 +316,17 @@ export function FaqUploadPage() {
                 <td>{item.merchantTotal || 0}</td>
                 <td>
                   {item.doneRows}/{item.totalRows}
-                  {item.totalRows > 0 ? ` (${Math.round((item.doneRows / item.totalRows) * 100)}%)` : ""}
-                  {item.failedRows > 0 ? `（失败 ${item.failedRows}）` : ""}
+                  {item.totalRows > 0 ? `（${Math.round((item.doneRows / item.totalRows) * 100)}%）` : ""}
+                  {item.failedRows > 0 ? `，失败 ${item.failedRows}` : ""}
                 </td>
                 <td>{formatEta(item.etaSeconds)}</td>
                 <td>{formatDuration(item.elapsedMs)}</td>
                 <td>{item.totalTokensSum}</td>
                 <td
                   className="queue-reason-cell"
-                  title={item.errorReason || (item.failedRows > 0 ? "存在失败行，请下载结果查看失败原因列" : "")}
+                  title={item.errorReason || (item.failedRows > 0 ? "存在失败 FAQ，请下载结果查看失败原因列" : "")}
                 >
-                  {item.errorReason || (item.failedRows > 0 ? "存在失败行，请查看导出" : "-")}
+                  {item.errorReason || (item.failedRows > 0 ? "存在失败 FAQ，请查看导出文件" : "-")}
                 </td>
                 <td>{formatUsd(item.estimatedCostUsdSum)}</td>
                 <td>{new Date(item.startedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}</td>
@@ -353,7 +378,7 @@ export function FaqUploadPage() {
 
       {resultQuery.data && "summary" in resultQuery.data && (
         <div className="card faq-card" style={{ marginTop: 16 }}>
-          <h3>批次摘要</h3>
+          <h3>批次汇总</h3>
           <pre>{JSON.stringify(resultQuery.data.summary, null, 2)}</pre>
           <button className="btn-ghost" type="button" onClick={() => void downloadBatchXlsx(batchId)}>
             下载 FAQ 结果

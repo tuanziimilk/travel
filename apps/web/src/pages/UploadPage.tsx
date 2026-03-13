@@ -22,12 +22,7 @@ function formatDuration(ms?: number | null) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   if (minutes <= 0) return `${seconds}秒`;
-  return `${minutes}分${seconds}秒`;
-}
-
-function formatEta(seconds?: number | null) {
-  const safe = Math.max(0, Number(seconds || 0));
-  return formatDuration(safe * 1000);
+  return `${minutes}分 ${seconds}秒`;
 }
 
 function formatUsd(value?: number | string | null) {
@@ -49,11 +44,12 @@ function formatJobId(jobId?: string | null) {
 export function UploadPage() {
   const utils = trpc.useUtils();
   const [uploader, setUploader] = useState<(typeof uploaderOptions)[number]>("Ella");
-  const [note, setNote] = useState<string>("");
+  const [note, setNote] = useState("");
+  const [outputMode, setOutputMode] = useState<"full" | "compact">("full");
   const [file, setFile] = useState<File | null>(null);
-  const [batchId, setBatchId] = useState<string>("");
-  const [jobId, setJobId] = useState<string>("");
-  const [queuePage, setQueuePage] = useState<number>(1);
+  const [batchId, setBatchId] = useState("");
+  const [jobId, setJobId] = useState("");
+  const [queuePage, setQueuePage] = useState(1);
   const queuePageSize = 20;
 
   const createBatch = trpc.batch.create.useMutation();
@@ -111,7 +107,7 @@ export function UploadPage() {
 
   async function runUpload() {
     if (!file) return;
-    const created = await createBatch.mutateAsync({ uploader, note, source: "upload" });
+    const created = await createBatch.mutateAsync({ uploader, note, source: "upload", outputMode });
     setBatchId(created.batchId);
     const fileBase64 = await toBase64(file);
     const started = await startIngest.mutateAsync({
@@ -151,23 +147,6 @@ export function UploadPage() {
     URL.revokeObjectURL(url);
   }
 
-  async function downloadResultXlsx() {
-    if (!batchId) return;
-    const response = await utils.client.batch.ingest.result.query({ batchId, format: "xlsx" });
-    const xlsxBase64 = "xlsxBase64" in response ? response.xlsxBase64 || "" : "";
-    const binary = atob(xlsxBase64);
-    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    const blob = new Blob([bytes], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `batch-${batchId}.xlsx`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  }
-
   function downloadDemoTemplate() {
     const blob = new Blob([uploadDemoCsv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -181,7 +160,7 @@ export function UploadPage() {
   return (
     <div className="card">
       <h2>批量上传评分</h2>
-      <p className="muted">上传 CSV/XLSX，异步评分并追踪进度，支持导出本批结果。</p>
+      <p className="muted">上传 CSV 或 XLSX，异步执行评分并追踪队列进度，完成后可直接下载结果。</p>
 
       <div className="grid">
         <div className="field">
@@ -206,12 +185,37 @@ export function UploadPage() {
 
         <div className="field">
           <label>批次备注（可选）</label>
-          <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="例如：测试 / 新策略回归" />
+          <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="例如：测试批次 / 新规则验证" />
         </div>
 
         <div className="field">
-          <label>文件（.csv 或 .xlsx）</label>
+          <label>上传文件（.csv / .xlsx）</label>
           <input type="file" accept=".csv,.xlsx" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+        </div>
+
+        <div className="field field-emphasis">
+          <div className="field-emphasis-head">
+            <label>评分输出模式</label>
+            <span className="field-emphasis-badge">Token 策略</span>
+          </div>
+          <Select.Root value={outputMode} onValueChange={(value) => setOutputMode(value as "full" | "compact")}>
+            <Select.Trigger className="select-trigger" aria-label="output-mode-upload">
+              <Select.Value />
+            </Select.Trigger>
+            <Select.Portal>
+              <Select.Content className="select-content" position="popper" sideOffset={8}>
+                <Select.Viewport className="select-viewport">
+                  <Select.Item className="select-item" value="full">
+                    <Select.ItemText>完整模式：保留详细解释</Select.ItemText>
+                  </Select.Item>
+                  <Select.Item className="select-item" value="compact">
+                    <Select.ItemText>紧凑模式：仅保留下载所需字段</Select.ItemText>
+                  </Select.Item>
+                </Select.Viewport>
+              </Select.Content>
+            </Select.Portal>
+          </Select.Root>
+          <p className="field-emphasis-tip">两种模式使用同一套评分规则；紧凑模式只精简输出字段，用于降低批量评分 token 成本。</p>
         </div>
 
         <div className="upload-actions">
@@ -244,10 +248,10 @@ export function UploadPage() {
           )}
           <h3>任务进度</h3>
           <div className="job-meta-bar">
-            <span className="job-meta-item">任务ID：{jobId}</span>
+            <span className="job-meta-item">任务 ID：{formatJobId(jobId)}</span>
             <span className={`job-status-pill status-${statusQuery.data.status}`}>{queueStatusText[statusQuery.data.status] ?? statusQuery.data.status}</span>
             <span className="job-meta-item">
-              进度：{statusQuery.data.doneRows}/{statusQuery.data.totalRows} · 失败：{statusQuery.data.failedRows}
+              进度：{statusQuery.data.doneRows}/{statusQuery.data.totalRows}，失败 {statusQuery.data.failedRows}
             </span>
           </div>
 
@@ -259,17 +263,13 @@ export function UploadPage() {
             </div>
             <div className="receipt-item">
               <span className="receipt-label">Token</span>
-              <span className="receipt-val token-blue">
-                {statusQuery.data.totalTokensSum}
-              </span>
-              <div className="receipt-sub">真实消耗</div>
+              <span className="receipt-val token-blue">{statusQuery.data.totalTokensSum}</span>
+              <div className="receipt-sub">模型消耗</div>
             </div>
             <div className="receipt-item">
               <span className="receipt-label">费用</span>
-              <span className="receipt-val token-pink">
-                {formatUsd(statusQuery.data.estimatedCostUsdSum)}
-              </span>
-              <div className="receipt-sub">≈ {formatCny(statusQuery.data.estimatedCostUsdSum)}</div>
+              <span className="receipt-val token-pink">{formatUsd(statusQuery.data.estimatedCostUsdSum)}</span>
+              <div className="receipt-sub">约 {formatCny(statusQuery.data.estimatedCostUsdSum)}</div>
             </div>
           </div>
 
@@ -284,11 +284,11 @@ export function UploadPage() {
       )}
 
       <div className="card" style={{ marginTop: 16 }}>
-        <h3>任务队列</h3>
+        <h3>历史任务队列</h3>
         <table className="history-table queue-table about-queue-table">
           <thead>
             <tr>
-              <th>任务ID</th>
+              <th>任务 ID</th>
               <th>状态</th>
               <th>进度</th>
               <th>耗时</th>
@@ -306,23 +306,17 @@ export function UploadPage() {
                 <td>{queueStatusText[item.status] ?? item.status}</td>
                 <td>
                   {item.doneRows}/{item.totalRows}
-                  {item.failedRows > 0 ? ` (失败 ${item.failedRows})` : ""}
+                  {item.failedRows > 0 ? `（失败 ${item.failedRows}）` : ""}
                 </td>
-                <td>
-                  {formatDuration(item.elapsedMs)}
-                </td>
-                <td>
-                  {item.totalTokensSum}
-                </td>
+                <td>{formatDuration(item.elapsedMs)}</td>
+                <td>{item.totalTokensSum}</td>
                 <td
                   className="queue-reason-cell"
                   title={item.errorReason || (item.failedRows > 0 ? "存在失败行，请下载结果查看失败原因列" : "")}
                 >
-                  {item.errorReason || (item.failedRows > 0 ? "存在失败行，请查看导出" : "-")}
+                  {item.errorReason || (item.failedRows > 0 ? "存在失败行，请查看导出文件" : "-")}
                 </td>
-                <td>
-                  {formatUsd(item.estimatedCostUsdSum)}
-                </td>
+                <td>{formatUsd(item.estimatedCostUsdSum)}</td>
                 <td>{new Date(item.startedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}</td>
                 <td className="queue-action-cell">
                   {item.status === "running" || item.status === "pending" ? (
@@ -390,7 +384,7 @@ export function UploadPage() {
                     <th>TermID</th>
                     <th>Domain</th>
                     <th>Country</th>
-                    <th>线上</th>
+                    <th>Online</th>
                     <th>AI</th>
                     <th>OP</th>
                     <th>最佳版本</th>
@@ -415,7 +409,7 @@ export function UploadPage() {
             </>
           )}
 
-          <button className="btn-ghost" type="button" onClick={downloadResultXlsx}>
+          <button className="btn-ghost" type="button" onClick={() => void downloadBatchXlsx(batchId)}>
             下载本批结果
           </button>
         </div>

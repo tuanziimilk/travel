@@ -2767,6 +2767,54 @@ pre {
   border-color: var(--black);
 }
 
+.field:has(> select) {
+  display: none;
+}
+
+.field.field-emphasis {
+  position: relative;
+  padding: 14px;
+  border: 3px solid var(--black);
+  background: #ffffff;
+  box-shadow: 6px 6px 0 var(--black);
+}
+
+.field.field-emphasis > label,
+.field-emphasis-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.field-emphasis-head {
+  margin-bottom: 8px;
+}
+
+.field-emphasis-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 8px;
+  border: 2px solid var(--black);
+  background: var(--blue);
+  color: var(--white);
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.field-emphasis-tip {
+  margin: 8px 0 0;
+  font-size: 12px;
+  font-weight: 800;
+  color: #444;
+  line-height: 1.35;
+}
+
 .top-nav .model-switch .model-switch-trigger {
   min-height: 24px;
   height: 24px;

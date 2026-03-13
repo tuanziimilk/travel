@@ -45,16 +45,11 @@ export function HistoryPage() {
   const utils = trpc.useUtils();
   const [listPage, setListPage] = useState(1);
   const [draftUploader, setDraftUploader] = useState<"" | (typeof uploaderOptions)[number]>("");
-  const [draftCountry, setDraftCountry] = useState<string>("");
-  const [draftStartDate, setDraftStartDate] = useState<string>("");
-  const [draftEndDate, setDraftEndDate] = useState<string>("");
-  const [appliedFilters, setAppliedFilters] = useState<{
-    uploader: "" | (typeof uploaderOptions)[number];
-    country: string;
-    startDate: string;
-    endDate: string;
-  }>({
-    uploader: "",
+  const [draftCountry, setDraftCountry] = useState("");
+  const [draftStartDate, setDraftStartDate] = useState("");
+  const [draftEndDate, setDraftEndDate] = useState("");
+  const [appliedFilters, setAppliedFilters] = useState({
+    uploader: "" as "" | (typeof uploaderOptions)[number],
     country: "",
     startDate: "",
     endDate: "",
@@ -119,6 +114,8 @@ export function HistoryPage() {
     const publishPassRate = validRowCount ? Number(((publishPassCount / validRowCount) * 100).toFixed(1)) : 0;
     return { batchCount: count, totalCount: validRowCount, publishPassCount, publishPassRate };
   }, [batches]);
+
+  const totalPages = Math.max(1, Math.ceil((listQuery.data?.total || 0) / 20));
 
   return (
     <>
@@ -212,7 +209,7 @@ export function HistoryPage() {
             <strong className="kpi-value">{summary.batchCount}</strong>
           </div>
           <div className="kpi-card">
-            <span className="kpi-label">总数量</span>
+            <span className="kpi-label">有效行数</span>
             <strong className="kpi-value">{summary.totalCount}</strong>
           </div>
           <div className="kpi-card">
@@ -235,17 +232,17 @@ export function HistoryPage() {
                 <th>上传人</th>
                 <th>备注</th>
                 <th>行数</th>
-                <th>均分（线上/AI/OP）</th>
+                <th>均分（线上 / AI / OP）</th>
                 <th>
                   <span className="th-help-inline">
                     通过统计
                     <span className="help-tip-wrap" tabIndex={0}>
                       ?
-                      <span className="help-tip-pop">通过=AI或OP任一可发布，不统计线上。</span>
+                      <span className="help-tip-pop">通过 = AI 或 OP 任一版本可发布，不统计线上版本。</span>
                     </span>
                   </span>
                 </th>
-                <th>优胜版本</th>
+                <th>最佳版本</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -320,11 +317,7 @@ export function HistoryPage() {
                       <span className={`winner-chip ${winner}`}>{winnerLabel(winner)}</span>
                     </td>
                     <td>
-                      <button
-                        className="btn-ghost history-action-btn"
-                        type="button"
-                        onClick={() => void downloadBatchXlsx(item.id)}
-                      >
+                      <button className="btn-ghost history-action-btn" type="button" onClick={() => void downloadBatchXlsx(item.id)}>
                         下载结果
                       </button>
                     </td>
@@ -336,23 +329,13 @@ export function HistoryPage() {
         </div>
 
         <div className="history-page-actions history-list-pagination">
-          <button
-            className="btn-ghost"
-            type="button"
-            disabled={listPage <= 1}
-            onClick={() => setListPage((value) => Math.max(1, value - 1))}
-          >
+          <button className="btn-ghost" type="button" disabled={listPage <= 1} onClick={() => setListPage((value) => Math.max(1, value - 1))}>
             上一页
           </button>
           <span>
-            第 {listQuery.data?.page || listPage} 页 / 共 {Math.max(1, Math.ceil((listQuery.data?.total || 0) / 20))} 页
+            第 {listQuery.data?.page || listPage} 页 / 共 {totalPages} 页
           </span>
-          <button
-            className="btn-ghost"
-            type="button"
-            onClick={() => setListPage((value) => value + 1)}
-            disabled={listPage >= Math.max(1, Math.ceil((listQuery.data?.total || 0) / 20))}
-          >
+          <button className="btn-ghost" type="button" onClick={() => setListPage((value) => value + 1)} disabled={listPage >= totalPages}>
             下一页
           </button>
         </div>

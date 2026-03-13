@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm";
 export const uploadBatches = mysqlTable("upload_batches", {
   id: varchar("id", { length: 36 }).primaryKey(),
   moduleId: varchar("module_id", { length: 16 }).notNull().default("about"),
+  outputMode: varchar("output_mode", { length: 16 }).notNull().default("full"),
   uploader: varchar("uploader", { length: 32 }).notNull(),
   source: varchar("source", { length: 16 }).default("upload").notNull(),
   note: varchar("note", { length: 255 }).default("").notNull(),

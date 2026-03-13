@@ -191,6 +191,7 @@ export const appRouter = t.router({
         uploader: input.uploader,
         note: input.note,
         source: input.source,
+        outputMode: input.outputMode,
       });
     }),
     ingest: t.router({

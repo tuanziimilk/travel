@@ -45,16 +45,11 @@ export function FaqHistoryPage() {
   const utils = trpc.useUtils();
   const [listPage, setListPage] = useState(1);
   const [draftUploader, setDraftUploader] = useState<"" | (typeof uploaderOptions)[number]>("");
-  const [draftCountry, setDraftCountry] = useState<string>("");
-  const [draftStartDate, setDraftStartDate] = useState<string>("");
-  const [draftEndDate, setDraftEndDate] = useState<string>("");
-  const [appliedFilters, setAppliedFilters] = useState<{
-    uploader: "" | (typeof uploaderOptions)[number];
-    country: string;
-    startDate: string;
-    endDate: string;
-  }>({
-    uploader: "",
+  const [draftCountry, setDraftCountry] = useState("");
+  const [draftStartDate, setDraftStartDate] = useState("");
+  const [draftEndDate, setDraftEndDate] = useState("");
+  const [appliedFilters, setAppliedFilters] = useState({
+    uploader: "" as "" | (typeof uploaderOptions)[number],
     country: "",
     startDate: "",
     endDate: "",
@@ -133,6 +128,8 @@ export function FaqHistoryPage() {
     };
   }, [batches]);
 
+  const totalPages = Math.max(1, Math.ceil((listQuery.data?.total || 0) / 20));
+
   return (
     <>
       <div className="card history-filter-shell faq-card">
@@ -152,7 +149,7 @@ export function FaqHistoryPage() {
                 onValueChange={(value) => setDraftUploader(value === "all" ? "" : (value as (typeof uploaderOptions)[number]))}
               >
                 <Select.Trigger className="select-trigger" aria-label="uploader-filter">
-                  <Select.Value />
+                  <Select.Value placeholder="全部上传人" />
                 </Select.Trigger>
                 <Select.Portal>
                   <Select.Content className="select-content" position="popper" sideOffset={8}>
@@ -175,7 +172,7 @@ export function FaqHistoryPage() {
               <label>国家</label>
               <Select.Root value={draftCountry || "all"} onValueChange={(value) => setDraftCountry(value === "all" ? "" : value)}>
                 <Select.Trigger className="select-trigger" aria-label="country-filter">
-                  <Select.Value />
+                  <Select.Value placeholder="全部国家" />
                 </Select.Trigger>
                 <Select.Portal>
                   <Select.Content className="select-content" position="popper" sideOffset={8}>
@@ -225,7 +222,7 @@ export function FaqHistoryPage() {
             <strong className="kpi-value">{summary.batchCount}</strong>
           </div>
           <div className="kpi-card">
-            <span className="kpi-label">总数量</span>
+            <span className="kpi-label">有效 FAQ 行</span>
             <strong className="kpi-value">{summary.faqTotal}</strong>
           </div>
           <div className="kpi-card">
@@ -247,11 +244,11 @@ export function FaqHistoryPage() {
                 <th>创建时间</th>
                 <th>上传人</th>
                 <th>备注</th>
-                <th>FAQ数</th>
-                <th>均分（线上/AI/OP）</th>
-                <th>通过统计</th>
-                <th>商家通过</th>
-                <th>优胜版本</th>
+                <th>FAQ 数</th>
+                <th>均分（线上 / AI / OP）</th>
+                <th>FAQ 通过统计</th>
+                <th>商家通过统计</th>
+                <th>最佳版本</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -355,23 +352,13 @@ export function FaqHistoryPage() {
         </div>
 
         <div className="history-page-actions history-list-pagination">
-          <button
-            className="btn-ghost"
-            type="button"
-            disabled={listPage <= 1}
-            onClick={() => setListPage((value) => Math.max(1, value - 1))}
-          >
+          <button className="btn-ghost" type="button" disabled={listPage <= 1} onClick={() => setListPage((value) => Math.max(1, value - 1))}>
             上一页
           </button>
           <span>
-            第 {listQuery.data?.page || listPage} 页 / 共 {Math.max(1, Math.ceil((listQuery.data?.total || 0) / 20))} 页
+            第 {listQuery.data?.page || listPage} 页 / 共 {totalPages} 页
           </span>
-          <button
-            className="btn-ghost"
-            type="button"
-            onClick={() => setListPage((value) => value + 1)}
-            disabled={listPage >= Math.max(1, Math.ceil((listQuery.data?.total || 0) / 20))}
-          >
+          <button className="btn-ghost" type="button" onClick={() => setListPage((value) => value + 1)} disabled={listPage >= totalPages}>
             下一页
           </button>
         </div>

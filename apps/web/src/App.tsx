@@ -84,7 +84,7 @@ export default function App() {
       <aside className="app-sidebar">
         <div className="sidebar-panel">
           <section className="sidebar-group">
-            <div className="sidebar-title">板块切换</div>
+            <div className="sidebar-title">模块切换</div>
             <nav className="sidebar-nav sidebar-nav-module">
               {moduleOptions.map((item) => (
                 <NavLink key={item} href={`/${item}/${pageId}`} label={moduleLabel(item)} tone="module" />
@@ -136,7 +136,7 @@ export default function App() {
                   </Select.Portal>
                 </Select.Root>
               </div>
-              <span className="module-chip">当前板块：{moduleLabel(moduleId)}</span>
+              <span className="module-chip">当前模块：{moduleLabel(moduleId)}</span>
             </div>
           </section>
 
@@ -146,4 +146,3 @@ export default function App() {
     </div>
   );
 }
-

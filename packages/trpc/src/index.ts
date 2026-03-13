@@ -47,6 +47,10 @@ export const moduleOptions = ["about", "faq"] as const;
 export const moduleSchema = z.enum(moduleOptions);
 export type ModuleId = z.infer<typeof moduleSchema>;
 
+export const outputModeOptions = ["full", "compact"] as const;
+export const outputModeSchema = z.enum(outputModeOptions);
+export type OutputMode = z.infer<typeof outputModeSchema>;
+
 export const aiModelOptions = [
   "gpt-5.2",
   "gpt-5.1",
@@ -140,6 +144,7 @@ export const batchCreateInputSchema = z.object({
   uploader: uploaderSchema,
   note: z.string().optional().default(""),
   source: z.enum(["upload", "manual"]).optional().default("upload"),
+  outputMode: outputModeSchema.optional().default("full"),
 });
 
 export const batchStartInputSchema = z.object({

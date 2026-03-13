@@ -1,34 +1,235 @@
-import { ManualScoreInput, ScoreOutput } from "@about-demo/trpc";
+import { z } from "zod";
+import { ManualScoreInput, type OutputMode, ScoreOutput } from "@about-demo/trpc";
 import { env } from "../env";
 import { skillRegistry } from "../skills/skillRegistry";
-import { validateScoreOutput } from "./validators/scoreValidator";
 import { aiExecutor } from "../skills/aiExecutor";
 import { getModuleSkillMd } from "../skills/skillStore";
+import { validateScoreOutput } from "./validators/scoreValidator";
 
-export function buildPrompt(input: ManualScoreInput, skillMd: string, refs: Record<string, string>) {
+const compactIssueFlagsSchema = z.object({
+  first_person: z.boolean().optional().default(false),
+  lang_mismatch: z.boolean().optional().default(false),
+  too_short: z.boolean().optional().default(false),
+  too_long: z.boolean().optional().default(false),
+  keyword_missing: z.boolean().optional().default(false),
+  keyword_stuffing: z.boolean().optional().default(false),
+  ai_tone: z.boolean().optional().default(false),
+  localization_bad: z.boolean().optional().default(false),
+});
+
+const defaultCompactIssueFlags = {
+  first_person: false,
+  lang_mismatch: false,
+  too_short: false,
+  too_long: false,
+  keyword_missing: false,
+  keyword_stuffing: false,
+  ai_tone: false,
+  localization_bad: false,
+} as const;
+
+const defaultCompactRiskFlags = {
+  high_risk: false,
+  seo_negative: false,
+  termname_leak: false,
+} as const;
+
+const compactResultSchema = z.object({
+  version: z.enum(["online", "ai", "op"]),
+  score_total: z.number(),
+  score_breakdown: z.object({
+    A: z.number(),
+    B: z.number(),
+    C: z.number(),
+    D: z.number(),
+  }),
+  pass_for_publish: z.boolean(),
+  risk_flags: z
+    .object({
+      high_risk: z.boolean().optional().default(false),
+      seo_negative: z.boolean().optional().default(false),
+      termname_leak: z.boolean().optional().default(false),
+    })
+    .optional()
+    .default(defaultCompactRiskFlags),
+  issue_flags: compactIssueFlagsSchema.optional().default(defaultCompactIssueFlags),
+});
+
+const compactScoreOutputSchema = z.object({
+  meta: z.object({
+    TermID: z.string(),
+    Domain: z.string(),
+    Country: z.string(),
+    versions_present: z.array(z.enum(["online", "ai", "op"])),
+  }),
+  results: z.array(compactResultSchema),
+  comparison: z.object({
+    best_version: z.enum(["online", "ai", "op"]),
+    ranking: z.array(z.enum(["online", "ai", "op"])),
+    key_deltas: z.array(z.string()).optional().default([]),
+  }),
+  notes_short: z.string().optional().default(""),
+});
+
+type CompactScoreOutput = z.infer<typeof compactScoreOutputSchema>;
+
+export type ScoreIssueFlags = {
+  mer_missing: boolean;
+  first_person: boolean;
+  lang_mismatch: boolean;
+  too_short: boolean;
+  too_long: boolean;
+  keyword_missing: boolean;
+  keyword_stuffing: boolean;
+  ai_tone: boolean;
+  localization_bad: boolean;
+};
+
+type ScoringDiagnostics = {
+  issueFlags?: ScoreIssueFlags;
+};
+
+type ValidatedScorePayload = {
+  output: ScoreOutput;
+  diagnostics?: ScoringDiagnostics;
+};
+
+type PromptRefs = Record<string, string>;
+
+function normalizeHeadingKey(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[：:]/g, " ")
+    .replace(/[^\w\s/-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitMarkdownSections(markdown: string) {
+  const lines = String(markdown || "").split(/\r?\n/);
+  const sections: Array<{ heading: string; body: string }> = [];
+  let currentHeading = "__intro__";
+  let currentLines: string[] = [];
+
+  const flush = () => {
+    sections.push({ heading: currentHeading, body: currentLines.join("\n").trim() });
+  };
+
+  for (const line of lines) {
+    if (/^##\s+/.test(line)) {
+      flush();
+      currentHeading = line.replace(/^##\s+/, "").trim();
+      currentLines = [];
+      continue;
+    }
+    currentLines.push(line);
+  }
+  flush();
+  return sections.filter((section) => section.body);
+}
+
+function shouldKeepCompactSection(heading: string) {
+  const normalized = normalizeHeadingKey(heading);
+  if (normalized.includes("hard rules")) return true;
+  if (normalized.includes("high-risk")) return true;
+  if (normalized.includes("scoring rubric")) return true;
+  if (normalized.includes("business context")) return true;
+  if (normalized.includes("version handling")) return true;
+  if (normalized.includes("advanced seo")) return true;
+  return false;
+}
+
+function buildCompactSkillMd(skillMd: string) {
+  const sections = splitMarkdownSections(skillMd);
+  const kept = sections.filter((section) => shouldKeepCompactSection(section.heading));
+  if (!kept.length) return skillMd;
+  return kept
+    .map((section) => (section.heading === "__intro__" ? section.body : `## ${section.heading}\n${section.body}`))
+    .join("\n\n")
+    .trim();
+}
+
+function buildCompactRubricCheatsheet() {
+  return [
+    "Compact rubric reminder:",
+    "A: hard quality gates. Must use {Mer.}; no first-person; no broken language; match Country language; penalize too short/too long.",
+    "B: business clarity and completeness. Clear what {Mer.} is, what it offers, scope, conditions, exclusions, timing, and actionable steps when applicable.",
+    "C: SEO and semantic coverage. Core business keywords must appear naturally; no stuffing.",
+    "D: readability and localization. Natural, local, non-template tone.",
+    "Hard caps:",
+    "If high-risk policy/eligibility/scope gaps exist, pass_for_publish must be false, B <= 3.4, total <= 7.9.",
+    "If SEO-negative signals exist, D cannot be 1.0.",
+  ].join("\n");
+}
+
+function buildCompactRefs(input: ManualScoreInput, refs: PromptRefs) {
+  const compactRefs: PromptRefs = {};
+  const rawCountryMap = refs["country-language-map.json"];
+  if (rawCountryMap) {
+    try {
+      const parsed = JSON.parse(rawCountryMap) as Record<string, string>;
+      const country = String(input.Country || "").trim().toUpperCase();
+      const scoped = country && parsed[country] ? { [country]: parsed[country] } : parsed;
+      compactRefs["country-language-map.json"] = JSON.stringify(scoped);
+    } catch {
+      compactRefs["country-language-map.json"] = rawCountryMap;
+    }
+  }
+
+  compactRefs["rubric-cheatsheet.md"] = buildCompactRubricCheatsheet();
+
+  return compactRefs;
+}
+
+function compactOutputContract() {
+  return [
+    "Keep the scoring rules, rubric, and risk rules identical to full mode.",
+    "Ignore any larger output-field requirements from the skill file; use this compact contract only.",
+    "Return JSON only. No markdown. No extra text.",
+    "Do not output strengths, weaknesses, suggestions, or long notes.",
+    "Shape:",
+    'meta:{TermID,Domain,Country,versions_present[]}',
+    "results:[{version,score_total,score_breakdown{A,B,C,D},pass_for_publish,risk_flags{high_risk,seo_negative,termname_leak},issue_flags{first_person,lang_mismatch,too_short,too_long,keyword_missing,keyword_stuffing,ai_tone,localization_bad}}]",
+    "comparison:{best_version,ranking[],key_deltas[]}",
+    "notes_short:string",
+    "Limits: key_deltas max 2 short items; notes_short max 60 chars.",
+  ].join("\n\n");
+}
+
+export function buildPrompt(
+  input: ManualScoreInput,
+  skillMd: string,
+  refs: Record<string, string>,
+  outputMode: OutputMode = "full",
+) {
+  const promptSkillMd = outputMode === "compact" ? buildCompactSkillMd(skillMd) : skillMd;
+  const promptRefs = outputMode === "compact" ? buildCompactRefs(input, refs) : refs;
   const userPayload = {
     ...input,
     About_op: input.About_op || "",
   };
 
-  const system = [
-    "你是 About 文本质检评分器。",
-    "只做评分，不做任何改写、修复、润色。",
-    "必须严格按照给定 skill 规范输出一个 JSON 对象，不能输出其他文本。",
-    "不要泄露 TermName；商家指代只能使用 {Mer.}。",
-    "不要在 strengths/weaknesses/suggestions 使用第一人称。",
-    "以下是评分 skill 规范与参考文件：",
-    skillMd,
+  const systemParts = [
+    "You are a quality scoring engine for About/FAQ content.",
+    "Only score. Do not rewrite, repair, or polish the source text.",
+    "You must return exactly one valid JSON object and nothing else.",
+    "Do not leak TermName. Merchant references must use {Mer.}.",
+    "The scoring skill and reference files are below:",
+    promptSkillMd,
     "references/country-language-map.json:",
-    refs["country-language-map.json"] || "{}",
+    promptRefs["country-language-map.json"] || "{}",
     "references/rubric-cheatsheet.md:",
-    refs["rubric-cheatsheet.md"] || "",
-  ].join("\n\n");
+    promptRefs["rubric-cheatsheet.md"] || "",
+  ];
 
-  const user = [
-    "请基于以下输入评分，并严格输出 JSON：",
-    JSON.stringify(userPayload, null, 2),
-  ].join("\n\n");
+  if (outputMode === "compact") {
+    systemParts.push(compactOutputContract());
+  } else {
+    systemParts.push("In full mode, keep the original skill output contract without removing fields.");
+  }
+
+  const system = systemParts.join("\n\n");
+  const user = ["Score the following input and return JSON only:", JSON.stringify(userPayload, null, 2)].join("\n\n");
 
   return { system, user };
 }
@@ -130,59 +331,152 @@ function buildRepairPrompt(baseSystem: string, badCandidate: string, errors: str
   return {
     system: [
       baseSystem,
-      "你现在是 JSON 修复器。",
-      "请只输出一个严格 JSON 对象。",
-      "不要输出 markdown，不要输出代码块，不要解释。",
-      "保持字段结构与原任务要求完全一致。",
+      "You are now a JSON repairer.",
+      "Return exactly one strict JSON object.",
+      "Do not output markdown, code fences, or explanations.",
+      "Keep the field structure exactly aligned with the task contract.",
     ].join("\n\n"),
     user: [
-      "上一轮输出未通过校验，请修复为合法 JSON。",
-      `错误信息: ${errors.join("; ")}`,
-      "原始输出如下：",
+      "The previous output failed validation. Repair it into valid JSON.",
+      `Validation errors: ${errors.join("; ")}`,
+      "Original output:",
       badCandidate.slice(0, 12000),
-      "请返回修复后的单个 JSON 对象。",
+      "Return the repaired single JSON object.",
     ].join("\n\n"),
   };
 }
 
-function validateCandidate(candidate: string, input: ManualScoreInput) {
+function emptyIssueFlags(): ScoreIssueFlags {
+  return {
+    mer_missing: false,
+    first_person: false,
+    lang_mismatch: false,
+    too_short: false,
+    too_long: false,
+    keyword_missing: false,
+    keyword_stuffing: false,
+    ai_tone: false,
+    localization_bad: false,
+  };
+}
+
+function normalizeCompactCandidate(parsed: CompactScoreOutput, input: ManualScoreInput) {
+  const normalized: ScoreOutput = {
+    meta: {
+      TermID: parsed.meta.TermID,
+      Domain: parsed.meta.Domain,
+      Country: parsed.meta.Country,
+      versions_present: parsed.meta.versions_present,
+    },
+    results: parsed.results.map((item) => ({
+      version: item.version,
+      score_total: item.score_total,
+      score_breakdown: item.score_breakdown,
+      strengths: [],
+      weaknesses: [],
+      suggestions: [],
+      pass_for_publish: item.pass_for_publish,
+    })),
+    comparison: {
+      best_version: parsed.comparison.best_version,
+      ranking: parsed.comparison.ranking,
+      key_deltas: parsed.comparison.key_deltas,
+    },
+    notes: parsed.notes_short || "",
+  };
+
+  const forcedFlagsByVersion = Object.fromEntries(
+    parsed.results.map((item) => [
+      item.version,
+      {
+        highRisk: Boolean(item.risk_flags.high_risk),
+        seoNegative: Boolean(item.risk_flags.seo_negative),
+        termNameLeak: Boolean(item.risk_flags.termname_leak),
+      },
+    ]),
+  ) as NonNullable<Parameters<typeof validateScoreOutput>[1]["forcedFlagsByVersion"]>;
+
+  const validated = validateScoreOutput(normalized, {
+    termName: input.TermName,
+    expectOp: Boolean(input.About_op?.trim()),
+    forcedFlagsByVersion,
+  });
+
+  const issueFlags = emptyIssueFlags();
+  for (const item of parsed.results) {
+    const resultIssueFlags = item.issue_flags;
+    issueFlags.mer_missing ||= Boolean(item.risk_flags.termname_leak);
+    issueFlags.first_person ||= Boolean(resultIssueFlags.first_person);
+    issueFlags.lang_mismatch ||= Boolean(resultIssueFlags.lang_mismatch);
+    issueFlags.too_short ||= Boolean(resultIssueFlags.too_short);
+    issueFlags.too_long ||= Boolean(resultIssueFlags.too_long);
+    issueFlags.keyword_missing ||= Boolean(resultIssueFlags.keyword_missing);
+    issueFlags.keyword_stuffing ||= Boolean(resultIssueFlags.keyword_stuffing);
+    issueFlags.ai_tone ||= Boolean(resultIssueFlags.ai_tone);
+    issueFlags.localization_bad ||= Boolean(resultIssueFlags.localization_bad);
+  }
+
+  return {
+    ok: validated.ok,
+    value: validated.parsed ? ({ output: validated.parsed, diagnostics: { issueFlags } } satisfies ValidatedScorePayload) : undefined,
+    errors: validated.errors,
+  };
+}
+
+function validateCandidate(candidate: string, input: ManualScoreInput, outputMode: OutputMode) {
   const parsedResult = parseJsonCandidate(candidate);
   if (!parsedResult.ok) {
-    return { ok: false, errors: ["JSON 解析失败"] as string[] };
+    return { ok: false, errors: ["JSON parse failed"] as string[] };
   }
   const parsed = parsedResult.value;
+
+  if (outputMode === "compact") {
+    const compactParsed = compactScoreOutputSchema.safeParse(parsed);
+    if (!compactParsed.success) {
+      return { ok: false, errors: compactParsed.error.issues.map((issue) => issue.message) };
+    }
+    return normalizeCompactCandidate(compactParsed.data, input);
+  }
 
   const validated = validateScoreOutput(parsed, {
     termName: input.TermName,
     expectOp: Boolean(input.About_op?.trim()),
   });
-  return { ok: validated.ok, value: validated.parsed, errors: validated.errors };
+  return {
+    ok: validated.ok,
+    value: validated.parsed ? ({ output: validated.parsed } satisfies ValidatedScorePayload) : undefined,
+    errors: validated.errors,
+  };
 }
 
 export async function scoreAboutByAi(input: ManualScoreInput): Promise<ScoreOutput> {
   const skill = await skillRegistry.getAboutSkill();
-  const prompt = buildPrompt(input, skill.skillMd, skill.references);
-  const executed = await aiExecutor.execute<ScoreOutput>({
+  const prompt = buildPrompt(input, skill.skillMd, skill.references, "full");
+  const executed = await aiExecutor.execute<ValidatedScorePayload>({
     maxRetries: env.aiExecutorMaxRetries,
     buildMessages: () => prompt,
-    validate: (candidate) => validateCandidate(candidate, input),
+    validate: (candidate) => validateCandidate(candidate, input, "full"),
     buildRepairMessages: (candidate, errors) => buildRepairPrompt(prompt.system, candidate, errors),
   });
-  return executed.result;
+  return executed.result.output;
 }
 
-export async function scoreAboutByAiWithMeta(input: ManualScoreInput, options?: { requestTimeoutMs?: number }) {
+export async function scoreAboutByAiWithMeta(
+  input: ManualScoreInput,
+  options?: { requestTimeoutMs?: number; outputMode?: OutputMode },
+) {
   const startedAt = Date.now();
   const moduleId = input.moduleId || "about";
+  const outputMode = options?.outputMode ?? "full";
   const skill = await skillRegistry.getModuleSkill(moduleId);
   const moduleSkill = await getModuleSkillMd(moduleId);
-  const prompt = buildPrompt(input, moduleSkill.skillMd || skill.skillMd, skill.references);
+  const prompt = buildPrompt(input, moduleSkill.skillMd || skill.skillMd, skill.references, outputMode);
 
-  const executed = await aiExecutor.execute<ScoreOutput>({
+  const executed = await aiExecutor.execute<ValidatedScorePayload>({
     maxRetries: env.aiExecutorMaxRetries,
     requestTimeoutMs: options?.requestTimeoutMs,
     buildMessages: () => prompt,
-    validate: (candidate) => validateCandidate(candidate, input),
+    validate: (candidate) => validateCandidate(candidate, input, outputMode),
     buildRepairMessages: (candidate, errors) => buildRepairPrompt(prompt.system, candidate, errors),
   });
 
@@ -195,7 +489,8 @@ export async function scoreAboutByAiWithMeta(input: ManualScoreInput, options?: 
     (completionTokens / 1_000_000) * env.aiOutputCostPer1M;
 
   return {
-    output: executed.result,
+    output: executed.result.output,
+    diagnostics: executed.result.diagnostics,
     runtime: {
       elapsedMs,
       promptTokens,
@@ -205,6 +500,7 @@ export async function scoreAboutByAiWithMeta(input: ManualScoreInput, options?: 
       aiModel: env.aiModel,
       moduleId,
       skillSource: moduleSkill.source,
+      outputMode,
     },
   };
 }
