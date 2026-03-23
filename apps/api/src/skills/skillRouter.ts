@@ -5,6 +5,8 @@ import type { Capability, ModuleId, ScType } from "@about-demo/trpc";
 import { resolveSkillRoot } from "./skillPath";
 import { getModuleSkillMd, getModuleSkillOverride, readModuleSkillFile, saveModuleSkillMd } from "./skillStore";
 
+const BOARD_NAME_FIELD = "板块名称";
+
 export const faqOutputSubclasses = [
   "shipping",
   "newsletter/first order/sign up",
@@ -110,7 +112,7 @@ const generationRouteRules: SkillRouteRule[] = faqOutputSubclasses.map((subclass
   skillKey: `faq-output-${subclass.replaceAll("/", "-").replace(/\s+/g, "-")}`,
   skillLabel: `FAQ 输出 / ${subclass}`,
   status: "placeholder",
-  notes: `等待挂接 FAQ 输出 skill: ${subclass}`,
+  notes: `等待挂载 FAQ 输出 skill: ${subclass}`,
 }));
 
 generationRouteRules.push({
@@ -290,7 +292,7 @@ export async function getSkillRouteDocument(input: {
       source: fileDocument.source,
       isLive: false,
       canEditLive: false,
-      message: "当前展示的是仓库内的本地输出 skill 文件。该文件已就位，但 FAQ 输出自动执行器尚未正式接入。",
+      message: "当前展示的是仓库内的本地输出 skill 文件。",
     };
   }
 
@@ -426,7 +428,7 @@ export function getGenerationFramework(scType: ScType) {
       "Domain",
       "Source",
       "Subclass",
-      "板块名称",
+      BOARD_NAME_FIELD,
       "Titile1",
       "Brief Introduction",
       "Href Kw",
@@ -440,7 +442,7 @@ export function getGenerationFramework(scType: ScType) {
       Domain: "junkyard.no",
       Source: "Blog",
       Subclass: "gift card",
-      板块名称: "faq",
+      [BOARD_NAME_FIELD]: "faq",
       Titile1: "Tillater {Mer.} meg å kjøpe gavekortet deres?",
       "Brief Introduction":
         "{Mer.} gavekort er definitivt den perfekte hjelpen når du ikke har en bestemt gaveide i tankene! De vakre gavekortene deres kan kjøpes direkte fra nettbutikken og kan brukes til hele nettbutikkens produktspekter! Du kan sende elektroniske gavekort digitalt via e-post: Velg en dato for å sende dem!",

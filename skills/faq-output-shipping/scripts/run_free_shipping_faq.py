@@ -718,15 +718,15 @@ def main() -> None:
     out_ws = out_wb.active
     out_ws.title = "Sheet1"
     out_ws.append([
-        "Content",
+        "ContentType",
         "Country",
-        "TermId",
+        "TermID",
         "TermName",
         "Domain",
         "Source",
-        "Subclo",
+        "Subclass",
         "板块名称",
-        "Title1",
+        "Titile1",
         "Brief Introduction",
         "Href Kw",
         "Href Url",

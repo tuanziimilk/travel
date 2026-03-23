@@ -1,23 +1,38 @@
+---
 name: return-policy-faq-answer
 description: >
-  涓?HotDeals.com 鐨勯€€璐ф斂绛栫被 FAQ 鏀瑰啓浠诲姟鐢熸垚澶氳绉嶉棶棰樹笌绛旀锛屽苟鎸夎〃鏍煎瓧娈佃緭鍑恒€傞€傜敤浜庡鐞?Excel 鎴栫粨鏋勫寲鏁版嵁涓殑 return policy銆乺eturns銆乺efund銆乪xchange 绛変簨瀹炲瀷鏂囨鏀瑰啓浠诲姟锛涗弗鏍兼牴鎹?country 杈撳嚭瀵瑰簲鍥藉璇█锛屼笉璺熼殢鍘熸枃璇█锛涘尯鍒?free returns銆乫ree mail returns銆乫ree in-store returns銆乫ree exchanges銆乧ancellation policy銆乵oney-back guarantee 绛変笉鍚屾蹇碉紝骞朵娇鐢?{Mer.} 鍙橀噺鏇挎崲鍟嗗鍚嶃€?---
-# 澶氳绉嶉€€璐ф斂绛?FAQ 鏀瑰啓鎶€鑳?
-## 鎵ц鐩爣
-灏嗚緭鍏ヨ〃鏍间腑鐨?`discount_details` 鏀瑰啓涓哄彲鍙戝竷鐨?FAQ 鏂囨锛屽苟杈撳嚭鍒版寚瀹氳〃鏍煎瓧娈点€?
-浼樺厛绾у浐瀹氫负锛?
-`鍏堢粰缁撹 > 鏄庣‘鍝竴绉嶅厤璐规垨涓嶅厤璐?> 鍐嶈ˉ鏈€鍏抽敭闄愬埗鏉′欢 > 鏈€鍚庢帶鍒跺瓧鏁癭
-涓嶈涓轰簡鍘嬬缉闀垮害鍒犻櫎鍏抽敭淇℃伅锛屼篃涓嶈鎶婃墍鏈夐檺鍒舵潯浠跺爢杩涘悓涓€鍙ャ€?
-## 杈撳叆鏉ユ簮
-榛樿澶勭悊琛ㄦ牸琛屾暟鎹€傛牳蹇冩敼鍐欏瓧娈典负锛?
+  为 HotDeals.com 的退货政策类 FAQ 改写任务生成多语种问题与答案，并按表格字段输出。适用于处理 Excel 或结构化数据中的 return policy、returns、refund、exchange 等事实型文案改写任务；严格根据 country 输出对应国家语言，不跟随原文语言；区分 free returns、free mail returns、free in-store returns、free exchanges、cancellation policy、money-back guarantee 等不同概念，并使用 {Mer.} 变量替换商家名。
+---
+
+# 多语种退货政策 FAQ 改写技能
+
+## 执行目标
+
+将输入表格中的 `discount_details` 改写为可发布的 FAQ 文案，并输出到指定表格字段。
+
+优先级固定为：
+
+`先给结论 > 明确哪一种免费或不免费 > 再补最关键限制条件 > 最后控制字数`
+
+不要为了压缩长度删除关键信息，也不要把所有限制条件堆进同一句。
+
+## 输入来源
+
+默认处理表格行数据。核心改写字段为：
+
 - `country`
 - `term_id`
 - `domain`
 - `term_name`
 - `fact_type`
 - `discount_details`
-鍏朵腑鐪熸鐢ㄤ簬鐞嗚В涓庢敼鍐欑殑鍘熸枃鍦?`discount_details`銆?
-## 杈撳嚭鏍煎紡
-杈撳嚭琛ㄦ牸瀛楁鍥哄畾涓猴細
+
+其中真正用于理解与改写的原文在 `discount_details`。
+
+## 输出格式
+
+输出表格字段固定为：
+
 - `ContentType`
 - `Country`
 - `TermID`
@@ -25,78 +40,105 @@ description: >
 - `Domain`
 - `Source`
 - `Subclass`
-- `鏉垮潡鍚嶇О`
+- `板块名称`
 - `Titile1`
 - `Brief Introduction`
 - `Href Kw`
 - `Href Url`
-瀛楁鏄犲皠瑙勫垯锛?
-| 杈撳嚭瀛楁 | 瑙勫垯 |
+
+字段映射规则：
+
+| 输出字段 | 规则 |
 |------|------|
-| `ContentType` | 鍥哄畾濉?`faq` |
-| `Country` | 鍙栬緭鍏?`country` |
-| `TermID` | 鍙栬緭鍏?`term_id` |
-| `TermName` | 鍙栬緭鍏?`term_name` |
-| `Domain` | 鍙栬緭鍏?`domain` |
-| `Source` | 鐣欑┖ |
-| `Subclass` | 鍙栬緭鍏?`fact_type` |
-| `鏉垮潡鍚嶇О` | 鐣欑┖ |
-| `Titile1` | FAQ 闂锛屾寜 `country` 瀵瑰簲璇杈撳嚭锛屼娇鐢?`{Mer.}` 鍙橀噺 |
-| `Brief Introduction` | 鏀瑰啓鍚庣殑 FAQ 绛旀 |
-| `Href Kw` | 鐣欑┖ |
-| `Href Url` | 鐣欑┖ |
-## 璇█瑙勫垯
-### 1. 闂涓庣瓟妗堜弗鏍艰窡闅?`country` 杈撳嚭锛屼笉璺熼殢鍘熸枃璇█
-鍗充娇 `discount_details` 鏄嫳璇€佸痉璇垨澶氳娣锋潅锛屽彧瑕?`country` 宸茬粰鍑猴紝灏卞繀椤绘寜璇ュ浗瀹跺搴旇瑷€杈撳嚭銆?
-鍥哄畾鏄犲皠濡備笅锛?
-| 鍥藉缂╁啓 | 鍥藉涓枃鍚?| 璇█缂╁啓 | 杈撳嚭璇█ |
+| `ContentType` | 固定填 `faq` |
+| `Country` | 取输入 `country` |
+| `TermID` | 取输入 `term_id` |
+| `TermName` | 取输入 `term_name` |
+| `Domain` | 取输入 `domain` |
+| `Source` | 留空 |
+| `Subclass` | 取输入 `fact_type` |
+| `板块名称` | 留空 |
+| `Titile1` | FAQ 问题，按 `country` 对应语种输出，使用 `{Mer.}` 变量 |
+| `Brief Introduction` | 改写后的 FAQ 答案 |
+| `Href Kw` | 留空 |
+| `Href Url` | 留空 |
+
+## 语言规则
+
+### 1. 问题与答案严格跟随 `country` 输出，不跟随原文语言
+
+即使 `discount_details` 是英语、德语或多语混杂，只要 `country` 已给出，就必须按该国家对应语言输出。
+
+固定映射如下：
+
+| 国家缩写 | 国家中文名 | 语言缩写 | 输出语言 |
 |------|------|------|------|
-| `UK` | 鑻卞浗 | `en` | 鑻辫 |
-| `AU` | 婢冲ぇ鍒╀簹 | `en` | 鑻辫 |
-| `CA` | 鍔犳嬁澶?| `en` | 鑻辫 |
-| `DE` | 寰峰浗 | `de` | 寰疯 |
-| `FR` | 娉曞浗 | `fr` | 娉曡 |
-| `NL` | 鑽峰叞 | `nl` | 鑽峰叞璇?|
-| `IT` | 鎰忓ぇ鍒?| `it` | 鎰忓ぇ鍒╄ |
-| `AT` | 濂ュ湴鍒?| `de` | 寰疯 |
-| `BE` | 姣斿埄鏃?| `nl` | 鑽峰叞璇?|
-| `CH` | 鐟炲＋ | `de` | 寰疯 |
-| `PT` | 钁¤悇鐗?| `pt` | 钁¤悇鐗欒 |
-| `GR` | 甯岃厞 | `el` | 甯岃厞璇?|
-| `BR` | 宸磋タ | `pt` | 钁¤悇鐗欒 |
-| `PL` | 娉㈠叞 | `pl` | 娉㈠叞璇?|
-| `ES` | 瑗跨彮鐗?| `es` | 瑗跨彮鐗欒 |
-| `SE` | 鐟炲吀 | `sv` | 鐟炲吀璇?|
-| `KR` | 闊╁浗 | `ko` | 闊╄ |
-| `CZ` | 鎹峰厠 | `cs` | 鎹峰厠璇?|
-| `DK` | 涓归害 | `da` | 涓归害璇?|
-| `SK` | 鏂礇浼愬厠 | `sk` | 鏂礇浼愬厠璇?|
-| `JP` | 鏃ユ湰 | `ja` | 鏃ヨ |
-| `HK` | 涓浗棣欐腐 | `zh-Hant` | 绻佷綋涓枃 |
-濡傛灉 `country` 涓嶅湪琛ㄤ腑锛?
-- 榛樿鐢ㄨ嫳璇緭鍑?- 涓嶅啀鍥犱负鍘熸枃璇█涓嶅悓鑰屽垏鎹㈣绉?
-### 2. 闂浣跨敤 `{Mer.}` 鍙橀噺
-闂涓殑鍟嗗鍚嶇粺涓€鍐欎綔 `{Mer.}`锛屼笉瑕佺洿鎺ュ啓鐪熷疄鍝佺墝鍚嶃€?
-闂涓嶈楂橀閲嶅鍚屼竴鍙ュ紡锛屽彲浠ュ湪鍚屼竴璇鍐呭仛杞诲井鍙樺寲锛屼絾璇箟蹇呴』绋冲畾銆佽嚜鐒躲€佸彲鍙戝竷銆?
-绀轰緥锛?
-- 鑻辫锛歚Does {Mer.} offer free returns?`
-- 鑻辫锛歚Can items be returned to {Mer.} for free?`
-- 瑗胯锛歚驴{Mer.} ofrece devoluciones gratuitas?`
-- 闊╄锛歚{Mer.}電?氍措 氚橅拡鞚?歆€鞗愴晿雮橃殧?`
-- 娉㈠叞璇細`Czy w {Mer.} mozna skorzystac z darmowego zwrotu?`
-### 3. 绛旀涓殑鍝佺墝鍚嶄篃鏇挎崲涓?`{Mer.}`
-濡傛灉 `discount_details` 鍘熸枃涓嚭鐜板搧鐗屽悕锛屾敼鍐欐椂鏇挎崲涓?`{Mer.}`銆?
-## 鏀瑰啓瑙勫垯
-### 鏍稿績淇℃伅鎻愬彇椤哄簭
-浠?`discount_details` 鎻愬彇骞堕噸缁勬垚 `1-2` 鍙ョ煭绛旀锛岄『搴忓浐瀹氫负锛?
-1. 鍏堢粰缁撹
-2. 鍐嶈鏄庡厤璐归€傜敤浜庡摢涓€绉嶈繑鍥炴柟寮?3. 鏈€鍚庤ˉ鏈€鍏抽敭闄愬埗鏉′欢
-鍏朵腑锛?
-- 缁撹蹇呴』鍏堝垽鏂繖鏄?`free returns`銆乣paid returns`銆乣free in-store returns only`銆乣free mail returns only`銆乣cancellation/refund policy`銆乣money-back guarantee`銆乣damaged-item resolution` 杩樻槸 `subscription cancellation`
-- 绗簩娈典俊鎭繀椤绘槑纭€滃摢绉嶅厤璐光€濓紝涓嶈鍙啓绗肩粺鐨?`free returns`
-- 绗笁娈靛彧淇濈暀鏈€鍏抽敭闄愬埗锛屼紭鍏堜繚鐣欎竴绉嶏紝涓嶈鍦ㄤ富鍙ラ噷濉炴弧绐楀彛銆佸崼鐢熸爣绛俱€佺己浠躲€乷riginal shipping銆乺estocking fee銆乪xcluded items
-### `free returns` 鍒ゅ畾杈圭晫
-蹇呴』涓ユ牸鍖哄垎涓嬪垪姒傚康锛屼笉鑳芥贩鍐欙細
+| `UK` | 英国 | `en` | 英语 |
+| `AU` | 澳大利亚 | `en` | 英语 |
+| `CA` | 加拿大 | `en` | 英语 |
+| `DE` | 德国 | `de` | 德语 |
+| `FR` | 法国 | `fr` | 法语 |
+| `NL` | 荷兰 | `nl` | 荷兰语 |
+| `IT` | 意大利 | `it` | 意大利语 |
+| `AT` | 奥地利 | `de` | 德语 |
+| `BE` | 比利时 | `nl` | 荷兰语 |
+| `CH` | 瑞士 | `de` | 德语 |
+| `PT` | 葡萄牙 | `pt` | 葡萄牙语 |
+| `GR` | 希腊 | `el` | 希腊语 |
+| `BR` | 巴西 | `pt` | 葡萄牙语 |
+| `PL` | 波兰 | `pl` | 波兰语 |
+| `ES` | 西班牙 | `es` | 西班牙语 |
+| `SE` | 瑞典 | `sv` | 瑞典语 |
+| `KR` | 韩国 | `ko` | 韩语 |
+| `CZ` | 捷克 | `cs` | 捷克语 |
+| `DK` | 丹麦 | `da` | 丹麦语 |
+| `SK` | 斯洛伐克 | `sk` | 斯洛伐克语 |
+| `JP` | 日本 | `ja` | 日语 |
+| `HK` | 中国香港 | `zh-Hant` | 繁体中文 |
+
+如果 `country` 不在表中：
+
+- 默认用英语输出
+- 不再因为原文语言不同而切换语种
+
+### 2. 问题使用 `{Mer.}` 变量
+
+问题中的商家名统一写作 `{Mer.}`，不要直接写真实品牌名。
+
+问题不要高频重复同一句式，可以在同一语种内做轻微变化，但语义必须稳定、自然、可发布。
+
+示例：
+
+- 英语：`Does {Mer.} offer free returns?`
+- 英语：`Can items be returned to {Mer.} for free?`
+- 西语：`¿{Mer.} ofrece devoluciones gratuitas?`
+- 韩语：`{Mer.}는 무료 반품을 지원하나요?`
+- 波兰语：`Czy w {Mer.} mozna skorzystac z darmowego zwrotu?`
+
+### 3. 答案中的品牌名也替换为 `{Mer.}`
+
+如果 `discount_details` 原文中出现品牌名，改写时替换为 `{Mer.}`。
+
+## 改写规则
+
+### 核心信息提取顺序
+
+从 `discount_details` 提取并重组成 `1-2` 句短答案，顺序固定为：
+
+1. 先给结论
+2. 再说明免费适用于哪一种返回方式
+3. 最后补最关键限制条件
+
+其中：
+
+- 结论必须先判断这是 `free returns`、`paid returns`、`free in-store returns only`、`free mail returns only`、`cancellation/refund policy`、`money-back guarantee`、`damaged-item resolution` 还是 `subscription cancellation`
+- 第二段信息必须明确“哪种免费”，不要只写笼统的 `free returns`
+- 第三段只保留最关键限制，优先保留一种，不要在主句里塞满窗口、卫生标签、缺件、original shipping、restocking fee、excluded items
+
+### `free returns` 判定边界
+
+必须严格区分下列概念，不能混写：
+
 - `free returns`
 - `free mail returns`
 - `free in-store returns`
@@ -106,86 +148,146 @@ description: >
 - `damaged-item replacement`
 - `subscription cancellation`
 - `refund for non-delivered service`
-鍙湁褰撴潵婧愭槑纭敮鎸佷互涓嬩箣涓€鏃讹紝鎵嶅彲鐩存帴鍐欐垚鍏嶈垂閫€璐э細
+
+只有当来源明确支持以下之一时，才可直接写成免费退货：
+
 - `return shipping waived`
 - `prepaid return label`
 - `no return fee`
 - `free in-store return`
-浠ヤ笅鎯呭喌閮戒笉鑳界洿鎺ュ啓鎴?`free returns`锛?
-- 鍙 `money-back guarantee`
-- 鍙 `cancel anytime`
-- 鍙 `refund available`
-- 鍙敮鎸?`free exchange`
-- 鍙 damaged / defective items 鍏嶈垂琛ュ彂鎴栭€€娆?- 鍙敮鎸佹湇鍔℃湭浜や粯鏃堕€€娆?- 閰掑簵銆佹満绁ㄣ€侀棬绁ㄥ満鏅腑鐨勫厤璐瑰彇娑?
-### 蹇呴』浼樺厛淇濈暀鐨勪俊鎭?
-- 缁撹鏄厤璐归€€銆佷粯璐归€€銆佷粎闂ㄥ簵鍏嶈垂銆佷粎閭瘎鍏嶈垂銆佷笉鍙€€锛岃繕鏄彇娑?閫€娆炬斂绛?- 鏄庣‘鐨勮繑鍥炴柟寮忥細`mail`銆乣in-store`銆乣exchange`銆乣cancellation`銆乣refund guarantee`
-- 涓€椤规渶鍏抽敭闄愬埗锛氬鏃堕棿绐楀彛銆佸晢鍝佺姸鎬併€侀€傜敤鍝佺被銆侀€€娆惧幓鍚戞垨涓昏渚嬪
-### 闀垮害瑙勫垯
-- 榛樿灏介噺鐭?- 浼樺厛鎺у埗鍦?`1-2` 鍙?- 鍙弬鑰?`<=50` 璇嶏紝浣嗕笉鑳藉洜鍘嬬缉鑰屼涪澶辨牳蹇冧俊鎭?
-### 鏂囬瑕佹眰
-- 鐩存帴鍥炵瓟闂锛屼笉鍐欒儗鏅摵鍨?- 淇濈暀浜嬪疄锛屼笉琛ュ厖鏈粰鍑虹殑鏈熼檺銆佽垂鐢ㄦ垨渚嬪鏉′欢
-- 鍘绘帀鍣煶淇℃伅锛屽鈥滄樉绀烘洿澶氣€濃€淎I 鍙兘鍑洪敊鈥濃€滄璐熷弽棣堚€濃€滃垎浜€?- 鍘绘帀閲嶅姝ラ锛屽彧淇濈暀鏈€鍏抽敭鐨勯€€璐ф潯浠?- 涓嶅啓 CTA锛屼笉寮曞鐢ㄦ埛鈥滃幓鏌ョ湅瀹樼綉鈥?- 涓嶄娇鐢ㄧ涓€浜虹О
-- 閬垮厤鎵€鏈夌瓟妗堥兘浠ュ悓涓€濂楅珮棰戝彞寮忓紑澶达紝鍙浛鎹㈣〃杈撅紝浣嗛€昏緫椤哄簭蹇呴』绋冲畾
-### 鍥哄畾绛旀缁撴瀯
-姣忔潯 `Brief Introduction` 蹇呴』閬靛畧杩欎釜缁撴瀯锛?
-1. 鍏堢粰缁撹
-2. 鍐嶈鏄庡厤璐规垨涓嶅厤璐归€傜敤浜庡摢绉嶆柟寮?3. 鏈€鍚庤ˉ鏈€鍏抽敭闄愬埗鏉′欢
-鍙帴鍙楃ず渚嬶細
+
+以下情况都不能直接写成 `free returns`：
+
+- 只说 `money-back guarantee`
+- 只说 `cancel anytime`
+- 只说 `refund available`
+- 只支持 `free exchange`
+- 只对 damaged / defective items 免费补发或退款
+- 只支持服务未交付时退款
+- 酒店、机票、门票场景中的免费取消
+
+### 必须优先保留的信息
+
+- 结论是免费退、付费退、仅门店免费、仅邮寄免费、不可退，还是取消/退款政策
+- 明确的返回方式：`mail`、`in-store`、`exchange`、`cancellation`、`refund guarantee`
+- 一项最关键限制：如时间窗口、商品状态、适用品类、退款去向或主要例外
+
+### 长度规则
+
+- 默认尽量短
+- 优先控制在 `1-2` 句
+- 可参考 `<=50` 词，但不能因压缩而丢失核心信息
+
+### 文风要求
+
+- 直接回答问题，不写背景铺垫
+- 保留事实，不补充未给出的期限、费用或例外条件
+- 去掉噪音信息，如“显示更多”“AI 可能出错”“正负反馈”“分享”
+- 去掉重复步骤，只保留最关键的退货条件
+- 不写 CTA，不引导用户“去查看官网”
+- 不使用第一人称
+- 避免所有答案都以同一套高频句式开头，可替换表达，但逻辑顺序必须稳定
+
+### 固定答案结构
+
+每条 `Brief Introduction` 必须遵守这个结构：
+
+1. 先给结论
+2. 再说明免费或不免费适用于哪种方式
+3. 最后补最关键限制条件
+
+可接受示例：
+
 - `Yes, {Mer.} offers free mail returns. The prepaid label usually applies to eligible items, while oversized products may still be excluded.`
 - `No, {Mer.} does not provide free mail returns. In-store returns are free, but mailed returns are at the customer's expense.`
 - `{Mer.} does not have free returns in the retail sense. It mainly offers a 30-day money-back guarantee for eligible subscriptions.`
-涓嶆帹鑽愬啓娉曪細
-- 鎶婄獥鍙ｃ€佸寘瑁呫€佸崼鐢熸爣绛俱€乷riginal shipping銆乺estocking fee銆乪xcluded items 鍏ㄩ儴鍫嗚繘绗竴鍙?- 鐢?`free returns` 姒傛嫭瀹為檯涓婂彧鏄?`free exchange` 鎴?`cancellation`
-- 閰掑簵銆佹満绁ㄣ€侀棬绁ㄥ満鏅粛鍐欐垚 `returns`
-## 鍦烘櫙瑙勫垯
-### 闆跺敭鍟嗗搧
-褰?`fact_type` 涓?`return policy`銆乣returns`銆乣refund`銆乣exchange` 鎴栨槑鏄惧睘浜庨浂鍞晢鍝侀€€璐ф椂锛?
-- `Titile1` 搴斾紭鍏堝洿缁曗€滄槸鍚﹀厤璐归€€璐р€濇彁闂?- `Brief Introduction` 蹇呴』鍏堝尯鍒?`mail` 鍜?`in-store`
-- 濡傛灉鍙湁闂ㄥ簵鍏嶈垂锛屼笉鑳藉啓鎴愭暣浣撳厤璐归€€璐?- 濡傛灉鍙湁閭瘎鍏嶈垂锛屼篃瑕佹槑纭槸 `mail returns`
-### 閰掑簵 / 鏈虹エ / 闂ㄧエ / 棰勮鏈嶅姟
-- 鐢?`cancellation policy` 鎴?`refund policy`
-- 涓嶈鍐欐垚 `free returns`
-- 鏍稿績淇℃伅鏄細鏄惁鍙厤璐瑰彇娑堛€佷綍鏃跺彲閫€銆佸摢浜涚エ浠锋垨鎴夸环涓嶅彲閫€
-### 鏁板瓧浜у搧 / 杞欢 / 涓嬭浇鍐呭
-- 鐢?`trial`銆乣refund guarantee`銆乣money-back guarantee`
-- 涓嶈鍐欐垚 `free returns`
-- 濡傛灉鏄笅杞藉悗涓嶉€€锛屼篃瑕佹槑纭槸鏁板瓧鍐呭鎴栬闃呴檺鍒?
-### 鐢熼矞椋熷搧 / 瀹氬埗椋熷搧 / 鏄撹厫鍟嗗搧
-- 鐢?`damaged-order resolution`
-- 涓嶈鍐欐垚 `free returns`
-- 浼樺厛璇存槑锛氶€氬父涓嶆帴鍙楀父瑙勯€€璐э紝鎹熷潖/閿欏崟鍙ˉ鍙戞垨閫€娆?
-### 璁㈤槄鏈嶅姟 / 浼氬憳 / 鏉傚織 / SaaS
-- 鐢?`cancel`銆乣prorated refund`銆乣no refund`銆乣money-back guarantee`
-- 涓嶈鍐欐垚 `free returns`
-- 浼樺厛璇存槑鍙栨秷鍚庢槸鍚﹀仠姝㈢画璐广€佹槸鍚︽寜鏈娇鐢ㄩ儴鍒嗛€€娆俱€佹槸鍚︽湁璇曠敤鏈?
-### 鏃犳硶閫€璐ф垨閮ㄥ垎鍙€€鍦烘櫙
-鑻?`discount_details` 鏄庢樉琛ㄧず涓嶆敮鎸侀€€璐с€佷粎閮ㄥ垎鏂瑰紡鍏嶈垂銆佷粎閮ㄥ垎鍝佺被鍙€€銆丗inal Sale 涓嶅彲閫€锛?
-- 绛旀寮€澶村厛鏄庣‘ `No` 鎴栤€滀笉鏄墍鏈夋柟寮忛兘鍏嶈垂鈥?- 鍐嶈ˉ鍏呮渶鍏抽敭闄愬埗锛屽 Final Sale銆佸畾鍒跺晢鍝併€佸唴琛?缇庡绛夐櫎澶?- 濡傛灉浠呮敮鎸佹崲璐с€佸簵閾虹Н鍒嗛€€娆俱€侀棬搴楀厤璐归€€鎴栨湇鍔″彇娑堬紝瑕佹槑纭啓鍑?
-### 鍏朵粬浜嬪疄绫诲瀷
-鑻?`fact_type` 涓嶆槸閫€璐ф斂绛栵紝浣嗙敤鎴蜂粛瑕佹眰鎸夎 skill 鏀瑰啓锛?
-- 闂鎸夋渶璐磋繎涓氬姟绫诲瀷鐨勫厤璐归€€璐?/ 鍙栨秷 / 閫€娆捐涔夋敼鍐?- 绛旀鍙繚鐣欐渶鍏抽敭浜嬪疄
-- 璇█涓庡搧鐗屽彉閲忚鍒欎笉鍙?
-## 娓呮礂 `discount_details`
-鏀瑰啓鍓嶅厛娓呮礂鍘熸枃涓殑浣庝环鍊煎櫔闊筹細
-- 骞冲彴 UI 鏂囨锛歚Mostrar todo`銆乣AI 妯″紡`銆乣鏌ョ湅鍏ㄩ儴`銆乣瓿奠湢`
-- 鏃犲叧鏉ユ簮鏍囪锛歚Instagram`銆乣Bankier.pl +5`
-- 閲嶅姝ラ涓庨噸澶嶅彞
-- 娉涘寲鎻愰啋锛歚AI answers may contain errors`
-鍙繚鐣欒兘鍥炵瓟 FAQ 鐨勬湁鏁堜簨瀹炪€?
-## 璐ㄦ娓呭崟
-姣忔潯杈撳嚭瀹屾垚鍚庢鏌ワ細
-| 妫€鏌ラ」 | 鏍囧噯 |
+
+不推荐写法：
+
+- 把窗口、包装、卫生标签、original shipping、restocking fee、excluded items 全部堆进第一句
+- 用 `free returns` 概括实际上只是 `free exchange` 或 `cancellation`
+- 酒店、机票、门票场景仍写成 `returns`
+
+## 场景规则
+
+### 零售商品
+
+当 `fact_type` 为 `return policy`、`returns`、`refund`、`exchange` 或明显属于零售商品退货时：
+
+- `Titile1` 应优先围绕“是否免费退货”提问
+- `Brief Introduction` 必须先区分 `mail` 和 `in-store`
+- 如果只有门店免费，不能写成整体免费退货
+- 如果只有邮寄免费，也要明确是 `mail returns`
+
+### 酒店 / 机票 / 门票 / 预订服务
+
+- 用 `cancellation policy` 或 `refund policy`
+- 不要写成 `free returns`
+- 核心信息是：是否可免费取消、何时可退、哪些票价或房价不可退
+
+### 数字产品 / 软件 / 下载内容
+
+- 用 `trial`、`refund guarantee`、`money-back guarantee`
+- 不要写成 `free returns`
+- 如果是下载后不退，也要明确是数字内容或订阅限制
+
+### 生鲜食品 / 定制食品 / 易腐商品
+
+- 用 `damaged-order resolution`
+- 不要写成 `free returns`
+- 优先说明：通常不接受常规退货，损坏/错单可补发或退款
+
+### 订阅服务 / 会员 / 杂志 / SaaS
+
+- 用 `cancel`、`prorated refund`、`no refund`、`money-back guarantee`
+- 不要写成 `free returns`
+- 优先说明取消后是否停止续费、是否按未使用部分退款、是否有试用期
+
+### 无法退货或部分可退场景
+
+若 `discount_details` 明显表示不支持退货、仅部分方式免费、仅部分品类可退、Final Sale 不可退：
+
+- 答案开头先明确 `No` 或“不是所有方式都免费”
+- 再补充最关键限制，如 Final Sale、定制商品、内衣/美妆等除外
+- 如果仅支持换货、店铺积分退款、门店免费退或服务取消，要明确写出
+
+### 其他事实类型
+
+若 `fact_type` 不是退货政策，但用户仍要求按该 skill 改写：
+
+- 问题按最贴近业务类型的免费退货 / 取消 / 退款语义改写
+- 答案只保留最关键事实
+- 语言与品牌变量规则不变
+
+## 清洗 `discount_details`
+
+改写前先清洗原文中的低价值噪音：
+
+- 平台 UI 文案：`Mostrar todo`、`AI 模式`、`查看全部`、`공유`
+- 无关来源标记：`Instagram`、`Bankier.pl +5`
+- 重复步骤与重复句
+- 泛化提醒：`AI answers may contain errors`
+
+只保留能回答 FAQ 的有效事实。
+
+## 质检清单
+
+每条输出完成后检查：
+
+| 检查项 | 标准 |
 |------|------|
-| 璇█涓€鑷?| 闂鍜岀瓟妗堜弗鏍间笌 `country` 瀵瑰簲璇█涓€鑷?|
-| 鍙橀噺鏇挎崲 | 浣跨敤 `{Mer.}`锛屼笉鐩存帴鏆撮湶鍝佺墝鍚?|
-| 姒傚康鍑嗙‘ | `free returns` 涓?`free exchange` / `cancellation` / `money-back guarantee` 绛変弗鏍煎尯鍒?|
-| 缁撴瀯绋冲畾 | 鍏堢粨璁猴紝鍐嶈鏄庡厤璐归€傜敤鏂瑰紡锛屾渶鍚庤ˉ鍏抽敭闄愬埗 |
-| 鍙ュ紡鑷劧 | 涓嶆満姊伴噸澶嶅悓涓€鍙ュ瀷锛屼絾閫昏緫椤哄簭涓€鑷?|
-| 涓嶇紪閫?| 鏈湪鍘熸枃鍑虹幇鐨勪俊鎭笉琛ュ啓 |
-| 鍘诲櫔瀹屾垚 | 鏃犲钩鍙板櫔闊炽€佹棤鏃犲叧鎻愮ず |
-| 杈撳嚭瀛楁姝ｇ‘ | 琛ㄥご涓庢槧灏勫畬鍏ㄤ竴鑷?|
-| `Source`/`鏉垮潡鍚嶇О` | 蹇呴』鐣欑┖ |
-## 鍙傝€冩枃浠?
-- `references/input-schema.md` 鈥?琛ㄦ牸杈撳叆杈撳嚭瀛楁璇存槑
-- `references/examples.md` 鈥?閫€璐ф斂绛?FAQ 绀轰緥
-- `templates/answer-template.txt` 鈥?FAQ 璧疯崏妯℃澘
+| 语言一致 | 问题和答案严格与 `country` 对应语言一致 |
+| 变量替换 | 使用 `{Mer.}`，不直接暴露品牌名 |
+| 概念准确 | `free returns` 与 `free exchange` / `cancellation` / `money-back guarantee` 等严格区分 |
+| 结构稳定 | 先结论，再说明免费适用方式，最后补关键限制 |
+| 句式自然 | 不机械重复同一句型，但逻辑顺序一致 |
+| 不编造 | 未在原文出现的信息不补写 |
+| 去噪完成 | 无平台噪音、无无关提示 |
+| 输出字段正确 | 表头与映射完全一致 |
+| `Source`/`板块名称` | 必须留空 |
+
+## 参考文件
+
+- `references/input-schema.md` — 表格输入输出字段说明
+- `references/examples.md` — 退货政策 FAQ 示例
+- `templates/answer-template.txt` — FAQ 起草模板

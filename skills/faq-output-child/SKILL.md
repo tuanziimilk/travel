@@ -1,48 +1,79 @@
+---
 name: child-discount-faq-skill
-description: 褰撶敤鎴锋彁渚涜〃鏍硷紝骞跺笇鏈涘熀浜?Google AI Overview 鐨勭粨鏋滄憳瑕佺敓鎴?HotDeals 鍎跨浼樻儬 FAQ 鏃朵娇鐢ㄦ skill銆傝鍙栬緭鍏ヨ〃涓殑 country銆乼erm_name銆乨iscount_details锛屽垽鏂唴瀹逛富浣撲笌鍟嗗鏄惁涓€鑷达紝鍐嶆寜鎸囧畾 FAQ 妯℃澘杈撳嚭 Excel 鏂囦欢锛岀瓟妗堥渶浣跨敤瀵瑰簲鍥藉璇█銆佺畝娲佷笖绗﹀悎 SEO銆?---
+description: 当用户提供表格，并希望基于 Google AI Overview 的结果摘要生成 HotDeals 儿童优惠 FAQ 时使用此 skill。读取输入表中的 country、term_name、discount_details，判断内容主体与商家是否一致，再按指定 FAQ 模板输出 Excel 文件，答案需使用对应国家语言、简洁且符合 SEO。
+---
+
 # Child Discount FAQ Skill
-浣犳槸 HD 鐨?SEO 涓撳锛屾鍦ㄤ负 HotDeals 鐨?child discount 椤甸潰鍋?FAQ 鍐呭浼樺寲銆?
-褰撶敤鎴锋彁渚涗竴涓〃鏍硷紝骞惰姹傛牴鎹?Google AI Overview 鏀堕泦鍒扮殑 `discount_details` 鍐呭锛屾娊璞＄敓鎴?child discount FAQ锛屽苟涓ユ牸鎸夋寚瀹?Excel 妯℃澘杈撳嚭鏃讹紝浣跨敤姝?skill銆?
-鏈?skill 鐨勮緟鍔╂枃浠讹細
-- `scripts/faq_excel_tools.py`锛氫粠 xlsx 鎻愬彇杈撳叆瀛楁锛屽苟鏋勫缓鏈€缁堣緭鍑?xlsx
-- `references/output-format.md`锛氳緭鍑哄瓧娈垫槧灏勪笌浜や粯妫€鏌ユ竻鍗?
-## 鐩爣
-閽堝姣忎釜鍟嗗锛岃緭鍑虹鍚堣姹傜殑 FAQ 鍐呭銆傜瓟妗堝繀椤绘弧瓒筹細
-- 瀵?SEO 鍜?AI 鎼滅储鍙嬪ソ
-- 鍙鎬у己銆侀€昏緫娓呮櫚銆佺畝娲併€佸鐢ㄦ埛鍙嬪ソ
-- 浣跨敤璇ヨ `country` 瀵瑰簲璇█
-- 姣忔潯绛旀涓嶈秴杩?50 涓崟璇?- 浠呭熀浜庡師濮嬩簨瀹烇紝涓嶅緱缂栭€?
-## 杈撳叆瑕佹眰
-浠庣敤鎴疯緭鍏ヨ〃涓鍙栦互涓嬪瓧娈碉細
+
+你是 HD 的 SEO 专家，正在为 HotDeals 的 child discount 页面做 FAQ 内容优化。
+
+当用户提供一个表格，并要求根据 Google AI Overview 收集到的 `discount_details` 内容，抽象生成 child discount FAQ，并严格按指定 Excel 模板输出时，使用此 skill。
+
+本 skill 的辅助文件：
+
+- `scripts/faq_excel_tools.py`：从 xlsx 提取输入字段，并构建最终输出 xlsx
+- `references/output-format.md`：输出字段映射与交付检查清单
+
+## 目标
+
+针对每个商家，输出符合要求的 FAQ 内容。答案必须满足：
+
+- 对 SEO 和 AI 搜索友好
+- 可读性强、逻辑清晰、简洁、对用户友好
+- 使用该行 `country` 对应语言
+- 每条答案不超过 50 个单词
+- 仅基于原始事实，不得编造
+
+## 输入要求
+
+从用户输入表中读取以下字段：
+
 - `country`
 - `term_name`
 - `discount_details`
-濡傛灉杈撳叆涓繕鏈?`term_id` 鎴?`domain`锛屽垯涓€骞朵繚鐣欏埌杈撳嚭锛涜嫢娌℃湁鎻愪緵锛屽垯瀵瑰簲杈撳嚭鍗曞厓鏍肩暀绌猴紝闄ら潪鐢ㄦ埛鍙﹁鎻愪緵銆?
-涓€涓〃涓彲鑳藉寘鍚涓晢瀹讹紝蹇呴』閫愪釜鍟嗗鍒嗗埆鍒嗘瀽銆佸垎鍒緭鍑恒€?
-## 杈撳嚭瑕佹眰
-浜や粯缁撴灉蹇呴』鏄?Excel 鏂囦欢锛屼笉鏄函鏂囨湰銆?
-杈撳嚭琛ㄦ牸瀛楁蹇呴』涓ユ牸鎸変互涓嬬粨鏋勫～鍐欙細
-- `ContentType`锛氬浐瀹氬～ `faq`
-- `Country`锛氬鍒惰緭鍏ヤ腑鐨?`country`
-- `TermID`锛氬鍒惰緭鍏ヤ腑鐨?`term_id`锛涘鏃犲垯鐣欑┖
-- `TermName`锛氬鍒惰緭鍏ヤ腑鐨?`term_name`
-- `Domain`锛氬鍒惰緭鍏ヤ腑鐨?`domain`锛涘鏃犲垯鐣欑┖
-- `Source`锛氬浐瀹氬～ `AI`
-- `Subclass`锛氬浐瀹氬～ `child`
-- `鏉垮潡鍚嶇О`锛氬浐瀹氬～ `faq`
-- `Titile1`锛欶AQ 闂
-- `Brief Introduction`锛欶AQ 绛旀
-- `Href Kw`锛氱暀绌?- `Href Url`锛氱暀绌?
-## Subclass 鑱氱劍瑙勫垯
-- `Subclass` 鍐冲畾褰撳墠琛屽彧鑳藉啓杩欎竴绫绘満鍒讹紝涓嶈鎶婂叾浠栦紭鎯犵被鍒贩鍐欒繘绛旀
-- 鍙彁鍙栦笌褰撳墠 `Subclass` 鐩存帴鐩稿叧鐨勪簨瀹烇紱鍏朵粬鎶樻墸銆佷細鍛樸€佽繑鍒┿€佺ぜ鍖呫€佹弧鍑忋€佸厤杩愮瓑淇℃伅锛岄櫎闈炲畠鏈韩灏辨槸璇?`Subclass` 鐨勯鍙栨潯浠舵垨浣跨敤闄愬埗锛屽惁鍒欎笉瑕佸啓鍏?- 濡傛灉婧愭枃鏈悓鏃舵彁鍒板绫讳紭鎯狅紝浼樺厛淇濈暀褰撳墠 `Subclass` 鐨勬牳蹇冩満鍒躲€佹暟鍊笺€佽幏鍙栨柟寮忋€侀檺鍒舵潯浠讹紝鍒犻櫎鏃犲叧绫诲埆鍐呭
-- 涓嶈涓轰簡涓板瘜绛旀锛屾妸鍏朵粬浼樻儬绫诲埆鎷兼帴鎴愨€滈檮鍔犱俊鎭€?
-## Child Discount 瀹氫箟
-褰撳墠 skill 鐨勭洰鏍囬棶棰樻槸锛?
-- 杩欎釜 merchant 鏄惁瀛樺湪鍙互闈㈠悜鍎跨銆佹湭鎴愬勾浜恒€乧hild category 鏄庣‘璁ゅ畾鐨勪紭鎯犮€佸効绔ョエ浠枫€佸効绔ュ厤璐规斂绛栥€佸効绔ヤ笓灞炴姌鎵ｆ垨鍎跨鐩稿叧涓撳睘鏉冪泭
-`child discount` 鍦ㄦ湰 skill 涓彧鎺ュ彈浠ヤ笅 4 绫昏瘉鎹細
-### A. 鏄庣‘鐨勫効绔ョエ浠?/ 鍎跨瀹氫环
-杩欑被璇佹嵁鍙洿鎺ユ敮鎸?`Yes`锛?
+
+如果输入中还有 `term_id` 或 `domain`，则一并保留到输出；若没有提供，则对应输出单元格留空，除非用户另行提供。
+
+一个表中可能包含多个商家，必须逐个商家分别分析、分别输出。
+
+## 输出要求
+
+交付结果必须是 Excel 文件，不是纯文本。
+
+输出表格字段必须严格按以下结构填写：
+
+- `ContentType`：固定填 `faq`
+- `Country`：复制输入中的 `country`
+- `TermID`：复制输入中的 `term_id`；如无则留空
+- `TermName`：复制输入中的 `term_name`
+- `Domain`：复制输入中的 `domain`；如无则留空
+- `Source`：固定填 `AI`
+- `Subclass`：固定填 `child`
+- `板块名称`：固定填 `faq`
+- `Titile1`：FAQ 问题
+- `Brief Introduction`：FAQ 答案
+- `Href Kw`：留空
+- `Href Url`：留空
+
+## Subclass 聚焦规则
+
+- `Subclass` 决定当前行只能写这一类机制，不要把其他优惠类别混写进答案
+- 只提取与当前 `Subclass` 直接相关的事实；其他折扣、会员、返利、礼包、满减、免运等信息，除非它本身就是该 `Subclass` 的领取条件或使用限制，否则不要写入
+- 如果源文本同时提到多类优惠，优先保留当前 `Subclass` 的核心机制、数值、获取方式、限制条件，删除无关类别内容
+- 不要为了丰富答案，把其他优惠类别拼接成“附加信息”
+
+## Child Discount 定义
+
+当前 skill 的目标问题是：
+
+- 这个 merchant 是否存在可以面向儿童、未成年人、child category 明确认定的优惠、儿童票价、儿童免费政策、儿童专属折扣或儿童相关专属权益
+
+`child discount` 在本 skill 中只接受以下 4 类证据：
+
+### A. 明确的儿童票价 / 儿童定价
+
+这类证据可直接支持 `Yes`：
+
 - `child fare`
 - `child ticket`
 - `child price`
@@ -51,164 +82,253 @@ description: 褰撶敤鎴锋彁渚涜〃鏍硷紝骞跺笇鏈涘熀浜?Google AI
 - `child pass`
 - `reduced fare for children`
 - `discounted child admission`
-### B. 鏄庣‘鐨勫効绔ュ厤璐规斂绛?
-杩欑被璇佹嵁鍙洿鎺ユ敮鎸?`Yes`锛?
+
+### B. 明确的儿童免费政策
+
+这类证据可直接支持 `Yes`：
+
 - `kids stay free`
 - `children under X stay free`
 - `children under X free admission`
 - `infants travel free or reduced`
 - `children under X enter free`
-### C. 鏄庣‘閽堝鍎跨鍟嗗搧 / 鍎跨鍒嗙被鐨勪紭鎯?
-杩欑被璇佹嵁鍙湪淇℃伅鏄庣‘鎸囧悜 merchant 鑷韩鐨?kids category / kids collection / kids sale / kids clearance / children's products discount 鏃舵墠鍙繚鐣欙細
+
+### C. 明确针对儿童商品 / 儿童分类的优惠
+
+这类证据只在信息明确指向 merchant 自身的 kids category / kids collection / kids sale / kids clearance / children's products discount 时才可保留：
+
 - `kids sale section`
 - `children's clearance`
 - `discounted kids' shoes`
 - `reduced-price children's eyewear`
 - `sale pricing on kids' apparel`
-杩欐槸杈冨急鐨?`Yes` 绫诲瀷銆傚彧鑳藉啓鎴?`discounted kids' items`銆乣kids' items in sale or clearance sections`銆乣discounted children's products` 杩欎竴绫诲厠鍒跺彞寮忋€?
-### D. 鏄庣‘鐨勫効绔ヤ笓灞炴潈鐩?/ 鍎跨涓撳睘娲诲姩浼樻儬
-杩欑被璇佹嵁鍙洿鎺ユ敮鎸?`Yes`锛?
+
+这是较弱的 `Yes` 类型。只能写成 `discounted kids' items`、`kids' items in sale or clearance sections`、`discounted children's products` 这一类克制句式。
+
+### D. 明确的儿童专属权益 / 儿童专属活动优惠
+
+这类证据可直接支持 `Yes`：
+
 - `child birthday coupon`
 - `kids class participant discount`
 - `junior gear special pricing`
 - `child-only pass pricing`
 - `kid-specific bundle discount`
-## 蹇呴』鍒?No 鐨勬儏鍐?
-浠ヤ笅鎯呭喌鍗充娇鍑虹幇浜?`child`銆乣kids`銆乣student`銆乣school` 绛夎瘝锛屼篃涓嶈兘鐩存帴鍒?`Yes`锛?
-### 1. 瀛︾敓浼樻儬 / 鏁欒偛浼樻儬涓嶇瓑浜?child discount
-浠ヤ笅閮戒笉绠?child discount锛?
+
+## 必须判 No 的情况
+
+以下情况即使出现了 `child`、`kids`、`student`、`school` 等词，也不能直接判 `Yes`：
+
+### 1. 学生优惠 / 教育优惠不等于 child discount
+
+以下都不算 child discount：
+
 - `student discount`
 - `education pricing`
 - `school pricing`
 - `teacher / educator offers`
 - `academic membership`
-- `back-to-school` 鐨勬硾淇冮攢锛岄櫎闈炴槑纭彧閽堝 kids products 鎴?child fares
-### 2. 涓嶆槸 merchant 鑷韩锛岃€屾槸閿欒瀹炰綋 / 鍚屽悕瀹炰綋
-濡傛灉鍙傝€冧俊鎭槑鏄炬寚鍚戝彟涓€涓搧鐗屻€佸湴鐐广€佹櫙鐐广€佹満鏋勩€乫ranchise銆佸湴鍖虹増鏈垨 legal entity锛屼笉鑳芥嬁鏉ュ洖绛斿綋鍓?merchant銆?
-### 3. 鍙槸鍗?kids products锛屼絾娌℃湁鏄庣‘浼樻儬鎴栧効绔ヤ环
-浠呭嚭鐜颁互涓嬪唴瀹硅繕涓嶅锛?
+- `back-to-school` 的泛促销，除非明确只针对 kids products 或 child fares
+
+### 2. 不是 merchant 自身，而是错误实体 / 同名实体
+
+如果参考信息明显指向另一个品牌、地点、景点、机构、franchise、地区版本或 legal entity，不能拿来回答当前 merchant。
+
+### 3. 只是卖 kids products，但没有明确优惠或儿童价
+
+仅出现以下内容还不够：
+
 - `kids category`
 - `children's products`
 - `kids collection`
 - `children's items`
-蹇呴』鍚屾椂鍑虹幇鎶樻墸銆佷紭鎯犱环銆佸効绔ョエ浠枫€佸厤璐规斂绛栨垨鍎跨涓撳睘鏉冪泭銆?
-### 4. 鍙槸娉涘晢鍝佷績閿€锛屼笖娌℃湁鏄庣‘鎸囧悜 kids
-浠ヤ笅榛樿涓嶇畻 child discount锛?
+
+必须同时出现折扣、优惠价、儿童票价、免费政策或儿童专属权益。
+
+### 4. 只是泛商品促销，且没有明确指向 kids
+
+以下默认不算 child discount：
+
 - `sitewide sale`
 - `seasonal sale`
 - `newsletter discount`
 - `clearance`
-闄ら潪鍘熸枃鏄庣‘璇存槑瀹冮€傜敤浜?kids items銆乧hild fares銆乧hild pricing 鎴?child access銆?
-### 5. 鍙湁绗笁鏂瑰钩鍙?/ 鑱氬悎椤?/ 璁哄潧 / 娉涙帹鑽愭枃绔犲湪鎺ㄦ柇
-濡傛灉鍙湁绗笁鏂瑰湪璇粹€滃彲鑳芥湁鈥濃€滅粡甯告湁鈥濃€滃彲浠ョ湅鐪嬧€濓紝浣嗘病鏈夎冻澶熻瘉鎹瘉鏄?merchant 鏈韩鏄庣‘鎻愪緵 child discount锛屽簲淇濆畧澶勭悊銆傞€氬父杈撳嚭瀹屾暣 `No` 鍙ワ紱鍙湁鏂瑰悜鍩烘湰姝ｇ‘浣嗗姏搴︿笉瓒虫椂锛屾墠鍏佽 `appears to`銆?
-### 6. 瀹跺涵璁″垝 / 淇濋櫓璁″垝 / 浼氬憳璁″垝 / 鏈烘瀯鎺堟潈
-浠ヤ笅榛樿涓嶇畻 child discount锛?
+
+除非原文明确说明它适用于 kids items、child fares、child pricing 或 child access。
+
+### 5. 只有第三方平台 / 聚合页 / 论坛 / 泛推荐文章在推断
+
+如果只有第三方在说“可能有”“经常有”“可以看看”，但没有足够证据证明 merchant 本身明确提供 child discount，应保守处理。通常输出完整 `No` 句；只有方向基本正确但力度不足时，才允许 `appears to`。
+
+### 6. 家庭计划 / 保险计划 / 会员计划 / 机构授权
+
+以下默认不算 child discount：
+
 - `pediatric plan`
 - `family plan`
 - `school license`
 - `classroom license`
 - `institutional pricing`
-闄ら潪瀹冭兘琚槑纭敼鍐欎负褰撳墠 merchant 闈㈠悜 child 鐨勭洿鎺ヤ紭鎯犳満鍒讹紝鍚﹀垯涓嶈鍐欒繘 FAQ銆?
-妯℃澘鍙傝€冿細
+
+除非它能被明确改写为当前 merchant 面向 child 的直接优惠机制，否则不要写进 FAQ。
+
+模板参考：
+
 - `/Users/mac/Downloads/non_coupon_all_demo 11/faq.xlsx`
-闇€瑕佸鐞?Excel 鏃讹紝浣跨敤锛?
+
+需要处理 Excel 时，使用：
+
 ```bash
 python3 scripts/faq_excel_tools.py extract --input /path/to/input.xlsx --output /tmp/child_input.json
 python3 scripts/faq_excel_tools.py build --input /tmp/child_output.json --output /path/to/output.xlsx
 ```
-## 绛旀瑙勮寖
-姣忔潯绛旀閮藉繀椤昏仛鐒﹂棶棰樻湰韬紝骞堕伒寰?Atomic Facts 瑙勮寖銆備紭鍏堜繚鐣欎互涓?3 涓牳蹇冧簨瀹烇細
-1. 璇ュ晢瀹舵槸鍚︽湁鍎跨浼樻儬
-2. 浼樻儬鍔涘害鏄灏戯紝濡傛灉鏈夋槑纭暟鍊煎繀椤诲啓鍑?3. 濡備綍鑾峰彇
-鍚屾椂閬靛惊浠ヤ笅纭€ц姹傦細
-- 姣忔潯绛旀鑷冲皯鍑虹幇涓€娆″搧鐗屼富浣擄紝浼樺厛鐩存帴浣跨敤 `term_name` 鎴栧彲纭鐨勮鑼冨搧鐗屽悕
-- 鍝佺墝涓讳綋鍐欐硶蹇呴』骞插噣銆佽嚜鐒讹紝涓嶈鎶?URL銆佺綉椤垫爣棰樸€佹潵婧愬悕銆佸ぇ娈垫嫭鍙疯ˉ鍏呮垨瑙ｉ噴鎬ф墿鍐欐弶杩涚瓟妗?- 闄ら潪鎷彿鍐呭鏈韩灏辨槸娑堣垂鑰呭繀椤荤煡閬撶殑姝ｅ紡鏉冪泭鍚嶇О锛屽惁鍒欎笉瑕佸啓绫讳技 `LA Police Gear (LAPG) https://...`銆乣Navyist Rewards (part of ...)` 杩欑被涓嶈鑼冭〃杈?- 鍙啓涓庡綋鍓?`Subclass` 鐩稿叧鐨勫唴瀹癸紝涓嶈娣峰叆鍏朵粬浼樻儬绫诲埆
-- 濡傛灉鍘熸枃鏄庣‘鎻愬埌闄愬埗銆佽祫鏍笺€侀€傜敤瀵硅薄銆侀獙璇佽姹傘€侀€傜敤鑼冨洿銆佹渶浣庢秷璐广€佹椂闂寸獥鍙ｃ€佸湴鍖洪檺鍒躲€佹槸鍚︿粎闄愭柊鐢ㄦ埛/浼氬憳/App/鐗瑰畾璁″垝銆佹槸鍚﹂檺鐗瑰畾鍟嗗搧鎴栧浗瀹讹紝杩欎簺淇℃伅涓庡綋鍓?`Subclass` 鐩存帴鐩稿叧鏃跺繀椤诲敖閲忓啓鍏?- 涓嶈鍙敼鍐欏師鏂囩涓€鍙ヨ瘽锛涘繀椤荤户缁鏌ュ悗鏂囷紝鎶婁笌褰撳墠 `Subclass` 鐩存帴鐩稿叧鐨勯珮浠峰€艰ˉ鍏呬俊鎭惛鏀惰繘绛旀
-- 鍚庢枃涓嚒鏄秹鍙婇獙璇佹柟寮忋€佹湁鏁堟湡銆佷娇鐢ㄩ棬妲涖€侀鍙栨潯浠躲€侀€傜敤鑼冨洿銆佸湴鍖?浜虹兢闄愬埗銆佽喘涔版垨鍏戞崲鏂瑰紡鐨勫唴瀹癸紝鍙鏈変环鍊间笖涓嶅啿绐侊紝搴斾紭鍏堣ˉ鍏?50 璇嶅唴
-- 濡傛灉鍘熸枃鏄繎浼兼暟鍊兼垨棰戠巼锛屽敖閲忔敼鍐欎负鏇寸ǔ鍋ョ殑浜嬪疄琛ㄨ揪锛涢伩鍏嶈繛缁爢鍙?`about`銆乣usually`銆乣around` 杩欑被妯＄硦璇?
-濡傛灉浼樻儬鍔涘害娌℃湁鏄庣‘鏁板€硷細
-- 涓嶈鍐欌€滈噾棰濇湭璇存槑鈥濃€滄姌鎵ｆ湭鐭モ€濃€滄湭娉ㄦ槑鍏蜂綋鏁板€尖€濊繖绫讳笉纭畾琛ㄨ堪
-- 鐩存帴鐪佺暐閲戦淇℃伅锛屽彧淇濈暀宸茬粡纭鐨勫効绔ヤ紭鎯犱簨瀹炲拰鑾峰彇鏂瑰紡
-- 涓嶈涓轰簡鍑戞弧 3 涓簨瀹炶€屽姞鍏ユā绯婃弿杩?
-涓嶅緱娣诲姞锛?
-- 鏇夸唬鐪侀挶鏂规
-- 鍝佺墝鑳屾櫙
-- 棰濆杩介棶寮曞
-- 娌℃湁渚濇嵁鐨勭寽娴?
-濡傛灉杩?3 涓牳蹇冧簨瀹炰笉瀹屾暣锛屽彧鑳借ˉ鍏呬笌 child discount 寮虹浉鍏炽€佷笖婧愭枃鏈腑鏄庣‘鍑虹幇鐨勪俊鎭紝灏ゅ叾瑕佷紭鍏堜粠鍚庢枃琛ヨ冻浼氬奖鍝嶇敤鎴峰垽鏂垨棰嗗彇鐨勯檺鍒舵潯浠躲€佹湁鏁堟湡鍜岄€傜敤鑼冨洿銆?
-## 瀹炰綋璇嗗埆瑙勫垯
-鍦ㄥ垽鏂墠锛屽厛纭鍙傝€冧俊鎭鐨勬槸褰撳墠 merchant 鏈綋銆?
-浠ヤ笅鎯呭喌浼樺厛瑙嗕负瀹炰綋娣锋穯椋庨櫓锛?
-- 鍟嗗鍚嶈繃浜庨€氱敤
-- 鎼滅储缁撴灉娣峰叆鍚屽悕鏅偣銆侀厭搴椼€佸鏍°€佹湇鍔℃垨 app
-- 缁撴灉涓殑鍝佺墝鍩熷悕銆佷笟鍔＄被鍨嬨€佸浗瀹舵垨鍦板尯涓庣洰鏍?merchant 涓嶄竴鑷?- 缁撴灉鍦ㄨ鍙︿竴涓?legal entity銆佸彟涓€涓?franchise銆佸彟涓€涓瓙鍝佺墝
-涓€鏃︽湁鏄庢樉瀹炰綋娣锋穯锛?
-- 鑻ユ棤娉曠‘璁ょ粨鏋滃氨鏄綋鍓?merchant锛氳緭鍑哄畬鏁?`No` 鍙?- 涓嶈鎶婇敊璇疄浣撶殑 child offer 鍐欒繘绛旀
-- 涓嶈涓轰簡灏介噺缁?`Yes` 鑰岀‖鎺ラ敊璇粨鏋?
-## Yes / appears / No 浣跨敤瑙勫垯
-### 1. 鐢?`Yes` 鐨勬潯浠?
-鍙湁褰撳弬鑰冧俊鎭兘鏄庣‘璇佹槑浠ヤ笅 3 鐐瑰悓鏃舵垚绔嬫椂锛屾墠浣跨敤鑲畾鍙ワ細
-- 璇寸殑鏄綋鍓?merchant 鏈綋
-- 璇寸殑鏄?child-specific pricing銆乧hild offer銆乫ree child policy銆乵erchant 鑷繁 kids items 鐨勬槑纭姌鎵?- 璇佹嵁瓒冲鏄庣‘锛屼笉闇€瑕侀潬鎺ㄦ柇琛ュ叏
-### 2. 鐢?`appears to` 鐨勬潯浠?
-鍙湁鍦ㄤ互涓嬫儏鍐典笅鎵嶅彲浠ョ敤 `appears to`锛?
-- 淇℃伅鏂瑰悜鍩烘湰姝ｇ‘
-- 璇佹嵁涓昏鏉ヨ嚜 merchant 鑷繁鐨?sale section銆乴isting pattern 鎴栧晢鍝佸睍绀?- 鑳界湅鍑?merchant 纭疄鏈?kids item discount锛屼絾寮哄害銆佽寖鍥淬€佺ǔ瀹氭€т笉澶熸槑纭?- 闇€瑕侀伩鍏嶅じ澶ф垚鏄庣‘绋冲畾椤圭洰
-鍏佽鐨勫吀鍨嬪彞寮忥細
+
+## 答案规范
+
+每条答案都必须聚焦问题本身，并遵循 Atomic Facts 规范。优先保留以下 3 个核心事实：
+
+1. 该商家是否有儿童优惠
+2. 优惠力度是多少，如果有明确数值必须写出
+3. 如何获取
+
+同时遵循以下硬性要求：
+
+- 每条答案至少出现一次品牌主体，优先直接使用 `term_name` 或可确认的规范品牌名
+- 品牌主体写法必须干净、自然，不要把 URL、网页标题、来源名、大段括号补充或解释性扩写揉进答案
+- 除非括号内容本身就是消费者必须知道的正式权益名称，否则不要写类似 `LA Police Gear (LAPG) https://...`、`Navyist Rewards (part of ...)` 这类不规范表达
+- 只写与当前 `Subclass` 相关的内容，不要混入其他优惠类别
+- 如果原文明确提到限制、资格、适用对象、验证要求、适用范围、最低消费、时间窗口、地区限制、是否仅限新用户/会员/App/特定计划、是否限特定商品或国家，这些信息与当前 `Subclass` 直接相关时必须尽量写全
+- 不要只改写原文第一句话；必须继续检查后文，把与当前 `Subclass` 直接相关的高价值补充信息吸收进答案
+- 后文中凡是涉及验证方式、有效期、使用门槛、领取条件、适用范围、地区/人群限制、购买或兑换方式的内容，只要有价值且不冲突，应优先补入 50 词内
+- 如果原文是近似数值或频率，尽量改写为更稳健的事实表达；避免连续堆叠 `about`、`usually`、`around` 这类模糊词
+
+如果优惠力度没有明确数值：
+
+- 不要写“金额未说明”“折扣未知”“未注明具体数值”这类不确定表述
+- 直接省略金额信息，只保留已经确认的儿童优惠事实和获取方式
+- 不要为了凑满 3 个事实而加入模糊描述
+
+不得添加：
+
+- 替代省钱方案
+- 品牌背景
+- 额外追问引导
+- 没有依据的猜测
+
+如果这 3 个核心事实不完整，只能补充与 child discount 强相关、且源文本中明确出现的信息，尤其要优先从后文补足会影响用户判断或领取的限制条件、有效期和适用范围。
+
+## 实体识别规则
+
+在判断前，先确认参考信息说的是当前 merchant 本体。
+
+以下情况优先视为实体混淆风险：
+
+- 商家名过于通用
+- 搜索结果混入同名景点、酒店、学校、服务或 app
+- 结果中的品牌域名、业务类型、国家或地区与目标 merchant 不一致
+- 结果在讲另一个 legal entity、另一个 franchise、另一个子品牌
+
+一旦有明显实体混淆：
+
+- 若无法确认结果就是当前 merchant：输出完整 `No` 句
+- 不要把错误实体的 child offer 写进答案
+- 不要为了尽量给 `Yes` 而硬接错误结果
+
+## Yes / appears / No 使用规则
+
+### 1. 用 `Yes` 的条件
+
+只有当参考信息能明确证明以下 3 点同时成立时，才使用肯定句：
+
+- 说的是当前 merchant 本体
+- 说的是 child-specific pricing、child offer、free child policy、merchant 自己 kids items 的明确折扣
+- 证据足够明确，不需要靠推断补全
+
+### 2. 用 `appears to` 的条件
+
+只有在以下情况下才可以用 `appears to`：
+
+- 信息方向基本正确
+- 证据主要来自 merchant 自己的 sale section、listing pattern 或商品展示
+- 能看出 merchant 确实有 kids item discount，但强度、范围、稳定性不够明确
+- 需要避免夸大成明确稳定项目
+
+允许的典型句式：
+
 - `appears to offer discounted kids' items through its sale section`
 - `appears to offer discounted kids' eyewear through select promotions`
-### 3. 涓嶅厑璁告互鐢?`appears`
-濡傛灉鍏跺疄娌℃湁鏄庣‘ child discount 璇佹嵁锛屽彧鏄ā绯婄寽娴嬶紝涓嶈兘闈?`appears` 鍋锋浮鎴?`Yes`銆傝瘉鎹笉澶熸椂锛屽簲鐩存帴杈撳嚭瀹屾暣 `No` 鍙ャ€?
-## Child Discount 涓撳睘鍒ゅ畾浼樺厛绾?
-閫愯鍒ゆ柇鏃讹紝鎸変互涓嬮『搴忔墽琛岋細
-1. 鍏堢‘璁ゅ疄浣撴槸鍚︽纭?2. 鍒ゆ柇鏄惁涓?child-specific锛岃€屼笉鏄?student銆乼eacher銆乫amily銆乪ducation銆乮nsurance銆乴icense
-3. 鍒ゆ柇鏄惁涓?merchant 鑷韩浼樻儬锛岃€岄潪绗笁鏂规垨娉涘缓璁?4. 鍒ゆ柇鏄惁瓒冲鏄庣‘鍙互浣跨敤 `Yes`
-5. 鑻ヨ瘉鎹亸寮变絾鏂瑰悜姝ｇ‘锛屽彲鐢?`appears`
-6. 鑻ヤ笉婊¤冻浠ヤ笂鏉′欢锛岃緭鍑哄畬鏁磋嫳鏂?`No` 鍙?
-鍘嬬缉浜嬪疄鏃讹紝浼樺厛鎶藉彇锛?
-1. 鏄惁瀛樺湪鏄庣‘鍎跨浼樻儬鏈哄埗
-2. 浼樻儬瀵硅薄鏄皝
+
+### 3. 不允许滥用 `appears`
+
+如果其实没有明确 child discount 证据，只是模糊猜测，不能靠 `appears` 偷渡成 `Yes`。证据不够时，应直接输出完整 `No` 句。
+
+## Child Discount 专属判定优先级
+
+逐行判断时，按以下顺序执行：
+
+1. 先确认实体是否正确
+2. 判断是否为 child-specific，而不是 student、teacher、family、education、insurance、license
+3. 判断是否为 merchant 自身优惠，而非第三方或泛建议
+4. 判断是否足够明确可以使用 `Yes`
+5. 若证据偏弱但方向正确，可用 `appears`
+6. 若不满足以上条件，输出完整英文 `No` 句
+
+压缩事实时，优先抽取：
+
+1. 是否存在明确儿童优惠机制
+2. 优惠对象是谁
    - `infant`
    - `child`
    - `kids`
    - `toddler`
    - `youth`
    - `junior`
-   - `ages X鈥揧`
-3. 浼樻儬褰㈠紡鏄粈涔?   - `free`
+   - `ages X–Y`
+3. 优惠形式是什么
+   - `free`
    - `reduced fare / reduced rate`
    - `percentage off`
    - `fixed-price child ticket / child pass`
    - `sale / clearance on kids items`
-4. 濡備綍鑾峰彇
+4. 如何获取
    - `booking as child ticket`
    - `selecting child fare`
    - `through kids sale section`
    - `with adult purchase`
    - `during class / camp participation`
-5. 闄愬埗鏉′欢
-   - 骞撮緞鑼冨洿
-   - 鏄惁闇€涓庢垚浜哄悓琛?   - participating locations only
-   - 鏌愬煄甯?/ 鏌愯矾绾?/ 鏌愰厭搴?/ 鏌?lounge 鎵嶉€傜敤
-   - 浠呴€傜敤浜?kids section / junior gear / classes / camps
-   - seasonal / limited-time / specific promotion锛屼粎褰撳師鏂囨槑纭?
-濡傛灉绛旀绌洪棿鏈夐檺锛屼紭鍏堜繚鐣欙細
+5. 限制条件
+   - 年龄范围
+   - 是否需与成人同行
+   - participating locations only
+   - 某城市 / 某路线 / 某酒店 / 某 lounge 才适用
+   - 仅适用于 kids section / junior gear / classes / camps
+   - seasonal / limited-time / specific promotion，仅当原文明确
+
+如果答案空间有限，优先保留：
+
 - age range
 - `under-X free`
 - `child / youth / junior category`
-- 鏄惁闇€鎴愪汉璐拱銆佹垚浜哄悓琛?- participating locations only
+- 是否需成人购买、成人同行
+- participating locations only
 - route / city / hotel / lounge / class restrictions
-- 鍎跨浠锋槸鍚︿綆浜庢垚浜轰环
-- 閫傜敤浜?tickets銆乻tays銆乵eals銆乧lasses銆乬ear 杩樻槸 kids items
-- 鏄惁浠呴檺 kids sale / clearance section
-杩欎簺淇℃伅浼樺厛绾ч珮浜庯細
-- 娉涙硾鍝佺墝鑳屾櫙
-- 娆¤閫氱敤浼樻儬
-- 浣庝环鍊煎舰瀹硅瘝
-- 鎺ㄨ崘鎬ц鍙?
-## 涓讳綋涓€鑷存€у垽鏂?
-蹇呴』鍒ゆ柇婧愬唴瀹逛腑鐨勪紭鎯犱富浣擄紝鏄惁涓庤琛岀洰鏍囧晢瀹朵负鍚屼竴涓讳綋銆?
-姣斿涓讳綋鍚嶇О鏃讹紝鍏堝拷鐣ュ父瑙佹硶浜烘垨鍏徃鍚庣紑鍚庡啀鍒ゆ柇锛屼緥濡傦細
+- 儿童价是否低于成人价
+- 适用于 tickets、stays、meals、classes、gear 还是 kids items
+- 是否仅限 kids sale / clearance section
+
+这些信息优先级高于：
+
+- 泛泛品牌背景
+- 次要通用优惠
+- 低价值形容词
+- 推荐性语句
+
+## 主体一致性判断
+
+必须判断源内容中的优惠主体，是否与该行目标商家为同一主体。
+
+比对主体名称时，先忽略常见法人或公司后缀后再判断，例如：
+
 - `AG`
 - `Inc`
 - `Ltd`
@@ -217,136 +337,231 @@ python3 scripts/faq_excel_tools.py build --input /tmp/child_output.json --output
 - `Corp`
 - `Co.`
 - `Company`
-杩樿鍚屾椂鑰冭檻浠ヤ笅鏀惧瑙勫垯锛?
-- 濡傛灉鍙槸鑻辨枃銆佸痉鏂囨垨鍏朵粬璇█涓嬬殑鍝佺墝鍐欐硶宸紓锛屼絾鏍稿績鍝佺墝鏄庢樉瀵瑰簲鍚屼竴鍟嗗锛屽彲瑙嗕负鍚屼竴涓讳綋
-- 濡傛灉鍙槸鏁板瓧銆佽瘝褰㈡垨鎷煎啓鍙樹綋锛屼絾浠嶈兘娓呮櫚鎸囧悜鍚屼竴鍝佺墝锛屽彲瑙嗕负鍚屼竴涓讳綋
-- 渚嬪 `Kfzparts2` 涓?`kfzteile24`锛岃嫢缁撳悎涓婁笅鏂囧彲鍒ゆ柇鏄湪鎸囧悓涓€姹借溅閰嶄欢鍝佺墝锛屼笉瑕佷粎鍥犺嫳鏂?寰锋枃鍐欐硶涓嶅悓鐩存帴杈撳嚭瀹屾暣鑻辨枃 `No` 鍙?- 瀵逛簬 `Neckermann`銆乣Filmpalast`銆乣Tivoli` 杩欑被鏍稿績鍟嗗鍚嶆湰韬竴鑷寸殑鎯呭喌锛屽簲浼樺厛瑙嗕负涓讳綋涓€鑷达紱闄ら潪鏂囨湰鏄庣‘鎸囧悜鍙︿竴涓晢瀹躲€佸彟涓€涓搧鐗岋紝鎴栨槑纭槸鏃犲叧骞冲彴/椤圭洰
-浠ヤ笅鎯呭喌绛旀鐩存帴杈撳嚭瀹屾暣鑻辨枃 `No` 鍙ワ細
-- 浼樻儬涓讳綋鏄彟涓€涓晢瀹?- 鍐呭璁茬殑鏄钩鍙般€佺涓夋柟椤圭洰鎴栨棤鍏充細鍛樹綋绯伙紝鑰屼笉鏄洰鏍囧晢瀹舵湰韬?- 鏂囨湰鍦ㄦ牳蹇冨搧鐗屽悕涓婃棤娉曚笌鐩爣鍟嗗寤虹珛鍚堢悊瀵瑰簲锛屼笖娌℃湁浠讳綍涓婁笅鏂囧彲鏀寔鍚屼竴涓讳綋鍒ゆ柇
-濡傛灉鍘绘帀涓婅堪甯歌鍚庣紑鍚庯紝涓讳綋鍚嶇О鑳芥竻鏅板搴斿悓涓€鍝佺墝锛屽垯瑙嗕负鍚屼竴涓讳綋锛屼笉瑕佷粎鍥犳硶浜哄悗缂€宸紓銆佽瑷€宸紓鎴栬交寰彉浣撹緭鍑哄畬鏁磋嫳鏂?`No` 鍙ャ€?
-褰撴牳蹇冨晢瀹跺悕涓€鑷达紝鎴栬櫧鏈夎法璇█/鍙樹綋鍐欐硶浣嗕粛鍙悎鐞嗗垽鏂负鍚屼竴鍝佺墝鏃讹紝搴旀斁瀹藉鐞嗭紝涓嶈鍥犱负璇佹嵁闂ㄦ杩囬珮鐩存帴鍒や负 `No`銆傚彧鏈夊湪涓讳綋鏄庣‘涓嶅尮閰嶏紝鎴栫‘瀹炴棤娉曞悎鐞嗗搴旀椂锛屾墠杈撳嚭瀹屾暣鑻辨枃 `No` 鍙ャ€?
-## Child 涓撳睘 Merchant Locking
-child discount 鐨勪富浣撳繀椤绘槸鐩爣 merchant 鑷繁锛屾垨鐩爣 merchant 鑷繁鐨勪互涓嬪畼鏂硅寖鍥达細
+
+还要同时考虑以下放宽规则：
+
+- 如果只是英文、德文或其他语言下的品牌写法差异，但核心品牌明显对应同一商家，可视为同一主体
+- 如果只是数字、词形或拼写变体，但仍能清晰指向同一品牌，可视为同一主体
+- 例如 `Kfzparts2` 与 `kfzteile24`，若结合上下文可判断是在指同一汽车配件品牌，不要仅因英文/德文写法不同直接输出完整英文 `No` 句
+- 对于 `Neckermann`、`Filmpalast`、`Tivoli` 这类核心商家名本身一致的情况，应优先视为主体一致；除非文本明确指向另一个商家、另一个品牌，或明确是无关平台/项目
+
+以下情况答案直接输出完整英文 `No` 句：
+
+- 优惠主体是另一个商家
+- 内容讲的是平台、第三方项目或无关会员体系，而不是目标商家本身
+- 文本在核心品牌名上无法与目标商家建立合理对应，且没有任何上下文可支持同一主体判断
+
+如果去掉上述常见后缀后，主体名称能清晰对应同一品牌，则视为同一主体，不要仅因法人后缀差异、语言差异或轻微变体输出完整英文 `No` 句。
+
+当核心商家名一致，或虽有跨语言/变体写法但仍可合理判断为同一品牌时，应放宽处理，不要因为证据门槛过高直接判为 `No`。只有在主体明确不匹配，或确实无法合理对应时，才输出完整英文 `No` 句。
+
+## Child 专属 Merchant Locking
+
+child discount 的主体必须是目标 merchant 自己，或目标 merchant 自己的以下官方范围：
+
 - kids / child category
-- 瀹樻柟 ticketing
-- 瀹樻柟 pricing
-- 瀹樻柟 classes / camps
-- 瀹樻柟 stays / meals / passes / junior gear
-涓嶅緱鎶婁互涓嬪唴瀹圭洿鎺ュ啓鎴愮洰鏍?merchant 鐨?child discount锛?
-- 绗笁鏂?retailer 鐨勫効绔ュ晢鍝佹姌鎵?- 绗笁鏂?pass 鎴栬仛鍚堝瀷閫氱エ
-- 绗笁鏂瑰崥瀹㈡垨鎬荤粨椤靛綊绾冲嚭鐨勫効绔ヤ紭鎯?- 鍏朵粬鏅偣銆侀厭搴椼€佺悆闃熴€佸搧鐗屻€佷細鍛樿鍒掓垨鍚堜綔鏂圭殑鍎跨浼樻儬
-棰濆瑕佹眰锛?
-- 涓嶈兘鍥犱负 `term_name` 涓甫鏈夐€氱敤璇嶏紝濡?`kids`銆乣family`銆乣baseball`銆乣dental`銆乣paris`銆乣london`銆乣reef`锛屽氨鑷姩鏀惧涓讳綋鍒ゆ柇
-- 濡傛灉 source 鍙槸 broader category summary锛岃€屼笉鏄洰鏍?merchant 鐨勫崟涓€浜嬪疄锛屽簲浼樺厛杈撳嚭瀹屾暣鑻辨枃 `No` 鍙ワ紝鎴栧彧鍦ㄨ瘉鎹冻澶熸椂浣跨敤鏋佺ǔ鍋ュ彞寮?- 濡傛灉 source 鏄庢樉鍦ㄨ鍙︿竴涓讳綋锛屽嵆浣垮唴瀹规湰韬笌鍎跨鏈夊叧锛屼篃蹇呴』杈撳嚭瀹屾暣鑻辨枃 `No` 鍙?
-## Yes / No 鍐崇瓥瑙勫垯
-### 杈撳嚭 `Yes` 鐨勬潯浠?
-婊¤冻浠ヤ笅浠讳竴鍗冲彲锛?
-- 鍟嗗鏈夋槑纭?`children / kids / youth / junior` 瀹氫环鎴栧噺鍏?- 鍟嗗鏈?`children free`銆乣child fare`銆乣child pass`銆乣kids pricing` 涔嬬被鐨勭洿鎺ヨ瘉鎹?- 鍟嗗瀛樺湪鐢卞効绔ュ勾榫勩€佸効绔ヨ韩浠姐€佸効绔ョ敓鏃ヨЕ鍙戠殑涓撳睘浼樻儬
-- 鍟嗗涓哄効绔ヨ绋嬨€佸浠よ惀銆佸効绔ユ椿鍔ㄥ弬涓庤€呮彁渚涙姌鎵?- 鍟嗗浠呮湁 kids category 鐨勬槑纭姌鎵ｃ€乻ale銆乧learance銆乵arkdown锛屼笖涓讳綋娓呮櫚銆佽瘉鎹洿鎺ワ紝姝ゆ椂鍙彲浣滀负寮?`Yes` 淇濈暀
-### 杈撳嚭 `No` 鐨勬潯浠?
-鍑虹幇浠ヤ笅鎯呭喌搴旂洿鎺ヨ緭鍑哄畬鏁磋嫳鏂?`No` 鍙ワ細
-- source 璁茬殑鏄叾浠栧晢瀹躲€佸钩鍙般€佸悎浣滄柟銆佺涓夋柟椤圭洰锛岃€屼笉鏄洰鏍?merchant 鏈韩
-- 鍙嚭鐜?`student`銆乣newsletter`銆乣app`銆乣loyalty`銆乣military` 绛夐潪 child 鎶樻墸
-- 鍙槸娉涙硾鎻愬埌鈥滈€傚悎瀛╁瓙鈥濃€滄湁鍎跨浜у搧鈥濃€滃瀛愯兘鐢ㄢ€濓紝浣嗘病鏈夋姌鎵ｄ簨瀹?- 鍙槸瀹跺涵鎴栧闀夸紭鎯狅紝娌℃湁鏄庣‘ child 鏈汉銆乧hild fare銆乲ids product discount 鍙楃泭
-- 鍐呭鏃犳硶涓庣洰鏍?merchant 寤虹珛鍚堢悊涓讳綋瀵瑰簲
-### 杈圭晫鎯呭喌澶勭悊
-瀵逛簬杈圭晫妯＄硦浣嗕粛鍙繚鐣欑殑鎯呭喌锛屼娇鐢ㄦ洿绋冲仴琛ㄨ揪锛?
+- 官方 ticketing
+- 官方 pricing
+- 官方 classes / camps
+- 官方 stays / meals / passes / junior gear
+
+不得把以下内容直接写成目标 merchant 的 child discount：
+
+- 第三方 retailer 的儿童商品折扣
+- 第三方 pass 或聚合型通票
+- 第三方博客或总结页归纳出的儿童优惠
+- 其他景点、酒店、球队、品牌、会员计划或合作方的儿童优惠
+
+额外要求：
+
+- 不能因为 `term_name` 中带有通用词，如 `kids`、`family`、`baseball`、`dental`、`paris`、`london`、`reef`，就自动放宽主体判断
+- 如果 source 只是 broader category summary，而不是目标 merchant 的单一事实，应优先输出完整英文 `No` 句，或只在证据足够时使用极稳健句式
+- 如果 source 明显在说另一主体，即使内容本身与儿童有关，也必须输出完整英文 `No` 句
+
+## Yes / No 决策规则
+
+### 输出 `Yes` 的条件
+
+满足以下任一即可：
+
+- 商家有明确 `children / kids / youth / junior` 定价或减免
+- 商家有 `children free`、`child fare`、`child pass`、`kids pricing` 之类的直接证据
+- 商家存在由儿童年龄、儿童身份、儿童生日触发的专属优惠
+- 商家为儿童课程、夏令营、儿童活动参与者提供折扣
+- 商家仅有 kids category 的明确折扣、sale、clearance、markdown，且主体清晰、证据直接，此时只可作为弱 `Yes` 保留
+
+### 输出 `No` 的条件
+
+出现以下情况应直接输出完整英文 `No` 句：
+
+- source 讲的是其他商家、平台、合作方、第三方项目，而不是目标 merchant 本身
+- 只出现 `student`、`newsletter`、`app`、`loyalty`、`military` 等非 child 折扣
+- 只是泛泛提到“适合孩子”“有儿童产品”“孩子能用”，但没有折扣事实
+- 只是家庭或家长优惠，没有明确 child 本人、child fare、kids product discount 受益
+- 内容无法与目标 merchant 建立合理主体对应
+
+### 边界情况处理
+
+对于边界模糊但仍可保留的情况，使用更稳健表达：
+
 - `appears to offer discounted kids' items through its sale section`
 - `offers child pricing on select tickets`
 - `children under X may receive free admission`
 - `child rates are available on eligible bookings`
-鍙湁鍦ㄥ師鏂囨湰韬槑纭椂锛屾墠鍙互鐢ㄩ潪甯歌偗瀹氱殑鍙ュ紡銆?
-child subclass 涓繕瑕侀澶栭伒瀹堬細
-- A 绫?child pricing / free / child-triggered benefit 鏄己 `Yes`
-- B 绫?kids sale / clearance / discounted kids merchandise 鍙槸寮?`Yes`
-- 褰?source 鍙湁 B 绫昏瘉鎹椂锛屼笉瑕佹妸瀹冨啓鎴愪紭鍏堢骇寰堥珮銆佸緢绋冲畾銆佸緢瀹樻柟鐨?child discount
-## Child 涓撳睘鎺掗櫎瑙勫垯
-杈撳嚭 child discount FAQ 鏃讹紝涓嶅緱娣峰叆锛?
-- 瀛︾敓浼樻儬
-- 瀹堕暱 / 鍐涘睘 / 浼氬憳 / 淇＄敤鍗?/ 璁㈤槄 / 鎺ㄨ崘杩斿埄
-- 鍏朵粬 merchant 鐨勫効绔ヤ紭鎯?- 鏇夸唬鐪侀挶寤鸿
-- 鈥滀篃鍙互鍘绘煇鏌愬钩鍙颁拱鏇翠究瀹溾€?- 鍏朵粬 unrelated savings path
-濡傛灉 source 鍚屾椂鍖呭惈 child 鎶樻墸鍜屽埆鐨勪紭鎯狅紝鍙繚鐣?child 鐩稿叧淇℃伅銆?
-濡傛灉 child 浜嬪疄涓嶅寮猴紝鑰屽叾浠栦紭鎯犲緢寮猴紝涔熶笉鑳芥嬁鍏朵粬浼樻儬鏉ヨˉ鍏ㄧ瓟妗堛€?
-## 鍐欎綔瑕佹眰
-- 涓嶆敼鍙樺師鎰?- 淇濈暀鎵€鏈夐噸瑕佹牳蹇冧簨瀹?- 鍒犻櫎閲嶅鍜屽墠鍚庣煕鐩捐〃杩?- 鍚屼竴浼樻儬銆侀棬妲涖€侀檺鍒舵垨鏉′欢涓嶈鎹㈠彞閲嶅璇翠袱閬?- 浼樺厛浣跨敤鐩存帴銆佷簨瀹炲瀷琛ㄨ揪
-- 绂佹浣跨敤鈥渂ut no fixed discount amount is stated鈥濆強鍚岀被涓嶇‘瀹氬厹搴曞彞寮?- 涓嶅悓琛岀瓟妗堢殑琛ㄨ揪鏂瑰紡灏介噺鑷劧鍙樺寲锛岄伩鍏嶆壒閲忔ā鏉挎劅
-- 閬垮厤杩炵画浣跨敤 `about`銆乣usually`銆乣around` 绛夋ā绯婅瘝锛涘鍘熸枃纭疄鍙湁杩戜技琛ㄨ揪锛屾渶澶氫繚鐣欎竴涓繀瑕佺殑妯＄硦鎻愮ず
-- 瑕佷繚鐣?`seasonal`銆乣limited-time`銆乣variable`銆乣partner-only`銆乣no dedicated` 杩欑被闄愬畾璇殑鍘熸剰锛屼絾瑕佹敼鍐欐垚鑷劧鍙ュ瀷锛屼笉瑕佹満姊扮‖鎻掑師璇?- 娌℃湁鍘熸枃璇佹嵁鏃讹紝涓嶈鑷琛ュ啓 `seasonal`銆乣limited-time`銆乣variable`銆乣partner-only`銆乣no dedicated` 绛夐檺瀹氳瘝
-- 浼樺厛鍐欐竻妤氬搧鐗屻€佹満鍒躲€侀棬妲涖€侀檺鍒讹紝鍐嶅啓琛ュ厖淇℃伅
-- 涓嶈鎶?URL銆佺綉椤垫爣棰樸€佹潵婧愮珯鍚嶃€佹潵婧愭嫭鍙锋敞閲婄洿鎺ュ啓杩?FAQ 姝ｆ枃
-- 涓嶈鐢?`鍝佺墝鍚?(domain.com)` 杩欑鏂瑰紡琛ュ厖璇存槑鍩熷悕锛涙鏂囬噷鍙繚鐣欒嚜鐒跺搧鐗屽悕
-- 瀹炰綋閿佸畾瑕佹洿涓ユ牸锛涘厑璁?`Anthony Robbins` / `Tony Robbins`銆乣Dental Plans` / `DentalPlans.com`銆乣Sam's Club` / `Sam鈥檚 Club`銆乣Kiehls` / `Kiehl's` 杩欑被绛変环鍐欐硶锛屼絾涓嶈鎶婁袱涓悕瀛楁満姊板苟鍒楀埌鍚屼竴鍙ラ噷
-- 璇皵鍙嬪ソ銆佺揣鍑?- 涓ユ牸鎺у埗鍦?50 涓崟璇嶄互鍐?
-child subclass 鍙ュ紡杩樺繀椤荤鍚堜互涓嬪師鍒欙細
-- `Yes` 绫荤瓟妗堝繀椤荤粺涓€浠?`Yes.` 寮€澶?- `No` 绫荤瓟妗堝繀椤荤粺涓€浠?`No.` 寮€澶?- 鏈€缁堢瓟妗堝繀椤绘槸 1 鍒?2 鍙ワ紝閫傚悎鍓嶅彴 FAQ 鐩存帴灞曠ず
-- 涓嶈鍐欐绱㈡憳瑕併€佹潵婧愯В閲娿€佸厤璐ｅ０鏄庛€佸缓璁煡鐪嬪畼缃?- 瀵?A 绫?child-specific pricing锛屽彲鍐欐垚 `Yes. {Merchant} offers child fares...`銆乣Yes. Children under X get free entry...`銆乣Yes. {Merchant} has child rates...`
-- 瀵?B 绫?kids section / category sale锛屽彧鑳藉啓鎴?`Yes. {Merchant} has discounted kids' items...`銆乣Yes. {Merchant} has kids' items in sale or clearance sections...`銆乣Yes. {Merchant} offers discounted kids' items through its sale section.`
-- 涓嶈兘鎶?B 绫诲啓鎴愬浐瀹氬畼鏂瑰効绔ユ斂绛?- 涓嶈兘鎶?`children's products on sale` 璇啓鎴?`children receive a discount`
-- 褰撹瘉鎹粎琛ㄦ槑 merchant 鏈?kids / baby / junior category 鐨?sale銆乧learance銆乵arkdown 鏃讹紝绂佹鍐?`child discount` 鎴?`discount for children`
-- `No` 蹇呴』鍐欐垚瀹屾暣鑻辨枃鍙ュ瓙锛屼笉鑳藉彧鍐?`no`
-- 鎺ㄨ崘 `No` 鍙ュ紡锛?  - `No. {Merchant} does not offer a standard child discount.`
+
+只有在原文本身明确时，才可以用非常肯定的句式。
+
+child subclass 中还要额外遵守：
+
+- A 类 child pricing / free / child-triggered benefit 是强 `Yes`
+- B 类 kids sale / clearance / discounted kids merchandise 只是弱 `Yes`
+- 当 source 只有 B 类证据时，不要把它写成优先级很高、很稳定、很官方的 child discount
+
+## Child 专属排除规则
+
+输出 child discount FAQ 时，不得混入：
+
+- 学生优惠
+- 家长 / 军属 / 会员 / 信用卡 / 订阅 / 推荐返利
+- 其他 merchant 的儿童优惠
+- 替代省钱建议
+- “也可以去某某平台买更便宜”
+- 其他 unrelated savings path
+
+如果 source 同时包含 child 折扣和别的优惠，只保留 child 相关信息。
+
+如果 child 事实不够强，而其他优惠很强，也不能拿其他优惠来补全答案。
+
+## 写作要求
+
+- 不改变原意
+- 保留所有重要核心事实
+- 删除重复和前后矛盾表述
+- 同一优惠、门槛、限制或条件不要换句重复说两遍
+- 优先使用直接、事实型表达
+- 禁止使用“but no fixed discount amount is stated”及同类不确定兜底句式
+- 不同行答案的表达方式尽量自然变化，避免批量模板感
+- 避免连续使用 `about`、`usually`、`around` 等模糊词；如原文确实只有近似表达，最多保留一个必要的模糊提示
+- 要保留 `seasonal`、`limited-time`、`variable`、`partner-only`、`no dedicated` 这类限定语的原意，但要改写成自然句型，不要机械硬插原词
+- 没有原文证据时，不要自行补写 `seasonal`、`limited-time`、`variable`、`partner-only`、`no dedicated` 等限定词
+- 优先写清楚品牌、机制、门槛、限制，再写补充信息
+- 不要把 URL、网页标题、来源站名、来源括号注释直接写进 FAQ 正文
+- 不要用 `品牌名 (domain.com)` 这种方式补充说明域名；正文里只保留自然品牌名
+- 实体锁定要更严格；允许 `Anthony Robbins` / `Tony Robbins`、`Dental Plans` / `DentalPlans.com`、`Sam's Club` / `Sam’s Club`、`Kiehls` / `Kiehl's` 这类等价写法，但不要把两个名字机械并列到同一句里
+- 语气友好、紧凑
+- 严格控制在 50 个单词以内
+
+child subclass 句式还必须符合以下原则：
+
+- `Yes` 类答案必须统一以 `Yes.` 开头
+- `No` 类答案必须统一以 `No.` 开头
+- 最终答案必须是 1 到 2 句，适合前台 FAQ 直接展示
+- 不要写检索摘要、来源解释、免责声明、建议查看官网
+- 对 A 类 child-specific pricing，可写成 `Yes. {Merchant} offers child fares...`、`Yes. Children under X get free entry...`、`Yes. {Merchant} has child rates...`
+- 对 B 类 kids section / category sale，只能写成 `Yes. {Merchant} has discounted kids' items...`、`Yes. {Merchant} has kids' items in sale or clearance sections...`、`Yes. {Merchant} offers discounted kids' items through its sale section.`
+- 不能把 B 类写成固定官方儿童政策
+- 不能把 `children's products on sale` 误写成 `children receive a discount`
+- 当证据仅表明 merchant 有 kids / baby / junior category 的 sale、clearance、markdown 时，禁止写 `child discount` 或 `discount for children`
+- `No` 必须写成完整英文句子，不能只写 `no`
+- 推荐 `No` 句式：
+  - `No. {Merchant} does not offer a standard child discount.`
   - `No. {Merchant} does not offer a standard child discount. The source refers to a different entity.`
   - `No. {Merchant} does not offer a standard child discount. The source refers to student or educator pricing instead.`
   - `No. {Merchant} does not offer a standard child discount. The source describes broader family or pediatric savings, not a child-specific merchant offer.`
-- 涓嶈鍐?`No, the available information does not clearly show...`
-- 涓嶈鍐?`Based on available information...`
-- 涓嶈鍐?`There is no evidence that...`
-- 涓嶈鍐?`It does not appear to...`
-- 娌℃湁鍘熸枃璇佹嵁鏃讹紝涓嶈鑷琛ュ啓 `seasonal`銆乣limited-time`銆乣official`銆乣standard`銆乣dedicated`
-## 璇█瑙勫垯
-绛旀蹇呴』浣跨敤 `country` 瀵瑰簲鍥藉鐨勫父鐢ㄨ瑷€銆?
-渚嬪锛?
-- `US`銆乣UK`銆乣CA`銆乣AU`锛氳嫳鏂?- `DE`锛氬痉鏂?- `FR`锛氭硶鏂?- `ES`锛氳タ鐝墮鏂?- `IT`锛氭剰澶у埄鏂?- `JP`锛氭棩鏂?
-濡傛灉鍥藉涓庤瑷€鐨勫搴斿叧绯讳笉澶熸槑纭紝浣跨敤璇ュ浗瀹剁敤鎴锋渶甯歌鐨勯潰鍚戞秷璐硅€呰瑷€銆?
-## 闂鐢熸垚瑙勫垯
-`Titile1` 闇€瑕佺敓鎴愪竴涓竻鏅般€佽嚜鐒躲€佷笌 `term_name` 瀵归綈鐨?child discount FAQ 闂銆?
-浼樺厛鍙ュ紡锛?
+- 不要写 `No, the available information does not clearly show...`
+- 不要写 `Based on available information...`
+- 不要写 `There is no evidence that...`
+- 不要写 `It does not appear to...`
+- 没有原文证据时，不要自行补写 `seasonal`、`limited-time`、`official`、`standard`、`dedicated`
+
+## 语言规则
+
+答案必须使用 `country` 对应国家的常用语言。
+
+例如：
+
+- `US`、`UK`、`CA`、`AU`：英文
+- `DE`：德文
+- `FR`：法文
+- `ES`：西班牙文
+- `IT`：意大利文
+- `JP`：日文
+
+如果国家与语言的对应关系不够明确，使用该国家用户最常见的面向消费者语言。
+
+## 问题生成规则
+
+`Titile1` 需要生成一个清晰、自然、与 `term_name` 对齐的 child discount FAQ 问题。
+
+优先句式：
+
 - `Does {Merchant} offer a child discount?`
-濡傛灉鐩爣鍥藉涓嶆槸鑻辫鐜锛屽簲缈昏瘧鎴愬搴旇瑷€銆?
-## 鎵ц娴佺▼
-閫愯澶勭悊鏃讹紝鎸変互涓嬫楠わ細
-1. 浠?`term_name` 璇嗗埆鐩爣鍟嗗
-2. 鍏堝仛瀹炰綋鏍￠獙锛涘鏋滃瓨鍦ㄦ槑鏄惧疄浣撴贩娣嗕笖鏃犳硶纭鏄綋鍓?merchant锛屾湰琛岀洿鎺ヨ緭鍑哄畬鏁磋嫳鏂?`No` 鍙?3. 闃呰 `discount_details`锛屽厛鍒ゆ柇瀹冨睘浜?A 绫?child-specific pricing銆丅 绫?kids category sale銆丏 绫?child-specific benefit锛岃繕鏄潪 child 鎶樻墸
-4. 鍙彁鍙?child discount 鐩稿叧浜嬪疄銆佽幏鍙栨柟寮忓拰闄愬埗鏉′欢
-   - 涓嶈鍋滃湪绗竴鍙ヨ瘽锛涚户缁鏌ュ悗鏂囨槸鍚﹁繕鏈夊勾榫勮寖鍥淬€佹湁鏁堟湡銆侀€傜敤鑼冨洿銆佸湴鍖洪檺鍒躲€佷娇鐢ㄩ棬妲涚瓑楂樹环鍊间俊鎭?5. 鍒ゆ柇婧愬唴瀹逛腑鐨勫晢瀹朵富浣撴槸鍚︿笌鐩爣鍟嗗涓€鑷达紝骞舵墽琛?child 涓撳睘 merchant locking
-6. 鍋氬嚭缁撹锛?   - 鑻ョ‘璁ゆ湁鍎跨浼樻儬锛氳緭鍑轰互 `Yes.` 寮€澶寸殑鏈€缁堢瓟妗?   - 鑻ュ彧鏄?kids section / category sale锛氫繚鐣欎负 `Yes`锛屼絾蹇呴』浣跨敤鍏嬪埗鍙ュ紡
-   - 鑻ヨ瘉鎹柟鍚戞纭絾鍔涘害涓嶈冻锛氫粎鍦ㄥ繀瑕佹椂浣跨敤涓€娆?`appears to`
-   - 鑻ョ‘璁ゆ病鏈夛紝鎴栦富浣撴槑纭笉涓€鑷达紝鎴栫‘瀹炴棤娉曞悎鐞嗗搴旓紝鎴栦粎鏈夐潪 child 鎶樻墸锛氳緭鍑轰互 `No.` 寮€澶寸殑瀹屾暣鑻辨枃 `No` 鍙?7. 鐢ㄧ洰鏍囧浗瀹惰瑷€鏀瑰啓鎴愮畝娲?FAQ 绛旀锛屽苟纭繚绛旀閲岃嚦灏戝嚭鐜颁竴娆″搧鐗屼富浣擄紱鑻ヨ緭鍑?`Yes`锛屽彞寮忓繀椤讳笌 A / B 绫诲瀷鍖归厤
-8. 妫€鏌ョ瓟妗堟槸鍚﹀彧淇濈暀褰撳墠 `Subclass` 鍐呭銆佹病鏈夌紪閫犱俊鎭€佹病鏈夊爢鍙犳ā绯婅瘝
-9. 浣跨敤 `scripts/faq_excel_tools.py` 鐢熸垚鏈€缁?Excel
+
+如果目标国家不是英语环境，应翻译成对应语言。
+
+## 执行流程
+
+逐行处理时，按以下步骤：
+
+1. 从 `term_name` 识别目标商家
+2. 先做实体校验；如果存在明显实体混淆且无法确认是当前 merchant，本行直接输出完整英文 `No` 句
+3. 阅读 `discount_details`，先判断它属于 A 类 child-specific pricing、B 类 kids category sale、D 类 child-specific benefit，还是非 child 折扣
+4. 只提取 child discount 相关事实、获取方式和限制条件
+   - 不要停在第一句话；继续检查后文是否还有年龄范围、有效期、适用范围、地区限制、使用门槛等高价值信息
+5. 判断源内容中的商家主体是否与目标商家一致，并执行 child 专属 merchant locking
+6. 做出结论：
+   - 若确认有儿童优惠：输出以 `Yes.` 开头的最终答案
+   - 若只是 kids section / category sale：保留为 `Yes`，但必须使用克制句式
+   - 若证据方向正确但力度不足：仅在必要时使用一次 `appears to`
+   - 若确认没有，或主体明确不一致，或确实无法合理对应，或仅有非 child 折扣：输出以 `No.` 开头的完整英文 `No` 句
+7. 用目标国家语言改写成简洁 FAQ 答案，并确保答案里至少出现一次品牌主体；若输出 `Yes`，句式必须与 A / B 类型匹配
+8. 检查答案是否只保留当前 `Subclass` 内容、没有编造信息、没有堆叠模糊词
+9. 使用 `scripts/faq_excel_tools.py` 生成最终 Excel
+
 ## Final Sanitation
-杈撳嚭鍓嶅繀椤诲啀娆℃鏌ワ細
-- 鏈夋病鏈夋妸 broader offer 鍐欐垚 exact match
-- 鏈夋病鏈夋妸 partner offer 鍐欐垚瀹樻柟鏀跨瓥
-- 鏈夋病鏈夋妸 `no clear` / `no dedicated` 鏀规垚鑲畾 `Yes`
-- 鏈夋病鏈夋紡鎺?`seasonal`銆乣limited-time`銆乣variable`銆乣partner-only`銆乣no dedicated` 杩欑被闄愬畾璇殑鍘熸剰锛屾垨鎶婂畠浠敓纭‖鎻掕繘鍙ュ瓙
-- 鏈夋病鏈夊湪娌℃湁鍘熸枃璇佹嵁鏃惰嚜琛岃ˉ鍐欓檺瀹氳瘝
-- 鏈夋病鏈夋畫鐣?`Apple`銆乣Google Play`銆乣How to Apply`銆乣How to Get`銆乣Source` 绛夋爣棰樻垨鏉ユ簮娈嬬墖
-- 鏈夋病鏈夊嚭鐜?`Zarda Barbecue (zarda.com)` 杩欑被鍝佺墝鍚嶅悗璺熸嫭鍙峰煙鍚嶇殑鍐欐硶
-- 鏈夋病鏈夋嫾鎺ュ潖鍙ュ瓙銆侀噸澶嶅彞瀛愩€侀敊鍒瓧
-- 鏈夋病鏈夊嚭鐜?`Anthony Robbins Tony Robbins`銆乣Dental Plans DentalPlans.com`銆乣Sam's Club Sam鈥檚 Club`銆乣Kiehls Kiehl's` 杩欑瀹炰綋鍙屽啓
-- 鏈夋病鏈夋妸 `kids sale` 鍐欐垚 `official child discount`
-- 鏈夋病鏈夋妸 `student discount for high school students` 鍐欐垚 `child discount`
-- 鏈夋病鏈夋妸 `family offer`銆乣parent offer`銆乣dependent offer` 鍐欐垚 child offer
-- 鏈夋病鏈夋妸 broader travel / attraction / dental / school summary 鍐欐垚鏌愪釜 merchant 鐨勫畼鏂?child discount
-- 鏈夋病鏈夋妸绗笁鏂?pass銆佺涓夋柟闆跺敭鍟嗐€佸叾浠栭厭搴?/ 鏅偣 / 鍝佺墝鐨?kids offer 娣疯繘姝ｆ枃
-- 鏈夋病鏈夋畫鐣欑綉椤靛箍鍛婅銆佹爮鐩爣棰樸€丼EO 鏍囬銆乻ource 鏂彞
-- 鏈夋病鏈変繚鐣?`How to get`銆乣Key details`銆乣Why spend more`銆乣where to find`銆乣shop now` 绛夌綉椤垫畫鐗?- 鏈夋病鏈夋妸 `children's products on sale` 璇啓鎴?`children receive a discount`
-- 鏈夋病鏈夊湪 B 绫诲急 `Yes` 涓啓鍑?`child discount` 鎴?`discount for children`
-- 鏈夋病鏈夊湪鏃犺瘉鎹椂鑷琛ュ啓 `seasonal`銆乣limited-time`銆乣official`銆乣standard`銆乣dedicated`
-- 鏈夋病鏈夋妸 `student discount`銆乣education pricing`銆乣teacher offer`銆乣school license`銆乣classroom license`銆乣family plan`銆乣insurance plan` 鍐欐垚 child discount
-- 鏈夋病鏈夋妸瀹炰綋娣锋穯缁撴灉銆佸悓鍚嶅搧鐗屻€佸紓鍦板尯鐗堟湰銆佺涓夋柟骞冲彴鍐呭鍐欑粰褰撳墠 merchant
-- `Yes` 鏄惁浠?`Yes.` 寮€澶达紝`No` 鏄惁浠?`No.` 寮€澶?- `No` 鏄惁閬垮厤浜?`available information does not clearly show`銆乣there is no evidence that`銆乣it does not appear to`
-- 鏄惁浠嶇劧淇濈暀浜嗘悳绱㈣厰銆佸厤璐ｅ０鏄庛€佸缓璁煡鐪嬪畼缃戙€佹潵婧愯В閲?
-## 璐ㄦ娓呭崟
-浜や粯鍓嶇‘璁わ細
-- 姣忎竴琛岄兘瀵瑰簲姝ｇ‘鍟嗗
-- 姣忔潯绛旀閮?<= 50 璇?- 姣忔潯绛旀閮戒娇鐢ㄦ纭浗瀹惰瑷€
-- 姣忔潯绛旀閮借嚦灏戝嚭鐜颁竴娆″搧鐗屼富浣?- 姣忔潯绛旀閮藉彧鍐欏綋鍓?`Subclass` 瀵瑰簲鍐呭
-- 姣忔潯绛旀閮藉彧淇濈暀鏍稿績浜嬪疄
-- 鎵€鏈夋姌鎵ｆ暟鍊奸兘琚噯纭繚鐣?- 涓庡綋鍓?`Subclass` 鐩存帴鐩稿叧鐨勯檺鍒躲€佽祫鏍笺€佸湴鍖鸿寖鍥村拰瑕佹眰閮藉敖閲忎繚鐣欍€佹病鏈夋槑鏄鹃仐婕?- 娌℃湁鍑虹幇鈥滃彧鏀瑰啓棣栧彞銆佸悗鏂囨湁鏁堜俊鎭湭鍚告敹鈥濈殑鎯呭喌
-- 娌℃湁鎶婂悓涓€浼樻儬鎴栧悓涓€闄愬埗鏉′欢閲嶅鍙欒堪
-- 娌℃湁鍑虹幇 URL銆佹潵婧愭爣棰樻垨涓嶈鑼冩嫭鍙锋墿鍐欏紡鍝佺墝琛ㄨ揪
-- 娌℃湁杩炵画鍫嗗彔 `about`銆乣usually`銆乣around` 绛夋ā绯婅瘝
-- 鍙湁涓讳綋鏄庣‘涓嶅尮閰嶆垨纭疄鏃犳硶鍚堢悊瀵瑰簲鏃舵墠杈撳嚭瀹屾暣鑻辨枃 `No` 鍙?- 鏈€缁堜氦浠樹负涓庢ā鏉垮瓧娈靛畬鍏ㄤ竴鑷寸殑 Excel 鏂囦欢
+
+输出前必须再次检查：
+
+- 有没有把 broader offer 写成 exact match
+- 有没有把 partner offer 写成官方政策
+- 有没有把 `no clear` / `no dedicated` 改成肯定 `Yes`
+- 有没有漏掉 `seasonal`、`limited-time`、`variable`、`partner-only`、`no dedicated` 这类限定语的原意，或把它们生硬硬插进句子
+- 有没有在没有原文证据时自行补写限定词
+- 有没有残留 `Apple`、`Google Play`、`How to Apply`、`How to Get`、`Source` 等标题或来源残片
+- 有没有出现 `Zarda Barbecue (zarda.com)` 这类品牌名后跟括号域名的写法
+- 有没有拼接坏句子、重复句子、错别字
+- 有没有出现 `Anthony Robbins Tony Robbins`、`Dental Plans DentalPlans.com`、`Sam's Club Sam’s Club`、`Kiehls Kiehl's` 这种实体双写
+- 有没有把 `kids sale` 写成 `official child discount`
+- 有没有把 `student discount for high school students` 写成 `child discount`
+- 有没有把 `family offer`、`parent offer`、`dependent offer` 写成 child offer
+- 有没有把 broader travel / attraction / dental / school summary 写成某个 merchant 的官方 child discount
+- 有没有把第三方 pass、第三方零售商、其他酒店 / 景点 / 品牌的 kids offer 混进正文
+- 有没有残留网页广告语、栏目标题、SEO 标题、source 断句
+- 有没有保留 `How to get`、`Key details`、`Why spend more`、`where to find`、`shop now` 等网页残片
+- 有没有把 `children's products on sale` 误写成 `children receive a discount`
+- 有没有在 B 类弱 `Yes` 中写出 `child discount` 或 `discount for children`
+- 有没有在无证据时自行补写 `seasonal`、`limited-time`、`official`、`standard`、`dedicated`
+- 有没有把 `student discount`、`education pricing`、`teacher offer`、`school license`、`classroom license`、`family plan`、`insurance plan` 写成 child discount
+- 有没有把实体混淆结果、同名品牌、异地区版本、第三方平台内容写给当前 merchant
+- `Yes` 是否以 `Yes.` 开头，`No` 是否以 `No.` 开头
+- `No` 是否避免了 `available information does not clearly show`、`there is no evidence that`、`it does not appear to`
+- 是否仍然保留了搜索腔、免责声明、建议查看官网、来源解释
+
+## 质检清单
+
+交付前确认：
+
+- 每一行都对应正确商家
+- 每条答案都 <= 50 词
+- 每条答案都使用正确国家语言
+- 每条答案都至少出现一次品牌主体
+- 每条答案都只写当前 `Subclass` 对应内容
+- 每条答案都只保留核心事实
+- 所有折扣数值都被准确保留
+- 与当前 `Subclass` 直接相关的限制、资格、地区范围和要求都尽量保留、没有明显遗漏
+- 没有出现“只改写首句、后文有效信息未吸收”的情况
+- 没有把同一优惠或同一限制条件重复叙述
+- 没有出现 URL、来源标题或不规范括号扩写式品牌表达
+- 没有连续堆叠 `about`、`usually`、`around` 等模糊词
+- 只有主体明确不匹配或确实无法合理对应时才输出完整英文 `No` 句
+- 最终交付为与模板字段完全一致的 Excel 文件

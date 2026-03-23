@@ -223,9 +223,9 @@ export class AiExecutor {
     } catch {
       const isHtml = contentType.includes("text/html") || bodyTrimmed.startsWith("<") || bodyTrimmed.toLowerCase().includes("<html");
       if (isHtml) {
-        throw new Error(`LLM 返回非JSON(HTML): ${bodyTrimmed.slice(0, 240)}`);
+        throw new Error(`LLM 返回非 JSON(HTML): ${bodyTrimmed.slice(0, 240)}`);
       }
-      throw new Error(`LLM 返回非JSON: ${bodyTrimmed.slice(0, 240)}`);
+      throw new Error(`LLM 返回非 JSON: ${bodyTrimmed.slice(0, 240)}`);
     }
 
     const content = this.extractContent(json);

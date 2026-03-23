@@ -1,107 +1,184 @@
+---
 name: teacher-discount-faq-skill
-description: 褰撶敤鎴锋彁渚涜〃鏍硷紝骞跺笇鏈涘熀浜?Google AI Overview 鐨勭粨鏋滄憳瑕佺敓鎴?HotDeals 鏁欏笀浼樻儬 FAQ 鏃朵娇鐢ㄦ skill銆傝鍙栬緭鍏ヨ〃涓殑 country銆乼erm_name銆乨iscount_details锛屽垽鏂唴瀹逛富浣撲笌鍟嗗鏄惁涓€鑷达紝鍐嶆寜鎸囧畾 FAQ 妯℃澘杈撳嚭 Excel 鏂囦欢锛岀瓟妗堥渶浣跨敤瀵瑰簲鍥藉璇█銆佺畝娲佷笖绗﹀悎 SEO銆?---
+description: 当用户提供表格，并希望基于 Google AI Overview 的结果摘要生成 HotDeals 教师优惠 FAQ 时使用此 skill。读取输入表中的 country、term_name、discount_details，判断内容主体与商家是否一致，再按指定 FAQ 模板输出 Excel 文件，答案需使用对应国家语言、简洁且符合 SEO。
+---
+
 # Teacher Discount FAQ Skill
-浣犳槸 HD 鐨?SEO 涓撳锛屾鍦ㄤ负 HotDeals 鐨?teacher discount 椤甸潰鍋?FAQ 鍐呭浼樺寲銆?
-褰撶敤鎴锋彁渚涗竴涓〃鏍硷紝骞惰姹傛牴鎹?Google AI Overview 鏀堕泦鍒扮殑 `discount_details` 鍐呭锛屾娊璞＄敓鎴?teacher discount FAQ锛屽苟涓ユ牸鎸夋寚瀹?Excel 妯℃澘杈撳嚭鏃讹紝浣跨敤姝?skill銆?
-鏈?skill 鐨勮緟鍔╂枃浠讹細
-- `scripts/faq_excel_tools.py`锛氫粠 xlsx 鎻愬彇杈撳叆瀛楁锛屽苟鏋勫缓鏈€缁堣緭鍑?xlsx
-- `references/output-format.md`锛氳緭鍑哄瓧娈垫槧灏勪笌浜や粯妫€鏌ユ竻鍗?
-## 鐩爣
-閽堝姣忎釜鍟嗗锛岃緭鍑虹鍚堣姹傜殑 FAQ 鍐呭銆傜瓟妗堝繀椤绘弧瓒筹細
-- 瀵?SEO 鍜?AI 鎼滅储鍙嬪ソ
-- 鍙鎬у己銆侀€昏緫娓呮櫚銆佺畝娲併€佸鐢ㄦ埛鍙嬪ソ
-- 浣跨敤璇ヨ `country` 瀵瑰簲璇█
-- 姣忔潯绛旀涓嶈秴杩?50 涓崟璇?- 浠呭熀浜庡師濮嬩簨瀹烇紝涓嶅緱缂栭€?
-## 杈撳叆瑕佹眰
-浠庣敤鎴疯緭鍏ヨ〃涓鍙栦互涓嬪瓧娈碉細
+
+你是 HD 的 SEO 专家，正在为 HotDeals 的 teacher discount 页面做 FAQ 内容优化。
+
+当用户提供一个表格，并要求根据 Google AI Overview 收集到的 `discount_details` 内容，抽象生成 teacher discount FAQ，并严格按指定 Excel 模板输出时，使用此 skill。
+
+本 skill 的辅助文件：
+
+- `scripts/faq_excel_tools.py`：从 xlsx 提取输入字段，并构建最终输出 xlsx
+- `references/output-format.md`：输出字段映射与交付检查清单
+
+## 目标
+
+针对每个商家，输出符合要求的 FAQ 内容。答案必须满足：
+
+- 对 SEO 和 AI 搜索友好
+- 可读性强、逻辑清晰、简洁、对用户友好
+- 使用该行 `country` 对应语言
+- 每条答案不超过 50 个单词
+- 仅基于原始事实，不得编造
+
+## 输入要求
+
+从用户输入表中读取以下字段：
+
 - `country`
 - `term_name`
 - `discount_details`
-濡傛灉杈撳叆涓繕鏈?`term_id` 鎴?`domain`锛屽垯涓€骞朵繚鐣欏埌杈撳嚭锛涜嫢娌℃湁鎻愪緵锛屽垯瀵瑰簲杈撳嚭鍗曞厓鏍肩暀绌猴紝闄ら潪鐢ㄦ埛鍙﹁鎻愪緵銆?
-涓€涓〃涓彲鑳藉寘鍚涓晢瀹讹紝蹇呴』閫愪釜鍟嗗鍒嗗埆鍒嗘瀽銆佸垎鍒緭鍑恒€?
-## 杈撳嚭瑕佹眰
-浜や粯缁撴灉蹇呴』鏄?Excel 鏂囦欢锛屼笉鏄函鏂囨湰銆?
-杈撳嚭琛ㄦ牸瀛楁蹇呴』涓ユ牸鎸変互涓嬬粨鏋勫～鍐欙細
-- `ContentType`锛氬浐瀹氬～ `faq`
-- `Country`锛氬鍒惰緭鍏ヤ腑鐨?`country`
-- `TermID`锛氬鍒惰緭鍏ヤ腑鐨?`term_id`锛涘鏃犲垯鐣欑┖
-- `TermName`锛氬鍒惰緭鍏ヤ腑鐨?`term_name`
-- `Domain`锛氬鍒惰緭鍏ヤ腑鐨?`domain`锛涘鏃犲垯鐣欑┖
-- `Source`锛氬浐瀹氬～ `AI`
-- `Subclass`锛氬浐瀹氬～ `teacher discount`
-- `鏉垮潡鍚嶇О`锛氬浐瀹氬～ `faq`
-- `Titile1`锛欶AQ 闂
-- `Brief Introduction`锛欶AQ 绛旀
-- `Href Kw`锛氱暀绌?- `Href Url`锛氱暀绌?
-## Subclass 鑱氱劍瑙勫垯
-- `Subclass` 鍐冲畾褰撳墠琛屽彧鑳藉啓杩欎竴绫绘満鍒讹紝涓嶈鎶婂叾浠栦紭鎯犵被鍒贩鍐欒繘绛旀
-- 鍙彁鍙栦笌褰撳墠 `Subclass` 鐩存帴鐩稿叧鐨勪簨瀹烇紱鍏朵粬鎶樻墸銆佷細鍛樸€佽繑鍒┿€佺ぜ鍖呫€佹弧鍑忋€佸厤杩愮瓑淇℃伅锛岄櫎闈炲畠鏈韩灏辨槸璇?`Subclass` 鐨勯鍙栨潯浠舵垨浣跨敤闄愬埗锛屽惁鍒欎笉瑕佸啓鍏?- 濡傛灉婧愭枃鏈悓鏃舵彁鍒板绫讳紭鎯狅紝浼樺厛淇濈暀褰撳墠 `Subclass` 鐨勬牳蹇冩満鍒躲€佹暟鍊笺€佽幏鍙栨柟寮忋€侀檺鍒舵潯浠讹紝鍒犻櫎鏃犲叧绫诲埆鍐呭
-- 涓嶈涓轰簡涓板瘜绛旀锛屾妸鍏朵粬浼樻儬绫诲埆鎷兼帴鎴愨€滈檮鍔犱俊鎭€?
-## Teacher Discount 瀹氫箟杈圭晫
-鍦?teacher discount 鍦烘櫙閲岋紝鍙湁褰撲紭鎯犮€佸厤璐硅祫鏍笺€佷笓灞炰环鏍兼垨涓撳睘鏉冪泭鏄潰鍚戞暀甯堟垨鏁欒偛宸ヤ綔鑰呮湰浜鸿幏鍙栧苟浣跨敤鏃讹紝鎵嶅彲瑙嗕负褰撳墠 `Subclass` 鐨勬湁鏁堜簨瀹炪€?
-浠ヤ笅鎯呭喌鍙垽瀹氫负 `Yes`锛?
-- merchant 鏄庣‘鎻愪緵 `teacher`銆乣educator`銆乣educator discount`銆乣teacher offer`銆乣educator pricing`
-- merchant 涓烘暀甯堟彁渚涘彲楠岃瘉棰嗗彇鐨勪笓灞炴姌鎵ｃ€佷笓灞炰环鏍笺€佷笓灞炵爜銆佷笓灞炰紭鎯犻〉鎴栦笓灞炴潈鐩?- merchant 涓烘暀甯堟彁渚涘厤璐规暀鑲茶闂垨鍏嶈垂鏁欏笀璧勬牸锛屼笖璇ユ潈鐩婃槸鏁欏笀鏈汉鍙洿鎺ョ敵璇峰拰浣跨敤鐨勪骇鍝佹垨鏈嶅姟鏉冪泭
-- 鏁欏笀浼樻儬閫氳繃瀹樻柟鍚堜綔楠岃瘉骞冲彴棰嗗彇锛屼緥濡?`ID.me`銆乣SheerID`銆乣Gocertify`銆乣BeansID`銆乣Student Beans`銆乣Blue Light Card`銆乣Discounts for Teachers`锛屼笖鏂囨湰鑳芥竻鏅拌〃鏄庤繖鏄洰鏍?merchant 鐨勬暀甯堜紭鎯狅紝鑰屼笉鏄钩鍙拌嚜宸辩殑 cashback銆佺Н鍒嗘垨娉涗紭鎯犺仛鍚?
-浠ヤ笅鎯呭喌榛樿涓嶇畻褰撳墠 `Subclass`锛屼紭鍏堣緭鍑?`no`锛?
-- 鍙湁瀛︾敓浼樻儬銆佸啗浜轰紭鎯犮€佸尰鎶や紭鎯犮€乣first responder` 浼樻儬锛屾病鏈夋暀甯堜紭鎯?- 鍙湁 newsletter銆亀elcome code銆乻itewide sale銆乧learance銆乧ashback銆乧oupon aggregation銆佺Н鍒嗚繑鍒?- 鍙湁瀛︽牎銆佹暀瀹ゃ€佹暀鑲叉満鏋勩€乨istrict銆乥ulk order銆乧ampus銆乮nstitution銆乧lassroom license銆乻chool procurement 鐨勬暀鑲查噰璐环
-- 鍙湁 grants銆乧lassroom support銆乻chool donation銆乼eacher rewards for students銆乧lassroom incentive program锛岃€屼笉鏄暀甯堟湰浜鸿喘鐗┿€佽闃呮垨浣跨敤鏃惰幏寰楃殑鎶樻墸
-- 鍙湁 `local store`銆乣some locations`銆乣participating franchises`銆乣regional association`銆乣union benefit`锛岃€岀湅涓嶅嚭杩欐槸 merchant 瀹樻柟绋冲畾鎻愪緵鐨勬暀甯堜紭鎯?- 鍙湁绗笁鏂瑰钩鍙版彁鍒扳€滄暀甯堝彲鑳芥湁浼樻儬鈥濇垨鈥滄暀甯堝彲鍦ㄦ煇骞冲彴鎵惧埌浼樻儬鈥濓紝浣嗘病鏈夋竻鏅拌瘉鎹〃鏄庤浼樻儬鏄洰鏍?merchant 鐨勬暀甯堜紭鎯犳満鍒?- 鏂囨湰鍙鏄庢暀甯堝彲璐拱鏌愮被鍙楅檺鍟嗗搧銆佸彲鍙傚姞鏌愰」鐩€佸彲鐢宠鏁欒偛璧勬簮锛屼絾娌℃湁鏁欏笀涓汉鎶樻墸鎴栨暀甯堜釜浜轰笓灞炰环鏍笺€佹潈鐩?
-琛ュ厖璇存槑锛?
-- 鈥滃厤璐规暀鑲茶闂€濆彲瑙嗕负 teacher discount 鐨勪竴绉嶇壒娈婂舰寮忥紝浣嗕粎闄愭暀甯堟湰浜哄彲鐩存帴楠岃瘉骞朵娇鐢?- 鈥滃鏍?鏁欏鎺堟潈浠封€濅笉绛変簬鈥滄暀甯堜釜浜轰紭鎯犫€?- 鈥滄暀甯堝彲甯鐢熼鍙栧鍔扁€濅笉绛変簬鈥滄暀甯堟湰浜烘湁 teacher discount鈥?- 鈥滈儴鍒嗛棬搴楁湁娲诲姩鈥濅笉绛変簬鈥滃搧鐗屾湁鏍囧噯 teacher discount鈥?
-妯℃澘鍙傝€冿細
+
+如果输入中还有 `term_id` 或 `domain`，则一并保留到输出；若没有提供，则对应输出单元格留空，除非用户另行提供。
+
+一个表中可能包含多个商家，必须逐个商家分别分析、分别输出。
+
+## 输出要求
+
+交付结果必须是 Excel 文件，不是纯文本。
+
+输出表格字段必须严格按以下结构填写：
+
+- `ContentType`：固定填 `faq`
+- `Country`：复制输入中的 `country`
+- `TermID`：复制输入中的 `term_id`；如无则留空
+- `TermName`：复制输入中的 `term_name`
+- `Domain`：复制输入中的 `domain`；如无则留空
+- `Source`：固定填 `AI`
+- `Subclass`：固定填 `teacher discount`
+- `板块名称`：固定填 `faq`
+- `Titile1`：FAQ 问题
+- `Brief Introduction`：FAQ 答案
+- `Href Kw`：留空
+- `Href Url`：留空
+
+## Subclass 聚焦规则
+
+- `Subclass` 决定当前行只能写这一类机制，不要把其他优惠类别混写进答案
+- 只提取与当前 `Subclass` 直接相关的事实；其他折扣、会员、返利、礼包、满减、免运等信息，除非它本身就是该 `Subclass` 的领取条件或使用限制，否则不要写入
+- 如果源文本同时提到多类优惠，优先保留当前 `Subclass` 的核心机制、数值、获取方式、限制条件，删除无关类别内容
+- 不要为了丰富答案，把其他优惠类别拼接成“附加信息”
+
+## Teacher Discount 定义边界
+
+在 teacher discount 场景里，只有当优惠、免费资格、专属价格或专属权益是面向教师或教育工作者本人获取并使用时，才可视为当前 `Subclass` 的有效事实。
+
+以下情况可判定为 `Yes`：
+
+- merchant 明确提供 `teacher`、`educator`、`educator discount`、`teacher offer`、`educator pricing`
+- merchant 为教师提供可验证领取的专属折扣、专属价格、专属码、专属优惠页或专属权益
+- merchant 为教师提供免费教育访问或免费教师资格，且该权益是教师本人可直接申请和使用的产品或服务权益
+- 教师优惠通过官方合作验证平台领取，例如 `ID.me`、`SheerID`、`Gocertify`、`BeansID`、`Student Beans`、`Blue Light Card`、`Discounts for Teachers`，且文本能清晰表明这是目标 merchant 的教师优惠，而不是平台自己的 cashback、积分或泛优惠聚合
+
+以下情况默认不算当前 `Subclass`，优先输出 `no`：
+
+- 只有学生优惠、军人优惠、医护优惠、`first responder` 优惠，没有教师优惠
+- 只有 newsletter、welcome code、sitewide sale、clearance、cashback、coupon aggregation、积分返利
+- 只有学校、教室、教育机构、district、bulk order、campus、institution、classroom license、school procurement 的教育采购价
+- 只有 grants、classroom support、school donation、teacher rewards for students、classroom incentive program，而不是教师本人购物、订阅或使用时获得的折扣
+- 只有 `local store`、`some locations`、`participating franchises`、`regional association`、`union benefit`，而看不出这是 merchant 官方稳定提供的教师优惠
+- 只有第三方平台提到“教师可能有优惠”或“教师可在某平台找到优惠”，但没有清晰证据表明该优惠是目标 merchant 的教师优惠机制
+- 文本只说明教师可购买某类受限商品、可参加某项目、可申请教育资源，但没有教师个人折扣或教师个人专属价格、权益
+
+补充说明：
+
+- “免费教育访问”可视为 teacher discount 的一种特殊形式，但仅限教师本人可直接验证并使用
+- “学校/教室授权价”不等于“教师个人优惠”
+- “教师可帮学生领取奖励”不等于“教师本人有 teacher discount”
+- “部分门店有活动”不等于“品牌有标准 teacher discount”
+
+模板参考：
+
 - `/Users/mac/Downloads/non_coupon_all_demo 11/faq.xlsx`
-闇€瑕佸鐞?Excel 鏃讹紝浣跨敤锛?
+
+需要处理 Excel 时，使用：
+
 ```bash
 python3 scripts/faq_excel_tools.py extract --input /path/to/input.xlsx --output /tmp/teacher_input.json
 python3 scripts/faq_excel_tools.py build --input /tmp/teacher_output.json --output /path/to/output.xlsx
 ```
-## 绛旀瑙勮寖
-姣忔潯绛旀閮藉繀椤昏仛鐒﹂棶棰樻湰韬紝骞堕伒寰?Atomic Facts 瑙勮寖銆備紭鍏堜繚鐣欎互涓?3 涓牳蹇冧簨瀹烇細
-1. 璇ュ晢瀹舵槸鍚︽湁鏁欏笀浼樻儬
-2. 浼樻儬鍔涘害鏄灏戯紝濡傛灉鏈夋槑纭暟鍊煎繀椤诲啓鍑?3. 濡備綍鑾峰彇
-瀵逛簬 teacher discount锛岃嫢淇℃伅鍏呰冻锛? 涓簨瀹炵殑浼樺厛绾ч『搴忓簲涓猴細
-1. 鏈夋病鏈夋暀甯堜紭鎯?2. 鎶樻墸鍊兼垨鍏嶈垂璧勬牸
-3. 濡備綍楠岃瘉鎴栬幏鍙?4. 鏄惁浠呴檺鐗瑰畾骞冲彴銆佺壒瀹氭椂闂淬€佺壒瀹氬湴鍖恒€佺壒瀹氳韩浠芥垨鐗瑰畾鍟嗗搧
-濡傛灉 50 璇嶄笉瓒筹紝浼樺厛淇濈暀 1-3锛涚 4 椤瑰彧淇濈暀鏈€褰卞搷鐢ㄦ埛鍒ゆ柇鐨勯檺鍒躲€?
-鍚屾椂閬靛惊浠ヤ笅纭€ц姹傦細
-- 姣忔潯绛旀鑷冲皯鍑虹幇涓€娆″搧鐗屼富浣擄紝浼樺厛鐩存帴浣跨敤 `term_name` 鎴栧彲纭鐨勮鑼冨搧鐗屽悕
-- 鍝佺墝涓讳綋鍐欐硶蹇呴』骞插噣銆佽嚜鐒讹紝涓嶈鎶?URL銆佺綉椤垫爣棰樸€佹潵婧愬悕銆佸ぇ娈垫嫭鍙疯ˉ鍏呮垨瑙ｉ噴鎬ф墿鍐欐弶杩涚瓟妗?- 闄ら潪鎷彿鍐呭鏈韩灏辨槸娑堣垂鑰呭繀椤荤煡閬撶殑姝ｅ紡鏉冪泭鍚嶇О锛屽惁鍒欎笉瑕佸啓绫讳技 `LA Police Gear (LAPG) https://...`銆乣Navyist Rewards (part of ...)` 杩欑被涓嶈鑼冭〃杈?- 鍙啓涓庡綋鍓?`Subclass` 鐩稿叧鐨勫唴瀹癸紝涓嶈娣峰叆鍏朵粬浼樻儬绫诲埆
-- 濡傛灉鍘熸枃鏄庣‘鎻愬埌闄愬埗銆佽祫鏍笺€侀€傜敤瀵硅薄銆侀獙璇佽姹傘€侀€傜敤鑼冨洿銆佹渶浣庢秷璐广€佹椂闂寸獥鍙ｃ€佸湴鍖洪檺鍒躲€佹槸鍚︿粎闄愭柊鐢ㄦ埛/浼氬憳/App/鐗瑰畾璁″垝銆佹槸鍚﹂檺鐗瑰畾鍟嗗搧鎴栧浗瀹讹紝杩欎簺淇℃伅涓庡綋鍓?`Subclass` 鐩存帴鐩稿叧鏃跺繀椤诲敖閲忓啓鍏?- 涓嶈鍙敼鍐欏師鏂囩涓€鍙ヨ瘽锛涘繀椤荤户缁鏌ュ悗鏂囷紝鎶婁笌褰撳墠 `Subclass` 鐩存帴鐩稿叧鐨勯珮浠峰€艰ˉ鍏呬俊鎭惛鏀惰繘绛旀
-- 鍚庢枃涓嚒鏄秹鍙婇獙璇佹柟寮忋€佹湁鏁堟湡銆佷娇鐢ㄩ棬妲涖€侀鍙栨潯浠躲€侀€傜敤鑼冨洿銆佸湴鍖?浜虹兢闄愬埗銆佽喘涔版垨鍏戞崲鏂瑰紡鐨勫唴瀹癸紝鍙鏈変环鍊间笖涓嶅啿绐侊紝搴斾紭鍏堣ˉ鍏?50 璇嶅唴
-- 濡傛灉鍘熸枃鏄繎浼兼暟鍊兼垨棰戠巼锛屽敖閲忔敼鍐欎负鏇寸ǔ鍋ョ殑浜嬪疄琛ㄨ揪锛涢伩鍏嶈繛缁爢鍙?`about`銆乣usually`銆乣around` 杩欑被妯＄硦璇?
-濡傛灉浼樻儬鍔涘害娌℃湁鏄庣‘鏁板€硷細
-- 涓嶈鍐欌€滈噾棰濇湭璇存槑鈥濃€滄姌鎵ｆ湭鐭モ€濃€滄湭娉ㄦ槑鍏蜂綋鏁板€尖€濊繖绫讳笉纭畾琛ㄨ堪
-- 鐩存帴鐪佺暐閲戦淇℃伅锛屽彧淇濈暀宸茬粡纭鐨勬暀甯堜紭鎯犱簨瀹炲拰鑾峰彇鏂瑰紡
-- 涓嶈涓轰簡鍑戞弧 3 涓簨瀹炶€屽姞鍏ユā绯婃弿杩?
-涓嶅緱娣诲姞锛?
-- 鏇夸唬鐪侀挶鏂规
-- 鍝佺墝鑳屾櫙
-- 棰濆杩介棶寮曞
-- 娌℃湁渚濇嵁鐨勭寽娴?
-濡傛灉杩?3 涓牳蹇冧簨瀹炰笉瀹屾暣锛屽彧鑳借ˉ鍏呬笌 teacher discount 寮虹浉鍏炽€佷笖婧愭枃鏈腑鏄庣‘鍑虹幇鐨勪俊鎭紝灏ゅ叾瑕佷紭鍏堜粠鍚庢枃琛ヨ冻浼氬奖鍝嶇敤鎴峰垽鏂垨棰嗗彇鐨勯檺鍒舵潯浠躲€佹湁鏁堟湡鍜岄獙璇佽姹傘€?
-## Teacher Discount 璇佹嵁寮哄急鍒嗙骇
-A 绾ц瘉鎹紙寮猴級锛?
-- merchant 瀹樼綉
-- merchant 瀹樻柟 FAQ銆乭elp銆乸romo page銆乼eacher page
-- merchant 瀹樻柟鍚堜綔楠岃瘉椤?- 瀹樻柟鏄庣‘璇存槑鐨?educator verification flow
-B 绾ц瘉鎹紙涓級锛?
-- `ID.me`銆乣SheerID`銆乣Gocertify`銆乣BeansID`銆乣Student Beans`銆乣Blue Light Card`銆乣Discounts for Teachers` 涓婏紝鏄庣‘鎸囧悜鐩爣 merchant 鐨勬暀甯堜紭鎯犻〉锛屼笖鍙湅鍑烘槸 merchant 瀹樻柟鍙備笌鐨勯獙璇佷紭鎯?
-C 绾ц瘉鎹紙寮憋級锛?
+
+## 答案规范
+
+每条答案都必须聚焦问题本身，并遵循 Atomic Facts 规范。优先保留以下 3 个核心事实：
+
+1. 该商家是否有教师优惠
+2. 优惠力度是多少，如果有明确数值必须写出
+3. 如何获取
+
+对于 teacher discount，若信息充足，4 个事实的优先级顺序应为：
+
+1. 有没有教师优惠
+2. 折扣值或免费资格
+3. 如何验证或获取
+4. 是否仅限特定平台、特定时间、特定地区、特定身份或特定商品
+
+如果 50 词不足，优先保留 1-3；第 4 项只保留最影响用户判断的限制。
+
+同时遵循以下硬性要求：
+
+- 每条答案至少出现一次品牌主体，优先直接使用 `term_name` 或可确认的规范品牌名
+- 品牌主体写法必须干净、自然，不要把 URL、网页标题、来源名、大段括号补充或解释性扩写揉进答案
+- 除非括号内容本身就是消费者必须知道的正式权益名称，否则不要写类似 `LA Police Gear (LAPG) https://...`、`Navyist Rewards (part of ...)` 这类不规范表达
+- 只写与当前 `Subclass` 相关的内容，不要混入其他优惠类别
+- 如果原文明确提到限制、资格、适用对象、验证要求、适用范围、最低消费、时间窗口、地区限制、是否仅限新用户/会员/App/特定计划、是否限特定商品或国家，这些信息与当前 `Subclass` 直接相关时必须尽量写全
+- 不要只改写原文第一句话；必须继续检查后文，把与当前 `Subclass` 直接相关的高价值补充信息吸收进答案
+- 后文中凡是涉及验证方式、有效期、使用门槛、领取条件、适用范围、地区/人群限制、购买或兑换方式的内容，只要有价值且不冲突，应优先补入 50 词内
+- 如果原文是近似数值或频率，尽量改写为更稳健的事实表达；避免连续堆叠 `about`、`usually`、`around` 这类模糊词
+
+如果优惠力度没有明确数值：
+
+- 不要写“金额未说明”“折扣未知”“未注明具体数值”这类不确定表述
+- 直接省略金额信息，只保留已经确认的教师优惠事实和获取方式
+- 不要为了凑满 3 个事实而加入模糊描述
+
+不得添加：
+
+- 替代省钱方案
+- 品牌背景
+- 额外追问引导
+- 没有依据的猜测
+
+如果这 3 个核心事实不完整，只能补充与 teacher discount 强相关、且源文本中明确出现的信息，尤其要优先从后文补足会影响用户判断或领取的限制条件、有效期和验证要求。
+
+## Teacher Discount 证据强弱分级
+
+A 级证据（强）：
+
+- merchant 官网
+- merchant 官方 FAQ、help、promo page、teacher page
+- merchant 官方合作验证页
+- 官方明确说明的 educator verification flow
+
+B 级证据（中）：
+
+- `ID.me`、`SheerID`、`Gocertify`、`BeansID`、`Student Beans`、`Blue Light Card`、`Discounts for Teachers` 上，明确指向目标 merchant 的教师优惠页，且可看出是 merchant 官方参与的验证优惠
+
+C 级证据（弱）：
+
 - coupon aggregation sites
-- Facebook銆両nstagram 鏈湴闂ㄥ簵甯栨枃
-- Reddit銆乫orum銆乥log 浜屾墜鎬荤粨
-- 鈥渢eachers may save through platform X鈥?杩欑被妯＄硦杞堪
-- 鍙彁 cashback銆乸oints銆乤ffiliate benefits 鐨勫钩鍙伴〉
-鍒ゅ畾瑙勫垯锛?
-- A 绾у彲鐩存帴鏀寔 `Yes`
-- B 绾у彧鏈夊湪浼樻儬瀵硅薄銆乵erchant 涓讳綋銆侀鍙栨柟寮忛兘娓呮鏃讹紝鎵嶆敮鎸?`Yes`
-- C 绾т笉鑳藉崟鐙敮鎾戠ǔ瀹?`Yes`锛涜嫢鏃犳洿寮鸿瘉鎹紝浼樺厛鍐?`no`
-- `ID.me Shop` cashback銆乸artner cashback銆乺eward points 涓嶇畻 teacher discount
-- 涓嶈兘鍥犱负鏌愬钩鍙版敮鎸佹暀甯堣韩浠介獙璇侊紝灏辫嚜鍔ㄦ帹鏂?merchant 涓€瀹氭湁鏁欏笀浼樻儬
-## 涓讳綋涓€鑷存€у垽鏂?
-蹇呴』鍒ゆ柇婧愬唴瀹逛腑鐨勪紭鎯犱富浣擄紝鏄惁涓庤琛岀洰鏍囧晢瀹朵负鍚屼竴涓讳綋銆?
-姣斿涓讳綋鍚嶇О鏃讹紝鍏堝拷鐣ュ父瑙佹硶浜烘垨鍏徃鍚庣紑鍚庡啀鍒ゆ柇锛屼緥濡傦細
+- Facebook、Instagram 本地门店帖文
+- Reddit、forum、blog 二手总结
+- “teachers may save through platform X” 这类模糊转述
+- 只提 cashback、points、affiliate benefits 的平台页
+
+判定规则：
+
+- A 级可直接支持 `Yes`
+- B 级只有在优惠对象、merchant 主体、领取方式都清楚时，才支持 `Yes`
+- C 级不能单独支撑稳定 `Yes`；若无更强证据，优先写 `no`
+- `ID.me Shop` cashback、partner cashback、reward points 不算 teacher discount
+- 不能因为某平台支持教师身份验证，就自动推断 merchant 一定有教师优惠
+
+## 主体一致性判断
+
+必须判断源内容中的优惠主体，是否与该行目标商家为同一主体。
+
+比对主体名称时，先忽略常见法人或公司后缀后再判断，例如：
+
 - `AG`
 - `Inc`
 - `Ltd`
@@ -110,86 +187,143 @@ C 绾ц瘉鎹紙寮憋級锛?
 - `Corp`
 - `Co.`
 - `Company`
-杩樿鍚屾椂鑰冭檻浠ヤ笅鏀惧瑙勫垯锛?
-- 濡傛灉鍙槸鑻辨枃銆佸痉鏂囨垨鍏朵粬璇█涓嬬殑鍝佺墝鍐欐硶宸紓锛屼絾鏍稿績鍝佺墝鏄庢樉瀵瑰簲鍚屼竴鍟嗗锛屽彲瑙嗕负鍚屼竴涓讳綋
-- 濡傛灉鍙槸鏁板瓧銆佽瘝褰㈡垨鎷煎啓鍙樹綋锛屼絾浠嶈兘娓呮櫚鎸囧悜鍚屼竴鍝佺墝锛屽彲瑙嗕负鍚屼竴涓讳綋
-- 渚嬪 `Kfzparts2` 涓?`kfzteile24`锛岃嫢缁撳悎涓婁笅鏂囧彲鍒ゆ柇鏄湪鎸囧悓涓€姹借溅閰嶄欢鍝佺墝锛屼笉瑕佷粎鍥犺嫳鏂?寰锋枃鍐欐硶涓嶅悓鐩存帴杈撳嚭 `no`
-- 瀵逛簬 `Neckermann`銆乣Filmpalast`銆乣Tivoli` 杩欑被鏍稿績鍟嗗鍚嶆湰韬竴鑷寸殑鎯呭喌锛屽簲浼樺厛瑙嗕负涓讳綋涓€鑷达紱闄ら潪鏂囨湰鏄庣‘鎸囧悜鍙︿竴涓晢瀹躲€佸彟涓€涓搧鐗岋紝鎴栨槑纭槸鏃犲叧骞冲彴/椤圭洰
-浠ヤ笅鎯呭喌绛旀鐩存帴杈撳嚭 `no`锛?
-- 浼樻儬涓讳綋鏄彟涓€涓晢瀹?- 鍐呭璁茬殑鏄钩鍙般€佺涓夋柟椤圭洰鎴栨棤鍏充細鍛樹綋绯伙紝鑰屼笉鏄洰鏍囧晢瀹舵湰韬?- 鏂囨湰鍦ㄦ牳蹇冨搧鐗屽悕涓婃棤娉曚笌鐩爣鍟嗗寤虹珛鍚堢悊瀵瑰簲锛屼笖娌℃湁浠讳綍涓婁笅鏂囧彲鏀寔鍚屼竴涓讳綋鍒ゆ柇
-濡傛灉鍘绘帀涓婅堪甯歌鍚庣紑鍚庯紝涓讳綋鍚嶇О鑳芥竻鏅板搴斿悓涓€鍝佺墝锛屽垯瑙嗕负鍚屼竴涓讳綋锛屼笉瑕佷粎鍥犳硶浜哄悗缂€宸紓銆佽瑷€宸紓鎴栬交寰彉浣撹緭鍑?`no`銆?
-褰撴牳蹇冨晢瀹跺悕涓€鑷达紝鎴栬櫧鏈夎法璇█/鍙樹綋鍐欐硶浣嗕粛鍙悎鐞嗗垽鏂负鍚屼竴鍝佺墝鏃讹紝搴旀斁瀹藉鐞嗭紝涓嶈鍥犱负璇佹嵁闂ㄦ杩囬珮鐩存帴鍒や负 `no`銆傚彧鏈夊湪涓讳綋鏄庣‘涓嶅尮閰嶏紝鎴栫‘瀹炴棤娉曞悎鐞嗗搴旀椂锛屾墠杈撳嚭 `no`銆?
-## 鍐欎綔瑕佹眰
-- 涓嶆敼鍙樺師鎰?- 淇濈暀鎵€鏈夐噸瑕佹牳蹇冧簨瀹?- 鍒犻櫎閲嶅鍜屽墠鍚庣煕鐩捐〃杩?- 鍚屼竴浼樻儬銆侀棬妲涖€侀檺鍒舵垨鏉′欢涓嶈鎹㈠彞閲嶅璇翠袱閬?- 浼樺厛浣跨敤鐩存帴銆佷簨瀹炲瀷琛ㄨ揪
-- 绂佹浣跨敤鈥渂ut no fixed discount amount is stated鈥濆強鍚岀被涓嶇‘瀹氬厹搴曞彞寮?- 涓嶅悓琛岀瓟妗堢殑琛ㄨ揪鏂瑰紡灏介噺鑷劧鍙樺寲锛岄伩鍏嶆壒閲忔ā鏉挎劅
-- 閬垮厤杩炵画浣跨敤 `about`銆乣usually`銆乣around` 绛夋ā绯婅瘝锛涘鍘熸枃纭疄鍙湁杩戜技琛ㄨ揪锛屾渶澶氫繚鐣欎竴涓繀瑕佺殑妯＄硦鎻愮ず
-- 瑕佷繚鐣?`seasonal`銆乣limited-time`銆乣variable`銆乣partner-only`銆乣no dedicated` 杩欑被闄愬畾璇殑鍘熸剰锛屼絾瑕佹敼鍐欐垚鑷劧鍙ュ瀷锛屼笉瑕佹満姊扮‖鎻掑師璇?- 娌℃湁鍘熸枃璇佹嵁鏃讹紝涓嶈鑷琛ュ啓 `seasonal`銆乣limited-time`銆乣variable`銆乣partner-only`銆乣no dedicated` 绛夐檺瀹氳瘝
-- 浼樺厛鍐欐竻妤氬搧鐗屻€佹満鍒躲€侀棬妲涖€侀檺鍒讹紝鍐嶅啓琛ュ厖淇℃伅
-- 涓嶈鎶?URL銆佺綉椤垫爣棰樸€佹潵婧愮珯鍚嶃€佹潵婧愭嫭鍙锋敞閲婄洿鎺ュ啓杩?FAQ 姝ｆ枃
-- 涓嶈鐢?`鍝佺墝鍚?(domain.com)` 杩欑鏂瑰紡琛ュ厖璇存槑鍩熷悕锛涙鏂囬噷鍙繚鐣欒嚜鐒跺搧鐗屽悕
-- 瀹炰綋閿佸畾瑕佹洿涓ユ牸锛涘厑璁?`Anthony Robbins` / `Tony Robbins`銆乣Dental Plans` / `DentalPlans.com`銆乣Sam's Club` / `Sam鈥檚 Club`銆乣Kiehls` / `Kiehl's` 杩欑被绛変环鍐欐硶锛屼絾涓嶈鎶婁袱涓悕瀛楁満姊板苟鍒楀埌鍚屼竴鍙ラ噷
-- 璇皵鍙嬪ソ銆佺揣鍑?- 涓ユ牸鎺у埗鍦?50 涓崟璇嶄互鍐?
-## 璇█瑙勫垯
-绛旀蹇呴』浣跨敤 `country` 瀵瑰簲鍥藉鐨勫父鐢ㄨ瑷€銆?
-渚嬪锛?
-- `US`銆乣UK`銆乣CA`銆乣AU`锛氳嫳鏂?- `DE`锛氬痉鏂?- `FR`锛氭硶鏂?- `ES`锛氳タ鐝墮鏂?- `IT`锛氭剰澶у埄鏂?- `JP`锛氭棩鏂?
-濡傛灉鍥藉涓庤瑷€鐨勫搴斿叧绯讳笉澶熸槑纭紝浣跨敤璇ュ浗瀹剁敤鎴锋渶甯歌鐨勯潰鍚戞秷璐硅€呰瑷€銆?
-## 闂鐢熸垚瑙勫垯
-`Titile1` 闇€瑕佺敓鎴愪竴涓竻鏅般€佽嚜鐒躲€佷笌 `term_name` 瀵归綈鐨?teacher discount FAQ 闂銆?
-浼樺厛鍙ュ紡锛?
+
+还要同时考虑以下放宽规则：
+
+- 如果只是英文、德文或其他语言下的品牌写法差异，但核心品牌明显对应同一商家，可视为同一主体
+- 如果只是数字、词形或拼写变体，但仍能清晰指向同一品牌，可视为同一主体
+- 例如 `Kfzparts2` 与 `kfzteile24`，若结合上下文可判断是在指同一汽车配件品牌，不要仅因英文/德文写法不同直接输出 `no`
+- 对于 `Neckermann`、`Filmpalast`、`Tivoli` 这类核心商家名本身一致的情况，应优先视为主体一致；除非文本明确指向另一个商家、另一个品牌，或明确是无关平台/项目
+
+以下情况答案直接输出 `no`：
+
+- 优惠主体是另一个商家
+- 内容讲的是平台、第三方项目或无关会员体系，而不是目标商家本身
+- 文本在核心品牌名上无法与目标商家建立合理对应，且没有任何上下文可支持同一主体判断
+
+如果去掉上述常见后缀后，主体名称能清晰对应同一品牌，则视为同一主体，不要仅因法人后缀差异、语言差异或轻微变体输出 `no`。
+
+当核心商家名一致，或虽有跨语言/变体写法但仍可合理判断为同一品牌时，应放宽处理，不要因为证据门槛过高直接判为 `no`。只有在主体明确不匹配，或确实无法合理对应时，才输出 `no`。
+
+## 写作要求
+
+- 不改变原意
+- 保留所有重要核心事实
+- 删除重复和前后矛盾表述
+- 同一优惠、门槛、限制或条件不要换句重复说两遍
+- 优先使用直接、事实型表达
+- 禁止使用“but no fixed discount amount is stated”及同类不确定兜底句式
+- 不同行答案的表达方式尽量自然变化，避免批量模板感
+- 避免连续使用 `about`、`usually`、`around` 等模糊词；如原文确实只有近似表达，最多保留一个必要的模糊提示
+- 要保留 `seasonal`、`limited-time`、`variable`、`partner-only`、`no dedicated` 这类限定语的原意，但要改写成自然句型，不要机械硬插原词
+- 没有原文证据时，不要自行补写 `seasonal`、`limited-time`、`variable`、`partner-only`、`no dedicated` 等限定词
+- 优先写清楚品牌、机制、门槛、限制，再写补充信息
+- 不要把 URL、网页标题、来源站名、来源括号注释直接写进 FAQ 正文
+- 不要用 `品牌名 (domain.com)` 这种方式补充说明域名；正文里只保留自然品牌名
+- 实体锁定要更严格；允许 `Anthony Robbins` / `Tony Robbins`、`Dental Plans` / `DentalPlans.com`、`Sam's Club` / `Sam’s Club`、`Kiehls` / `Kiehl's` 这类等价写法，但不要把两个名字机械并列到同一句里
+- 语气友好、紧凑
+- 严格控制在 50 个单词以内
+
+## 语言规则
+
+答案必须使用 `country` 对应国家的常用语言。
+
+例如：
+
+- `US`、`UK`、`CA`、`AU`：英文
+- `DE`：德文
+- `FR`：法文
+- `ES`：西班牙文
+- `IT`：意大利文
+- `JP`：日文
+
+如果国家与语言的对应关系不够明确，使用该国家用户最常见的面向消费者语言。
+
+## 问题生成规则
+
+`Titile1` 需要生成一个清晰、自然、与 `term_name` 对齐的 teacher discount FAQ 问题。
+
+优先句式：
+
 - `Does {Merchant} offer a teacher discount?`
-濡傛灉鐩爣鍥藉涓嶆槸鑻辫鐜锛屽簲缈昏瘧鎴愬搴旇瑷€銆?
-## Teacher Discount 涓撳睘绀轰緥鍙ｅ緞
-- 鑻?merchant 鏄庣‘鎻愪緵鏁欏笀楠岃瘉鎶樻墸锛屼緥濡?`15% off via ID.me` 鎴?`SheerID`锛屽彲鍒ゅ畾 `Yes`
-- 鑻?merchant 鍙湪 back-to-school 鎴?`Teacher Appreciation Week` 鍋氬畼鏂规暀甯堟椿鍔紝鍙垽瀹?`Yes`锛屼絾绛旀蹇呴』淇濈暀 `seasonal`銆乣annual` 鎴?`limited-time` 鐨勫師鎰?- 鑻ュ彧鏄竴浜涙湰鍦伴棬搴楁垨鍔犵洘搴楃粰鑰佸笀鎵撴姌锛屼紭鍏堝垽瀹?`No`
-- 鑻ュ彧鏄鏍￠噰璐环銆佽鍫?license銆佹暀鑲叉満鏋勬巿鏉冿紝浼樺厛鍒ゅ畾 `No`
-- 鑻ユ暀甯堝彧鏄兘浣跨敤鏌愰」鐩鍔卞鐢燂紝鑰屼笉鏄嚜宸变韩鍙椾紭鎯狅紝浼樺厛鍒ゅ畾 `No`
-- 鑻ュ彧鏈?cashback銆佽仛鍚堢珯銆佽鍧涚寽娴嬶紝娌℃湁娓呮櫚 merchant 瀵瑰簲锛屼紭鍏堝垽瀹?`No`
-- 鑻ユ槸 verified teachers 鍙厤璐逛娇鐢ㄤ骇鍝佹垨鏈嶅姟锛屼笖鏁欏笀鏈汉鍙洿鎺ョ敵璇峰拰浣跨敤锛屽彲鍒ゅ畾 `Yes`
-绂佹娉涘寲鍐欐硶锛?
-- 涓嶈鎶?`partner-only` 鍐欐垚 merchant 瀹樻柟鍏ㄥ勾鏀跨瓥
-- 涓嶈鎶?`some locations` 鍐欐垚鍝佺墝閫氱敤鏀跨瓥
-- 涓嶈鎶?`teacher support program` 鍐欐垚鏁欏笀鎶樻墸
-- 涓嶈鎶?`cashback` 鍐欐垚 teacher discount
-- 涓嶈鎶?`education access` 涓?`teacher discount code` 娣峰啓鎴愬悓涓€绉嶄笢瑗?- 涓嶈鎶婃暣涓?skill 鏀惧鎴愭洿瀹芥硾鐨?educator benefits skill
-- 涓嶈鏀惧鍒扳€滀换浣曟暀鑲茬浉鍏充紭鎯犻兘绠?teacher discount鈥?- 涓嶈鍥犱负 source 涓嚭鐜?`teacher` 杩欎釜璇嶅氨榛樿鍒ゅ畾涓?`Yes`
-## 鎵ц娴佺▼
-閫愯澶勭悊鏃讹紝鎸変互涓嬫楠わ細
-1. 浠?`term_name` 璇嗗埆鐩爣鍟嗗
-2. 闃呰 `discount_details`锛屽彧鎻愬彇 teacher discount 鐩稿叧浜嬪疄銆佽幏鍙栨柟寮忓拰闄愬埗鏉′欢
-   - 涓嶈鍋滃湪绗竴鍙ヨ瘽锛涚户缁鏌ュ悗鏂囨槸鍚﹁繕鏈夐獙璇併€佹湁鏁堟湡銆侀€傜敤鑼冨洿銆佸湴鍖洪檺鍒躲€佷娇鐢ㄩ棬妲涚瓑楂樹环鍊间俊鎭?3. 鍒ゆ柇婧愬唴瀹逛腑鐨勫晢瀹朵富浣撴槸鍚︿笌鐩爣鍟嗗涓€鑷?4. 鍋氬嚭缁撹锛?   - 鑻ョ‘璁ゆ湁鏁欏笀浼樻儬锛氬啓鏄庢湁銆佹姌鎵ｅ€硷紙鑻ユ湁鏄庣‘鏁板€硷級銆佽幏鍙栨柟寮忥紝浠ュ強涓庢暀甯堜紭鎯犵洿鎺ョ浉鍏崇殑闄愬埗鎴栬姹?   - 鑻ョ‘璁ゆ病鏈夛紝鎴栦富浣撴槑纭笉涓€鑷达紝鎴栫‘瀹炴棤娉曞悎鐞嗗搴旓細杈撳嚭 `no`
-5. 鐢ㄧ洰鏍囧浗瀹惰瑷€鏀瑰啓鎴愮畝娲?FAQ 绛旀锛屽苟纭繚绛旀閲岃嚦灏戝嚭鐜颁竴娆″搧鐗屼富浣?6. 妫€鏌ョ瓟妗堟槸鍚﹀彧淇濈暀褰撳墠 `Subclass` 鍐呭銆佹病鏈夌紪閫犱俊鎭€佹病鏈夊爢鍙犳ā绯婅瘝
-7. 浣跨敤 `scripts/faq_excel_tools.py` 鐢熸垚鏈€缁?Excel
+
+如果目标国家不是英语环境，应翻译成对应语言。
+
+## Teacher Discount 专属示例口径
+
+- 若 merchant 明确提供教师验证折扣，例如 `15% off via ID.me` 或 `SheerID`，可判定 `Yes`
+- 若 merchant 只在 back-to-school 或 `Teacher Appreciation Week` 做官方教师活动，可判定 `Yes`，但答案必须保留 `seasonal`、`annual` 或 `limited-time` 的原意
+- 若只是一些本地门店或加盟店给老师打折，优先判定 `No`
+- 若只是学校采购价、课堂 license、教育机构授权，优先判定 `No`
+- 若教师只是能使用某项目奖励学生，而不是自己享受优惠，优先判定 `No`
+- 若只有 cashback、聚合站、论坛猜测，没有清晰 merchant 对应，优先判定 `No`
+- 若是 verified teachers 可免费使用产品或服务，且教师本人可直接申请和使用，可判定 `Yes`
+
+禁止泛化写法：
+
+- 不要把 `partner-only` 写成 merchant 官方全年政策
+- 不要把 `some locations` 写成品牌通用政策
+- 不要把 `teacher support program` 写成教师折扣
+- 不要把 `cashback` 写成 teacher discount
+- 不要把 `education access` 与 `teacher discount code` 混写成同一种东西
+- 不要把整个 skill 放宽成更宽泛的 educator benefits skill
+- 不要放宽到“任何教育相关优惠都算 teacher discount”
+- 不要因为 source 中出现 `teacher` 这个词就默认判定为 `Yes`
+
+## 执行流程
+
+逐行处理时，按以下步骤：
+
+1. 从 `term_name` 识别目标商家
+2. 阅读 `discount_details`，只提取 teacher discount 相关事实、获取方式和限制条件
+   - 不要停在第一句话；继续检查后文是否还有验证、有效期、适用范围、地区限制、使用门槛等高价值信息
+3. 判断源内容中的商家主体是否与目标商家一致
+4. 做出结论：
+   - 若确认有教师优惠：写明有、折扣值（若有明确数值）、获取方式，以及与教师优惠直接相关的限制或要求
+   - 若确认没有，或主体明确不一致，或确实无法合理对应：输出 `no`
+5. 用目标国家语言改写成简洁 FAQ 答案，并确保答案里至少出现一次品牌主体
+6. 检查答案是否只保留当前 `Subclass` 内容、没有编造信息、没有堆叠模糊词
+7. 使用 `scripts/faq_excel_tools.py` 生成最终 Excel
+
 ## Final Sanitation
-杈撳嚭鍓嶅繀椤诲啀娆℃鏌ワ細
-- 鏈夋病鏈夋妸 broader offer 鍐欐垚 exact match
-- 鏈夋病鏈夋妸 partner offer 鍐欐垚瀹樻柟鏀跨瓥
-- 鏈夋病鏈夋妸 `no clear` / `no dedicated` 鏀规垚鑲畾 `Yes`
-- 鏈夋病鏈夋紡鎺?`seasonal`銆乣limited-time`銆乣variable`銆乣partner-only`銆乣no dedicated` 杩欑被闄愬畾璇殑鍘熸剰锛屾垨鎶婂畠浠敓纭‖鎻掕繘鍙ュ瓙
-- 鏈夋病鏈夊湪娌℃湁鍘熸枃璇佹嵁鏃惰嚜琛岃ˉ鍐欓檺瀹氳瘝
-- 鏈夋病鏈夋畫鐣?`Apple`銆乣Google Play`銆乣How to Apply`銆乣How to Get`銆乣Source` 绛夋爣棰樻垨鏉ユ簮娈嬬墖
-- 鏈夋病鏈夊嚭鐜?`Zarda Barbecue (zarda.com)` 杩欑被鍝佺墝鍚嶅悗璺熸嫭鍙峰煙鍚嶇殑鍐欐硶
-- 鏈夋病鏈夋嫾鎺ュ潖鍙ュ瓙銆侀噸澶嶅彞瀛愩€侀敊鍒瓧
-- 鏈夋病鏈夊嚭鐜?`Anthony Robbins Tony Robbins`銆乣Dental Plans DentalPlans.com`銆乣Sam's Club Sam鈥檚 Club`銆乣Kiehls Kiehl's` 杩欑瀹炰綋鍙屽啓
-- 鏈夋病鏈夋妸 cashback銆乺ewards銆乬eneral promo 鍐欐垚 teacher discount
-- 鏈夋病鏈夋妸 school銆乧lassroom銆乮nstitutional pricing 鍐欐垚 teacher personal discount
-- 鏈夋病鏈夋妸 teacher support project銆乧lassroom reward project 鍐欐垚 teacher discount
-- 鏈夋病鏈夋妸 local franchise銆乻ome locations銆乺egional benefit 鍐欐垚 brand-wide offer
-- 鏈夋病鏈夋妸 aggregator mention 鍐欐垚 merchant official policy
-- 鏈夋病鏈夋妸 annual銆乻easonal銆乴imited-time 鏁欏笀娲诲姩鍐欐垚闀挎湡绋冲畾鎶樻墸
-- 鏈夋病鏈夋妸 newsletter銆亀elcome offer銆乻tudent discount銆乵ilitary discount 褰撴垚 teacher discount 闄勫姞鍐欒繘绛旀
-- 鏈夋病鏈夋妸楠岃瘉骞冲彴鏈韩褰撴垚鍟嗗涓讳綋鏉ュ啓
-- 鏈夋病鏈夊嚭鐜?`teachers can also save with...` 杩欑鏇夸唬鐪侀挶鏂规琛ュ厖
-- 鏈夋病鏈夋妸 school-staff銆乸astor銆乵issionary銆乪ducator-adjacent 缇や綋閿欒娉涘寲鎴愭暀甯堜紭鎯?
-## 璐ㄦ娓呭崟
-浜や粯鍓嶇‘璁わ細
-- 姣忎竴琛岄兘瀵瑰簲姝ｇ‘鍟嗗
-- 姣忔潯绛旀閮?<= 50 璇?- 姣忔潯绛旀閮戒娇鐢ㄦ纭浗瀹惰瑷€
-- 姣忔潯绛旀閮借嚦灏戝嚭鐜颁竴娆″搧鐗屼富浣?- 姣忔潯绛旀閮藉彧鍐欏綋鍓?`Subclass` 瀵瑰簲鍐呭
-- 姣忔潯绛旀閮藉彧淇濈暀鏍稿績浜嬪疄
-- 鎵€鏈夋姌鎵ｆ暟鍊奸兘琚噯纭繚鐣?- 涓庡綋鍓?`Subclass` 鐩存帴鐩稿叧鐨勯檺鍒躲€佽祫鏍笺€佸湴鍖鸿寖鍥村拰瑕佹眰閮藉敖閲忎繚鐣欍€佹病鏈夋槑鏄鹃仐婕?- 娌℃湁鍑虹幇鈥滃彧鏀瑰啓棣栧彞銆佸悗鏂囨湁鏁堜俊鎭湭鍚告敹鈥濈殑鎯呭喌
-- 娌℃湁鎶婂悓涓€浼樻儬鎴栧悓涓€闄愬埗鏉′欢閲嶅鍙欒堪
-- 娌℃湁鍑虹幇 URL銆佹潵婧愭爣棰樻垨涓嶈鑼冩嫭鍙锋墿鍐欏紡鍝佺墝琛ㄨ揪
-- 娌℃湁杩炵画鍫嗗彔 `about`銆乣usually`銆乣around` 绛夋ā绯婅瘝
-- 鍙湁涓讳綋鏄庣‘涓嶅尮閰嶆垨纭疄鏃犳硶鍚堢悊瀵瑰簲鏃舵墠杈撳嚭 `no`
-- 鏈€缁堜氦浠樹负涓庢ā鏉垮瓧娈靛畬鍏ㄤ竴鑷寸殑 Excel 鏂囦欢
+
+输出前必须再次检查：
+
+- 有没有把 broader offer 写成 exact match
+- 有没有把 partner offer 写成官方政策
+- 有没有把 `no clear` / `no dedicated` 改成肯定 `Yes`
+- 有没有漏掉 `seasonal`、`limited-time`、`variable`、`partner-only`、`no dedicated` 这类限定语的原意，或把它们生硬硬插进句子
+- 有没有在没有原文证据时自行补写限定词
+- 有没有残留 `Apple`、`Google Play`、`How to Apply`、`How to Get`、`Source` 等标题或来源残片
+- 有没有出现 `Zarda Barbecue (zarda.com)` 这类品牌名后跟括号域名的写法
+- 有没有拼接坏句子、重复句子、错别字
+- 有没有出现 `Anthony Robbins Tony Robbins`、`Dental Plans DentalPlans.com`、`Sam's Club Sam’s Club`、`Kiehls Kiehl's` 这种实体双写
+- 有没有把 cashback、rewards、general promo 写成 teacher discount
+- 有没有把 school、classroom、institutional pricing 写成 teacher personal discount
+- 有没有把 teacher support project、classroom reward project 写成 teacher discount
+- 有没有把 local franchise、some locations、regional benefit 写成 brand-wide offer
+- 有没有把 aggregator mention 写成 merchant official policy
+- 有没有把 annual、seasonal、limited-time 教师活动写成长期稳定折扣
+- 有没有把 newsletter、welcome offer、student discount、military discount 当成 teacher discount 附加写进答案
+- 有没有把验证平台本身当成商家主体来写
+- 有没有出现 `teachers can also save with...` 这种替代省钱方案补充
+- 有没有把 school-staff、pastor、missionary、educator-adjacent 群体错误泛化成教师优惠
+
+## 质检清单
+
+交付前确认：
+
+- 每一行都对应正确商家
+- 每条答案都 <= 50 词
+- 每条答案都使用正确国家语言
+- 每条答案都至少出现一次品牌主体
+- 每条答案都只写当前 `Subclass` 对应内容
+- 每条答案都只保留核心事实
+- 所有折扣数值都被准确保留
+- 与当前 `Subclass` 直接相关的限制、资格、地区范围和要求都尽量保留、没有明显遗漏
+- 没有出现“只改写首句、后文有效信息未吸收”的情况
+- 没有把同一优惠或同一限制条件重复叙述
+- 没有出现 URL、来源标题或不规范括号扩写式品牌表达
+- 没有连续堆叠 `about`、`usually`、`around` 等模糊词
+- 只有主体明确不匹配或确实无法合理对应时才输出 `no`
+- 最终交付为与模板字段完全一致的 Excel 文件

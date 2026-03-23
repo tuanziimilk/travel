@@ -1,4 +1,4 @@
-# Output Format
+﻿# Output Format
 Use this file as the canonical FAQ export contract for the current project.
 
 ## Required Output Columns

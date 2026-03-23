@@ -71,7 +71,7 @@ function formatDuration(start?: string | Date | null, end?: string | Date | null
   if (totalSeconds < 60) return `${totalSeconds}秒`;
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
-  return `${minutes}分${seconds}秒`;
+  return `${minutes}分 ${seconds}秒`;
 }
 
 function mapOutputRow(row: Record<string, unknown>): ParsedFaqOutputRow {
@@ -496,7 +496,7 @@ export function FaqOutputPage() {
         <div className="output-summary-head">
           <div>
             <h3>任务队列</h3>
-            <p className="muted output-summary-copy">保留 FAQ 输出任务的状态、执行摘要、Token、费用和结果下载，结构尽量与质检队列保持一致。</p>
+            <p className="muted output-summary-copy">保留 FAQ 输出任务的状态、执行摘要、token、费用和结果下载，结构尽量与质检队列保持一致。</p>
           </div>
           <button className="btn-ghost output-inline-btn" type="button" onClick={() => void queueQuery.refetch()}>
             刷新队列

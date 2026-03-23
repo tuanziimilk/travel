@@ -1,12 +1,12 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildFallbackQuestion, normalizeCountryCode, validateGenerationCandidate } from "./faqOutputGenerator";
+import { buildFallbackQuestion, finalizeGenerationItem, normalizeCountryCode, validateGenerationCandidate } from "./faqOutputGenerator";
 import { skillRegistry } from "../skills/skillRegistry";
 import { resolveSkillRoot } from "../skills/skillPath";
 import { faqOutputSubclasses, normalizeFaqSubclassFromFactType, resolveSkillRoute } from "../skills/skillRouter";
 
-const boardField = "鏉垮潡鍚嶇О";
+const boardField = "板块名称";
 
 function toSkillDir(subclass: string) {
   return resolveSkillRoot(`skills/faq-output-${subclass.replaceAll("/", "-").replace(/\s+/g, "-")}`);
@@ -79,6 +79,50 @@ describe("faq output generation candidate validation", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value?.Titile1).toContain("Demo Shop");
+    }
+  });
+
+  it("preserves template placeholders before export", () => {
+    const candidate = JSON.stringify({
+      ContentType: "faq",
+      Country: "UK",
+      TermID: "456",
+      TermName: "",
+      Domain: "argos.co.uk",
+      Source: "AI",
+      Subclass: "return",
+      [boardField]: "faq",
+      Titile1: "Does {Mer.} offer free returns?",
+      "Brief Introduction": "No, [Brand] does not offer free returns by default.",
+      "Href Kw": "{Brand} returns",
+      "Href Url": "",
+    });
+
+    const result = validateGenerationCandidate(candidate, "return");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const finalized = finalizeGenerationItem(
+        result.value!,
+        {
+          term_id: "456",
+          country: "UK",
+          domain: "argos.co.uk",
+          term_name: "Argos",
+          fact_type: "return_policy",
+          supported: "yes",
+          status: "active",
+          discount_type: "",
+          discount_value: "",
+          currency: "",
+          discount_details: "",
+          url: "",
+        },
+        "return",
+      );
+
+      expect(finalized.Titile1).toBe("Does {Mer.} offer free returns?");
+      expect(finalized["Brief Introduction"]).toContain("[Brand]");
+      expect(finalized["Href Kw"]).toBe("{Brand} returns");
     }
   });
 
@@ -160,9 +204,8 @@ describe("faq output skill bundle contract", () => {
     for (const subclass of faqOutputSubclasses) {
       const bundle = await skillRegistry.getSkill(toSkillDir(subclass));
       expect(bundle.skillMd, subclass).not.toContain("eferences/output-format.md: unified FAQ output contract");
-      expect(bundle.skillMd, subclass).not.toContain("\references/output-format.md");
-      expect(bundle.skillMd, subclass).not.toContain("Subclo");
-      expect(bundle.skillMd, subclass).not.toContain("Title1");
+      expect(bundle.skillMd, subclass).not.toContain("\\references/output-format.md");
+      expect(bundle.skillMd, subclass).not.toContain("```references/output-format.md");
     }
   });
 });

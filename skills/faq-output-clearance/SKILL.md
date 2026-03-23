@@ -1,23 +1,38 @@
+---
 name: clearance-faq-answer
 description: >
-涓?HotDeals.com 鐨?clearance 绫?FAQ 鏀瑰啓浠诲姟鐢熸垚澶氳绉嶉棶棰樹笌绛旀锛屽苟鎸夎〃鏍煎瓧娈佃緭鍑恒€傞€傜敤浜庡鐞?Excel 鎴栫粨鏋勫寲鏁版嵁涓殑娓呬粨銆佸熬璐с€佹渶缁堢敥鍗栥€佸鏈績閿€绛変簨瀹炲瀷鏂囨鏀瑰啓浠诲姟锛涗弗鏍兼牴鎹?country 杈撳嚭鐩爣鍥藉璇█锛屼粠 discount_details 鎻愬彇鐪熷疄 clearance 鏈哄埗銆侀€傜敤鍝佺被涓庡叧閿檺鍒讹紝浣跨敤 {Mer.} 鍙橀噺鏇挎崲鍟嗗鍚嶃€?---
-# 澶氳绉?Clearance FAQ 鏀瑰啓鎶€鑳?
-## 鎵ц鐩爣
-灏嗚緭鍏ヨ〃鏍间腑鐨?`discount_details` 鏀瑰啓涓哄彲鍙戝竷鐨?clearance FAQ 鏂囨锛屽苟杈撳嚭鍒版寚瀹氳〃鏍煎瓧娈点€?
-浼樺厛绾у浐瀹氫负锛?
-`娓呬粨浼樻儬 > 閫傜敤鍝佺被/鑼冨洿 > 鍏抽敭闄愬埗 > 瀛楁暟`
-涓嶈涓轰簡鍘嬬缉闀垮害鍒犻櫎鍏抽敭淇℃伅銆?
-## 杈撳叆鏉ユ簮
-榛樿澶勭悊琛ㄦ牸琛屾暟鎹€傛牳蹇冩敼鍐欏瓧娈典负锛?
+为 HotDeals.com 的 clearance 类 FAQ 改写任务生成多语种问题与答案，并按表格字段输出。适用于处理 Excel 或结构化数据中的清仓、尾货、最终甩卖、季末促销等事实型文案改写任务；严格根据 country 输出目标国家语言，从 discount_details 提取真实 clearance 机制、适用品类与关键限制，使用 {Mer.} 变量替换商家名。
+---
+
+# 多语种 Clearance FAQ 改写技能
+
+## 执行目标
+
+将输入表格中的 `discount_details` 改写为可发布的 clearance FAQ 文案，并输出到指定表格字段。
+
+优先级固定为：
+
+`清仓优惠 > 适用品类/范围 > 关键限制 > 字数`
+
+不要为了压缩长度删除关键信息。
+
+## 输入来源
+
+默认处理表格行数据。核心改写字段为：
+
 - `country`
 - `term_id`
 - `domain`
 - `term_name`
 - `fact_type`
 - `discount_details`
-鍏朵腑鐪熸鐢ㄤ簬鐞嗚В涓庢敼鍐欑殑鍘熸枃鍦?`discount_details`銆?
-## 杈撳嚭鏍煎紡
-杈撳嚭琛ㄦ牸瀛楁鍥哄畾涓猴細
+
+其中真正用于理解与改写的原文在 `discount_details`。
+
+## 输出格式
+
+输出表格字段固定为：
+
 - `ContentType`
 - `Country`
 - `TermID`
@@ -25,132 +40,187 @@ description: >
 - `Domain`
 - `Source`
 - `Subclass`
-- `鏉垮潡鍚嶇О`
+- `板块名称`
 - `Titile1`
 - `Brief Introduction`
 - `Href Kw`
 - `Href Url`
-瀛楁鏄犲皠瑙勫垯锛?
-| 杈撳嚭瀛楁 | 瑙勫垯 |
+
+字段映射规则：
+
+| 输出字段 | 规则 |
 |------|------|
-| `ContentType` | 鍥哄畾濉?`faq` |
-| `Country` | 鍙栬緭鍏?`country` |
-| `TermID` | 鍙栬緭鍏?`term_id` |
-| `TermName` | 鍙栬緭鍏?`term_name` |
-| `Domain` | 鍙栬緭鍏?`domain` |
-| `Source` | 鐣欑┖ |
-| `Subclass` | 鍙栬緭鍏?`fact_type` |
-| `鏉垮潡鍚嶇О` | 鐣欑┖ |
-| `Titile1` | FAQ 闂锛屾寜 `country` 瀵瑰簲璇杈撳嚭锛屼娇鐢?`{Mer.}` 鍙橀噺 |
-| `Brief Introduction` | 鏀瑰啓鍚庣殑 FAQ 绛旀 |
-| `Href Kw` | 鐣欑┖ |
-| `Href Url` | 鐣欑┖ |
-## 璇█瑙勫垯
-### 1. 闂涓庣瓟妗堜弗鏍兼寜 `country` 杈撳嚭瀵瑰簲鍥藉璇█
-涓嶈鍐嶆牴鎹?`discount_details` 鍘熸枃璇鍒囨崲璇█銆傚嵆浣垮師鏂囨槸鑻辫锛屽彧瑕?`country` 鎸囧悜鍏朵粬鍥藉锛屼篃蹇呴』杈撳嚭璇ュ浗瀹跺搴旇瑷€銆?
-鍥哄畾鏄犲皠濡備笅锛?
-| `country` | 鍥藉涓枃鍚?| 璇█缂╁啓 | 杈撳嚭璇█ |
+| `ContentType` | 固定填 `faq` |
+| `Country` | 取输入 `country` |
+| `TermID` | 取输入 `term_id` |
+| `TermName` | 取输入 `term_name` |
+| `Domain` | 取输入 `domain` |
+| `Source` | 留空 |
+| `Subclass` | 取输入 `fact_type` |
+| `板块名称` | 留空 |
+| `Titile1` | FAQ 问题，按 `country` 对应语种输出，使用 `{Mer.}` 变量 |
+| `Brief Introduction` | 改写后的 FAQ 答案 |
+| `Href Kw` | 留空 |
+| `Href Url` | 留空 |
+
+## 语言规则
+
+### 1. 问题与答案严格按 `country` 输出对应国家语言
+
+不要再根据 `discount_details` 原文语种切换语言。即使原文是英语，只要 `country` 指向其他国家，也必须输出该国家对应语言。
+
+固定映射如下：
+
+| `country` | 国家中文名 | 语言缩写 | 输出语言 |
 |------|------|------|------|
-| `UK` | 鑻卞浗 | `en` | 鑻辫 |
-| `AU` | 婢冲ぇ鍒╀簹 | `en` | 鑻辫 |
-| `CA` | 鍔犳嬁澶?| `en` | 鑻辫 |
-| `DE` | 寰峰浗 | `de` | 寰疯 |
-| `FR` | 娉曞浗 | `fr` | 娉曡 |
-| `NL` | 鑽峰叞 | `nl` | 鑽峰叞璇?|
-| `IT` | 鎰忓ぇ鍒?| `it` | 鎰忓ぇ鍒╄ |
-| `AT` | 濂ュ湴鍒?| `de` | 寰疯 |
-| `BE` | 姣斿埄鏃?| `nl` | 鑽峰叞璇?|
-| `CH` | 鐟炲＋ | `de` | 寰疯 |
-| `PT` | 钁¤悇鐗?| `pt` | 钁¤悇鐗欒 |
-| `GR` | 甯岃厞 | `el` | 甯岃厞璇?|
-| `BR` | 宸磋タ | `pt` | 钁¤悇鐗欒 |
-| `PL` | 娉㈠叞 | `pl` | 娉㈠叞璇?|
-| `ES` | 瑗跨彮鐗?| `es` | 瑗跨彮鐗欒 |
-| `SE` | 鐟炲吀 | `sv` | 鐟炲吀璇?|
-| `KR` | 闊╁浗 | `ko` | 闊╄ |
-| `CZ` | 鎹峰厠 | `cs` | 鎹峰厠璇?|
-| `DK` | 涓归害 | `da` | 涓归害璇?|
-| `SK` | 鏂礇浼愬厠 | `sk` | 鏂礇浼愬厠璇?|
-| `JP` | 鏃ユ湰 | `ja` | 鏃ヨ |
-| `HK` | 涓浗棣欐腐 | `zh-Hant` | 绻佷綋涓枃 |
-鑻?`country` 涓嶅湪鏄犲皠琛ㄥ唴锛岄粯璁よ緭鍑鸿嫳璇紝骞跺湪浜や粯鍓嶆彁绀鸿鏄犲皠缂哄け銆?
-### 2. 闂浣跨敤 `{Mer.}` 鍙橀噺
-闂涓殑鍟嗗鍚嶇粺涓€鍐欎綔 `{Mer.}`锛屼笉瑕佺洿鎺ュ啓鐪熷疄鍝佺墝鍚嶃€?
-绀轰緥锛?
-- 瑗胯锛歚驴{Mer.} tiene secci贸n de liquidaci贸n o outlet?`
-- 闊╄锛歚{Mer.}鞐愲姅 韥措Μ鞏措煱鞀る倶 鞎勳毟霠?靸來拡鞚?鞛堧倶鞖?`
-- 娉㈠叞璇細`Czy {Mer.} ma sekcj臋 clearance lub outlet?`
-- 鑻辫锛歚Does {Mer.} have a clearance or outlet section?`
-### 3. 绛旀涓殑鍝佺墝鍚嶄篃鏇挎崲涓?`{Mer.}`
-濡傛灉 `discount_details` 鍘熸枃涓嚭鐜板搧鐗屽悕锛屾敼鍐欐椂鏇挎崲涓?`{Mer.}`銆?
-## 鏀瑰啓瑙勫垯
-### 鏍稿績鍒ゅ畾椤哄簭
-鍏堝垽鏂搧鐗屾槸鍚﹀瓨鍦ㄧ湡瀹炴竻浠撴満鍒讹紝鍐嶇粍缁囩瓟妗堛€傚垽瀹氫紭鍏堢骇鍥哄畾涓猴細
-1. 鏄惁瀛樺湪鐪熷疄 `clearance` / `outlet` / `final sale` / `closeout` / 涓撻棬 `sale section`
-2. 鑻ュ瓨鍦紝鎻愬彇鏈€寮虹殑娓呬粨璇佹嵁銆佹姌鎵ｃ€侀€傜敤鍝佺被銆侀檺鍒舵潯浠?3. 鑻ヤ笉瀛樺湪锛屽啀鎻愬彇鏈€甯歌鐨勬浛浠ｄ紭鎯犲舰寮?
-娉ㄦ剰锛?
+| `UK` | 英国 | `en` | 英语 |
+| `AU` | 澳大利亚 | `en` | 英语 |
+| `CA` | 加拿大 | `en` | 英语 |
+| `DE` | 德国 | `de` | 德语 |
+| `FR` | 法国 | `fr` | 法语 |
+| `NL` | 荷兰 | `nl` | 荷兰语 |
+| `IT` | 意大利 | `it` | 意大利语 |
+| `AT` | 奥地利 | `de` | 德语 |
+| `BE` | 比利时 | `nl` | 荷兰语 |
+| `CH` | 瑞士 | `de` | 德语 |
+| `PT` | 葡萄牙 | `pt` | 葡萄牙语 |
+| `GR` | 希腊 | `el` | 希腊语 |
+| `BR` | 巴西 | `pt` | 葡萄牙语 |
+| `PL` | 波兰 | `pl` | 波兰语 |
+| `ES` | 西班牙 | `es` | 西班牙语 |
+| `SE` | 瑞典 | `sv` | 瑞典语 |
+| `KR` | 韩国 | `ko` | 韩语 |
+| `CZ` | 捷克 | `cs` | 捷克语 |
+| `DK` | 丹麦 | `da` | 丹麦语 |
+| `SK` | 斯洛伐克 | `sk` | 斯洛伐克语 |
+| `JP` | 日本 | `ja` | 日语 |
+| `HK` | 中国香港 | `zh-Hant` | 繁体中文 |
+
+若 `country` 不在映射表内，默认输出英语，并在交付前提示该映射缺失。
+
+### 2. 问题使用 `{Mer.}` 变量
+
+问题中的商家名统一写作 `{Mer.}`，不要直接写真实品牌名。
+
+示例：
+
+- 西语：`¿{Mer.} tiene sección de liquidación o outlet?`
+- 韩语：`{Mer.}에는 클리어런스나 아울렛 상품이 있나요?`
+- 波兰语：`Czy {Mer.} ma sekcję clearance lub outlet?`
+- 英语：`Does {Mer.} have a clearance or outlet section?`
+
+### 3. 答案中的品牌名也替换为 `{Mer.}`
+
+如果 `discount_details` 原文中出现品牌名，改写时替换为 `{Mer.}`。
+
+## 改写规则
+
+### 核心判定顺序
+
+先判断品牌是否存在真实清仓机制，再组织答案。判定优先级固定为：
+
+1. 是否存在真实 `clearance` / `outlet` / `final sale` / `closeout` / 专门 `sale section`
+2. 若存在，提取最强的清仓证据、折扣、适用品类、限制条件
+3. 若不存在，再提取最常见的替代优惠形式
+
+注意：
+
 - `holiday sale`
 - `promo codes`
 - `bundle offers`
 - `app deals`
 - `membership pricing`
 - `limited-time discounts`
-杩欎簺閮戒笉鑳界洿鎺ュ垽瀹氫负 clearance 鏈哄埗銆?
-### 蹇呴』浼樺厛淇濈暀鐨勪俊鎭?
-- 鎶樻墸鍔涘害鎴栦环鏍兼弿杩帮紝濡?up to銆乫rom銆乤s low as
-- 娓呬粨鑼冨洿锛氭寚瀹氬搧绫汇€佹湯鐮併€佸鏈€佸仠浜ф銆侀€夊畾鍟嗗搧
-- 鍏抽敭闄愬埗锛氫粎闄?selected items銆佸敭瀹屽嵆姝€佷笉閫€涓嶆崲銆佷笉鍙彔鍔犮€佹椂闂撮檺鍒?- 棰嗗彇鎴栭€傜敤鏂瑰紡锛氭槸鍚﹁嚜鍔ㄧ敓鏁堛€佹槸鍚﹂渶瑕?code銆佹槸鍚︿粎鍦ㄧ嚎涓婃垨闂ㄥ簵
-- 鏈€寮鸿瘉鎹細鏄惁鏈?dedicated clearance / outlet / final sale / closeout / sale section
-### 绛旀缁撴瀯瑙勫垯
-绛旀蹇呴』鍥哄畾涓轰袱姝ワ紝鍏佽鍐欐垚涓ゅ彞锛?
-1. 鍏堟槑纭洖绛旀湁娌℃湁鐪熷疄 clearance / outlet / final sale / closeout / sale section
-2. 濡傛灉娌℃湁锛屽啀鍗曠嫭璇存槑鏈€甯歌鐨勬浛浠ｄ紭鎯犲舰寮?
-瑕佹眰锛?
-- 涓嶈鎶娾€滄病鏈夋竻浠撯€濅笌鈥滄湁鏅€氫紭鎯犫€濇弶鎴愪竴涓ā绯婄粨璁?- 鐢ㄦ埛璇诲畬绗竴鍙ュ氨蹇呴』鐭ラ亾璇ュ搧鐗屽埌搴曟湁娌℃湁娓呬粨鏈哄埗
-- 濡傛灉鏈夌湡瀹炴竻浠撴満鍒讹紝绗簩鍙ヤ紭鍏堣ˉ鍏呮姌鎵ｈ寖鍥淬€佺被鐩拰鍏抽敭闄愬埗
-- 濡傛灉娌℃湁鐪熷疄娓呬粨鏈哄埗锛岀浜屽彞鍙啓鏇夸唬浼樻儬褰㈠紡锛屼笉瑕佺‖鍐欐垚 clearance
-### 闀垮害瑙勫垯
-- 榛樿灏介噺鐭?- 浼樺厛鎺у埗鍦?`2` 鍙ュ唴
-- 涓嶅啀寮哄埗 `60` 瀛楃
-- 鍙弬鑰?`<=55` 璇嶏紝浣嗕笉鑳藉洜鍘嬬缉鑰屼涪澶辨牳蹇冧俊鎭?
-### 鏂囬瑕佹眰
-- 鐩存帴鍥炵瓟闂锛屼笉鍐欒儗鏅摵鍨?- 淇濈暀浜嬪疄锛屼笉琛ュ厖鏈粰鍑虹殑鏁板瓧銆佹笭閬撴垨闄愬埗
-- 鍘绘帀鍣煶淇℃伅锛屽鈥滄樉绀烘洿澶氣€濃€淎I 鍙兘鍑洪敊鈥濃€滄璐熷弽棣堚€濃€滃垎浜€?- 鍘绘帀閲嶅姝ラ锛屽彧淇濈暀鏈€鍏抽敭鐨勮喘涔版垨浣跨敤鏉′欢
-- 涓嶅啓 CTA锛屼笉寮曞鐢ㄦ埛鈥滃幓鏌ョ湅瀹樼綉鈥?- 涓嶄娇鐢ㄧ涓€浜虹О
-- 閬垮厤楂橀閲嶅鍙ュ紡锛屾敼鐢ㄦ洿鑷劧浣嗙粨鏋勪竴鑷寸殑琛ㄨ揪
-- 涓嶈鎵归噺閲嶅 `does not currently offer a permanent/dedicated/formal clearance section` 杩欑被鍙ュ紡
-- 鍙互鏇挎崲涓烘洿鑷劧鐨勫悓涔夎〃杈撅紝浣嗛€昏緫椤哄簭蹇呴』绋冲畾
-## 鍦烘櫙瑙勫垯
-### Clearance / 娓呬粨浼樻儬
-褰?`fact_type = clearance` 鏃讹細
-- `Titile1` 搴旀敼鍐欎负鈥滄槸鍚︽湁 clearance / outlet / final sale鈥濈殑瀵瑰簲璇闂
-- `Brief Introduction` 鍏堝垽鏂槸鍚︽湁鐪熷疄娓呬粨鏈哄埗锛屽啀鎻愬彇娓呬粨鎶樻墸銆佹秹鍙婂搧绫汇€佹槸鍚﹂檺閫夊畾鍟嗗搧锛屼互鍙婃渶鍏抽敭闄愬埗
-### 鍏朵粬 closeout / final sale / sale facts
-鑻?`fact_type` 涓嶆槸涓ユ牸鐨?`clearance`锛屼絾鍘熸枃浜嬪疄鏄庢樉灞炰簬娓呬粨銆佸熬璐с€乫inal sale銆乪nd-of-season sale锛?
-- 闂浠嶅彲鎸?clearance 璇箟鏀瑰啓
-- 绛旀浠嶅繀椤诲厛鍒ゆ柇鏄惁鏈夌湡瀹炴竻浠撴満鍒讹紝鍐嶈ˉ鍏呮渶鍏抽敭浜嬪疄
-- 璇█涓庡搧鐗屽彉閲忚鍒欎笉鍙?
-## 娓呮礂 `discount_details`
-鏀瑰啓鍓嶅厛娓呮礂鍘熸枃涓殑浣庝环鍊煎櫔闊筹細
-- 骞冲彴 UI 鏂囨锛歚Mostrar todo`銆乣AI 妯″紡`銆乣鏌ョ湅鍏ㄩ儴`銆乣瓿奠湢`
-- 鏃犲叧鏉ユ簮鏍囪锛歚Instagram`銆乣Bankier.pl +5`
-- 閲嶅姝ラ涓庨噸澶嶅彞
-- 娉涘寲鎻愰啋锛歚AI answers may contain errors`
-鍙繚鐣欒兘鍥炵瓟 FAQ 鐨勬湁鏁堜簨瀹炪€?
-## 璐ㄦ娓呭崟
-姣忔潯杈撳嚭瀹屾垚鍚庢鏌ワ細
-| 妫€鏌ラ」 | 鏍囧噯 |
+
+这些都不能直接判定为 clearance 机制。
+
+### 必须优先保留的信息
+
+- 折扣力度或价格描述，如 up to、from、as low as
+- 清仓范围：指定品类、末码、季末、停产款、选定商品
+- 关键限制：仅限 selected items、售完即止、不退不换、不可叠加、时间限制
+- 领取或适用方式：是否自动生效、是否需要 code、是否仅在线上或门店
+- 最强证据：是否有 dedicated clearance / outlet / final sale / closeout / sale section
+
+### 答案结构规则
+
+答案必须固定为两步，允许写成两句：
+
+1. 先明确回答有没有真实 clearance / outlet / final sale / closeout / sale section
+2. 如果没有，再单独说明最常见的替代优惠形式
+
+要求：
+
+- 不要把“没有清仓”与“有普通优惠”揉成一个模糊结论
+- 用户读完第一句就必须知道该品牌到底有没有清仓机制
+- 如果有真实清仓机制，第二句优先补充折扣范围、类目和关键限制
+- 如果没有真实清仓机制，第二句只写替代优惠形式，不要硬写成 clearance
+
+### 长度规则
+
+- 默认尽量短
+- 优先控制在 `2` 句内
+- 不再强制 `60` 字符
+- 可参考 `<=55` 词，但不能因压缩而丢失核心信息
+
+### 文风要求
+
+- 直接回答问题，不写背景铺垫
+- 保留事实，不补充未给出的数字、渠道或限制
+- 去掉噪音信息，如“显示更多”“AI 可能出错”“正负反馈”“分享”
+- 去掉重复步骤，只保留最关键的购买或使用条件
+- 不写 CTA，不引导用户“去查看官网”
+- 不使用第一人称
+- 避免高频重复句式，改用更自然但结构一致的表达
+- 不要批量重复 `does not currently offer a permanent/dedicated/formal clearance section` 这类句式
+- 可以替换为更自然的同义表达，但逻辑顺序必须稳定
+
+## 场景规则
+
+### Clearance / 清仓优惠
+
+当 `fact_type = clearance` 时：
+
+- `Titile1` 应改写为“是否有 clearance / outlet / final sale”的对应语种问题
+- `Brief Introduction` 先判断是否有真实清仓机制，再提取清仓折扣、涉及品类、是否限选定商品，以及最关键限制
+
+### 其他 closeout / final sale / sale facts
+
+若 `fact_type` 不是严格的 `clearance`，但原文事实明显属于清仓、尾货、final sale、end-of-season sale：
+
+- 问题仍可按 clearance 语义改写
+- 答案仍必须先判断是否有真实清仓机制，再补充最关键事实
+- 语言与品牌变量规则不变
+
+## 清洗 `discount_details`
+
+改写前先清洗原文中的低价值噪音：
+
+- 平台 UI 文案：`Mostrar todo`、`AI 模式`、`查看全部`、`공유`
+- 无关来源标记：`Instagram`、`Bankier.pl +5`
+- 重复步骤与重复句
+- 泛化提醒：`AI answers may contain errors`
+
+只保留能回答 FAQ 的有效事实。
+
+## 质检清单
+
+每条输出完成后检查：
+
+| 检查项 | 标准 |
 |------|------|
-| 璇█涓€鑷?| 闂鍜岀瓟妗堜笌 `country` 瀵瑰簲璇█涓€鑷?|
-| 鍙橀噺鏇挎崲 | 浣跨敤 `{Mer.}`锛屼笉鐩存帴鏆撮湶鍝佺墝鍚?|
-| 鏈哄埗鍒ゆ柇 | 宸插厛鍒ゆ柇鏄惁瀛樺湪鐪熷疄 clearance / outlet / final sale / closeout / sale section |
-| 淇℃伅浼樺厛绾?| 鍏堝洖绛旀槸鍚︽湁鐪熷疄娓呬粨鏈哄埗锛屽啀鍐欒寖鍥淬€佹姌鎵ｅ拰闄愬埗锛涜嫢娌℃湁锛屽啀鍗曠嫭鍐欐浛浠ｄ紭鎯?|
-| 涓嶇紪閫?| 鏈湪鍘熸枃鍑虹幇鐨勪俊鎭笉琛ュ啓 |
-| 鍘诲櫔瀹屾垚 | 鏃犲钩鍙板櫔闊炽€佹棤鏃犲叧鎻愮ず |
-| 鍙ュ紡鎺у埗 | 閬垮厤鎵归噺閲嶅鍍电‖鍚﹀畾鍙?|
-| 杈撳嚭瀛楁姝ｇ‘ | 琛ㄥご涓庢槧灏勫畬鍏ㄤ竴鑷?|
-| `Source`/`鏉垮潡鍚嶇О` | 蹇呴』鐣欑┖ |
-## 鍙傝€冩枃浠?
-- `references/input-schema.md` 鈥?琛ㄦ牸杈撳叆杈撳嚭瀛楁璇存槑
-- `references/examples.md` 鈥?clearance 鍦烘櫙绀轰緥
-- `templates/answer-template.txt` 鈥?FAQ 璧疯崏妯℃澘
+| 语言一致 | 问题和答案与 `country` 对应语言一致 |
+| 变量替换 | 使用 `{Mer.}`，不直接暴露品牌名 |
+| 机制判断 | 已先判断是否存在真实 clearance / outlet / final sale / closeout / sale section |
+| 信息优先级 | 先回答是否有真实清仓机制，再写范围、折扣和限制；若没有，再单独写替代优惠 |
+| 不编造 | 未在原文出现的信息不补写 |
+| 去噪完成 | 无平台噪音、无无关提示 |
+| 句式控制 | 避免批量重复僵硬否定句 |
+| 输出字段正确 | 表头与映射完全一致 |
+| `Source`/`板块名称` | 必须留空 |
+
+## 参考文件
+
+- `references/input-schema.md` — 表格输入输出字段说明
+- `references/examples.md` — clearance 场景示例
+- `templates/answer-template.txt` — FAQ 起草模板

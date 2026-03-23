@@ -1,23 +1,38 @@
+---
 name: price-guarantee-faq-answer
 description: >
-  涓?HotDeals.com 鐨勪环鏍间繚闅滅被 FAQ 鏀瑰啓浠诲姟鐢熸垚澶氳绉嶉棶棰樹笌绛旀锛屽苟鎸夎〃鏍煎瓧娈佃緭鍑恒€傞€傜敤浜庡鐞?Excel 鎴栫粨鏋勫寲鏁版嵁涓殑 price match銆乸rice protection銆乴ow-price guarantee銆乸ost-purchase adjustment銆乻tore-level discretionary matching 绛変簨瀹炲瀷鏂囨鏀瑰啓浠诲姟锛涗弗鏍兼牴鎹?country 杈撳嚭鐩爣鍥藉璇█锛屼笉璺熼殢鍘熸枃璇█锛屽苟浣跨敤 {Mer.} 鍙橀噺鏇挎崲鍟嗗鍚嶃€?---
-# 澶氳绉嶄环鏍间繚闅?FAQ 鏀瑰啓鎶€鑳?
-## 鎵ц鐩爣
-灏嗚緭鍏ヨ〃鏍间腑鐨?`discount_details` 鏀瑰啓涓哄彲鍙戝竷鐨?FAQ 鏂囨锛屽苟杈撳嚭鍒版寚瀹氳〃鏍煎瓧娈点€?
-浼樺厛绾у浐瀹氫负锛?
-`鏄惁鎻愪緵瀹樻柟浠锋牸淇濋殰/浠锋牸鍖归厤 > 鏀跨瓥绫诲瀷 > 閫傜敤鍥藉/绔欑偣/闂ㄥ簵鑼冨洿 > 鏃堕棿绐楀彛 > required proof > identical item/current price/third-party sellers/excluded categories > 瀛楁暟`
-涓嶈涓轰簡鍘嬬缉闀垮害鍒犻櫎鏈€瀹炵敤鐨勯檺鍒剁粏鑺傘€?
-## 杈撳叆鏉ユ簮
-榛樿澶勭悊琛ㄦ牸琛屾暟鎹€傛牳蹇冩敼鍐欏瓧娈典负锛?
+  为 HotDeals.com 的价格保障类 FAQ 改写任务生成多语种问题与答案，并按表格字段输出。适用于处理 Excel 或结构化数据中的 price match、price protection、low-price guarantee、post-purchase adjustment、store-level discretionary matching 等事实型文案改写任务；严格根据 country 输出目标国家语言，不跟随原文语言，并使用 {Mer.} 变量替换商家名。
+---
+
+# 多语种价格保障 FAQ 改写技能
+
+## 执行目标
+
+将输入表格中的 `discount_details` 改写为可发布的 FAQ 文案，并输出到指定表格字段。
+
+优先级固定为：
+
+`是否提供官方价格保障/价格匹配 > 政策类型 > 适用国家/站点/门店范围 > 时间窗口 > required proof > identical item/current price/third-party sellers/excluded categories > 字数`
+
+不要为了压缩长度删除最实用的限制细节。
+
+## 输入来源
+
+默认处理表格行数据。核心改写字段为：
+
 - `country`
 - `term_id`
 - `domain`
 - `term_name`
 - `fact_type`
 - `discount_details`
-鍏朵腑鐪熸鐢ㄤ簬鐞嗚В涓庢敼鍐欑殑鍘熸枃鍦?`discount_details`銆?
-## 杈撳嚭鏍煎紡
-杈撳嚭琛ㄦ牸瀛楁鍥哄畾涓猴細
+
+其中真正用于理解与改写的原文在 `discount_details`。
+
+## 输出格式
+
+输出表格字段固定为：
+
 - `ContentType`
 - `Country`
 - `TermID`
@@ -25,144 +40,224 @@ description: >
 - `Domain`
 - `Source`
 - `Subclass`
-- `鏉垮潡鍚嶇О`
+- `板块名称`
 - `Titile1`
 - `Brief Introduction`
 - `Href Kw`
 - `Href Url`
-瀛楁鏄犲皠瑙勫垯锛?
-| 杈撳嚭瀛楁 | 瑙勫垯 |
+
+字段映射规则：
+
+| 输出字段 | 规则 |
 |------|------|
-| `ContentType` | 鍥哄畾濉?`faq` |
-| `Country` | 鍙栬緭鍏?`country` |
-| `TermID` | 鍙栬緭鍏?`term_id` |
-| `TermName` | 鍙栬緭鍏?`term_name` |
-| `Domain` | 鍙栬緭鍏?`domain` |
-| `Source` | 鐣欑┖ |
-| `Subclass` | 鍙栬緭鍏?`fact_type` |
-| `鏉垮潡鍚嶇О` | 鐣欑┖ |
-| `Titile1` | FAQ 闂锛屼弗鏍兼寜 `country` 瀵瑰簲璇杈撳嚭锛屼娇鐢?`{Mer.}` 鍙橀噺 |
-| `Brief Introduction` | 鏀瑰啓鍚庣殑 FAQ 绛旀 |
-| `Href Kw` | 鐣欑┖ |
-| `Href Url` | 鐣欑┖ |
-## 璇█瑙勫垯
-### 1. FAQ 璇█鍙湅 `country`
-闂涓庣瓟妗堝繀椤讳弗鏍兼牴鎹?`country` 杈撳嚭瀵瑰簲鍥藉璇█锛屼笉浠ュ師鏂囪瑷€涓哄噯銆?
-鑻ュ師鏂囨槸鑻辨枃銆佷絾 `country=DE`锛屾渶缁?FAQ 蹇呴』杈撳嚭寰疯锛涜嫢 `country=HK`锛屾渶缁?FAQ 蹇呴』杈撳嚭绻佷綋涓枃銆?
-鍥哄畾鏄犲皠濡備笅锛?
-| 鍥藉缂╁啓 | 鍥藉涓枃鍚?| 璇█缂╁啓 | 璇█ |
+| `ContentType` | 固定填 `faq` |
+| `Country` | 取输入 `country` |
+| `TermID` | 取输入 `term_id` |
+| `TermName` | 取输入 `term_name` |
+| `Domain` | 取输入 `domain` |
+| `Source` | 留空 |
+| `Subclass` | 取输入 `fact_type` |
+| `板块名称` | 留空 |
+| `Titile1` | FAQ 问题，严格按 `country` 对应语种输出，使用 `{Mer.}` 变量 |
+| `Brief Introduction` | 改写后的 FAQ 答案 |
+| `Href Kw` | 留空 |
+| `Href Url` | 留空 |
+
+## 语言规则
+
+### 1. FAQ 语言只看 `country`
+
+问题与答案必须严格根据 `country` 输出对应国家语言，不以原文语言为准。
+
+若原文是英文、但 `country=DE`，最终 FAQ 必须输出德语；若 `country=HK`，最终 FAQ 必须输出繁体中文。
+
+固定映射如下：
+
+| 国家缩写 | 国家中文名 | 语言缩写 | 语言 |
 |------|------|------|------|
-| `UK` | 鑻卞浗 | `en` | 鑻辫 |
-| `AU` | 婢冲ぇ鍒╀簹 | `en` | 鑻辫 |
-| `CA` | 鍔犳嬁澶?| `en` | 鑻辫 |
-| `DE` | 寰峰浗 | `de` | 寰疯 |
-| `FR` | 娉曞浗 | `fr` | 娉曡 |
-| `NL` | 鑽峰叞 | `nl` | 鑽峰叞璇?|
-| `IT` | 鎰忓ぇ鍒?| `it` | 鎰忓ぇ鍒╄ |
-| `AT` | 濂ュ湴鍒?| `de` | 寰疯 |
-| `BE` | 姣斿埄鏃?| `nl` | 鑽峰叞璇?|
-| `CH` | 鐟炲＋ | `de` | 寰疯 |
-| `PT` | 钁¤悇鐗?| `pt` | 钁¤悇鐗欒 |
-| `GR` | 甯岃厞 | `el` | 甯岃厞璇?|
-| `BR` | 宸磋タ | `pt` | 钁¤悇鐗欒 |
-| `PL` | 娉㈠叞 | `pl` | 娉㈠叞璇?|
-| `ES` | 瑗跨彮鐗?| `es` | 瑗跨彮鐗欒 |
-| `SE` | 鐟炲吀 | `sv` | 鐟炲吀璇?|
-| `KR` | 闊╁浗 | `ko` | 闊╄ |
-| `CZ` | 鎹峰厠 | `cs` | 鎹峰厠璇?|
-| `DK` | 涓归害 | `da` | 涓归害璇?|
-| `SK` | 鏂礇浼愬厠 | `sk` | 鏂礇浼愬厠璇?|
-| `JP` | 鏃ユ湰 | `ja` | 鏃ヨ |
-| `HK` | 涓浗棣欐腐 | `zh-Hant` | 绻佷綋涓枃 |
-鑻ラ亣鍒版湭鍒楀嚭鐨?`country`锛岄粯璁よ緭鍑鸿嫳璇紝骞跺湪鍐呴儴鍒ゅ畾涓哄厹搴曡鍒欍€?
-### 2. 闂浣跨敤 `{Mer.}` 鍙橀噺
-闂涓殑鍟嗗鍚嶇粺涓€鍐欎綔 `{Mer.}`锛屼笉瑕佺洿鎺ュ啓鐪熷疄鍝佺墝鍚嶃€?
-### 3. 绛旀涓殑鍝佺墝鍚嶄篃鏇挎崲涓?`{Mer.}`
-濡傛灉 `discount_details` 鍘熸枃涓嚭鐜板搧鐗屽悕锛屾敼鍐欐椂鏇挎崲涓?`{Mer.}`銆?
-## 鏀跨瓥绫诲瀷鍒ゅ畾
-鏀瑰啓鍓嶅繀椤诲厛鍖哄垎鏀跨瓥绫诲瀷锛屼笉瑕佹妸涓嶅悓鏀跨瓥娣峰啓鎴愮缁熺殑 `price guarantee`锛?
+| `UK` | 英国 | `en` | 英语 |
+| `AU` | 澳大利亚 | `en` | 英语 |
+| `CA` | 加拿大 | `en` | 英语 |
+| `DE` | 德国 | `de` | 德语 |
+| `FR` | 法国 | `fr` | 法语 |
+| `NL` | 荷兰 | `nl` | 荷兰语 |
+| `IT` | 意大利 | `it` | 意大利语 |
+| `AT` | 奥地利 | `de` | 德语 |
+| `BE` | 比利时 | `nl` | 荷兰语 |
+| `CH` | 瑞士 | `de` | 德语 |
+| `PT` | 葡萄牙 | `pt` | 葡萄牙语 |
+| `GR` | 希腊 | `el` | 希腊语 |
+| `BR` | 巴西 | `pt` | 葡萄牙语 |
+| `PL` | 波兰 | `pl` | 波兰语 |
+| `ES` | 西班牙 | `es` | 西班牙语 |
+| `SE` | 瑞典 | `sv` | 瑞典语 |
+| `KR` | 韩国 | `ko` | 韩语 |
+| `CZ` | 捷克 | `cs` | 捷克语 |
+| `DK` | 丹麦 | `da` | 丹麦语 |
+| `SK` | 斯洛伐克 | `sk` | 斯洛伐克语 |
+| `JP` | 日本 | `ja` | 日语 |
+| `HK` | 中国香港 | `zh-Hant` | 繁体中文 |
+
+若遇到未列出的 `country`，默认输出英语，并在内部判定为兜底规则。
+
+### 2. 问题使用 `{Mer.}` 变量
+
+问题中的商家名统一写作 `{Mer.}`，不要直接写真实品牌名。
+
+### 3. 答案中的品牌名也替换为 `{Mer.}`
+
+如果 `discount_details` 原文中出现品牌名，改写时替换为 `{Mer.}`。
+
+## 政策类型判定
+
+改写前必须先区分政策类型，不要把不同政策混写成笼统的 `price guarantee`：
+
 1. `price match`
-   瀵规瘮褰撳墠澶栭儴绔炲搧浠锋牸骞跺尮閰嶅綋鍓嶄环鏍硷紝閫氬父瑕佹眰 `identical item`銆乣current price`銆乣proof`銆?2. `price protection`
-   璐拱鍚庤嫢瀹樻柟浠锋牸涓嬭皟锛岄€€杩樺樊棰濇垨鍙戞斁 credit銆?3. `low-price guarantee` / `best rate guarantee`
-   瀹樻柟瀹ｇО鏈€浣庝环锛岃嫢鍙戠幇鏇翠綆鍏紑浠锋牸鍒?match 鎴栭澶栬ˉ鍋裤€?4. `post-purchase adjustment`
-   涓嶅仛绔炲搧鍖归厤锛屼絾鍏佽璐拱鍚庡洜鏈珯/鏈簵闄嶄环鐢宠宸閫€杩樸€?5. `store-level discretionary matching`
-   涓嶆槸缁熶竴瀹樻柟鏀跨瓥锛屽彧鍦ㄩ儴鍒嗛棬搴椼€佸鏈嶆垨鍦板尯绔欑偣鏍规嵁搴楀唴瑁侀噺澶勭悊銆?
-鍒ゅ畾鍘熷垯锛?
-- 鑻ユ潵婧愭槑纭啓鏄庡畼鏂规斂绛栵紝鐩存帴鎸夊搴旂被鍨嬭〃杩帮紝涓嶈鍐嶅啓 `may offer` 杩欑被杩囧害淇濆畧璇存硶銆?- 鑻ュ彧鍦ㄩ儴鍒嗗浗瀹躲€佺珯鐐广€侀棬搴椼€佷骇鍝佺嚎鎴栨椿鍔ㄩ〉鏀寔锛屽繀椤绘槑纭啓鍑洪€傜敤鑼冨洿銆?- 鑻ュ彧鏈夎鍧涖€侀棬搴楃粡楠屻€佸鏈嶅洖澶嶆垨闆舵暎鎶ュ憡鏀拺锛屽繀椤绘槑纭啓 `based on current public policy or store-level reports` 鐨勫搴旇〃杈俱€?- 鑻ュ疄闄呮槸涓嶆敮鎸?`price match`銆佷絾鏀寔 `post-purchase adjustment`锛屽繀椤绘槑纭啓鈥滀笉鎻愪緵瀹樻柟 price match锛屼絾鏀寔璐拱鍚庢湰绔欓檷浠疯皟鏁粹€濄€?
-## 鏀瑰啓瑙勫垯
-### 鏍囧噯绛旀缁撴瀯
-绛旀蹇呴』浼樺厛鍐欐垚 `2-3` 鍙ワ紝缁撴瀯鍥哄畾涓猴細
-1. 鍏堢洿鎺ヨ鏄庡搧鐗屾槸鍚︽彁渚?`official price guarantee / official price match`
-2. 鍐嶈ˉ涓€鍙ユ笭閬撱€佸湴鍖恒€佺珯鐐广€侀棬搴楁垨浜у搧绾胯寖鍥?3. 鏈€鍚庤ˉ涓€鍙ュ叧閿檺鍒舵潯浠?
-涓嶈鎶娾€滄槸鍚︽敮鎸佲€濇嫋鍒板彞瀛愬悗鍗婃銆?
-### 鍙ュ紡瑕佹眰
-- 閬垮厤楂橀閲嶅鍙ュ紡
-- 鏀圭敤鏇磋嚜鐒朵絾缁撴瀯涓€鑷寸殑琛ㄨ揪
-- 鍙互鍦ㄨ偗瀹氬彞涓氦鏇夸娇鐢?鈥淵es鈥? 鈥渰Mer.} does offer鈥? 鈥渰Mer.} has an official...鈥?绛夎嚜鐒惰〃杈?- 鍦ㄥ惁瀹氬彞涓氦鏇夸娇鐢?鈥淣o鈥? 鈥渰Mer.} does not have an official...鈥? 鈥淭here is no official...鈥?绛夎嚜鐒惰〃杈?- 鍙ュ紡鍙樺寲涓嶈兘褰卞搷淇℃伅椤哄簭鍜屽彲璇绘€?
-### 蹇呴』浼樺厛淇濈暀鐨勪俊鎭?
-- 閫傜敤鍥藉宸紓銆佸尯鍩熷樊寮傘€佺珯鐐瑰樊寮?- 瀹樻柟鍟嗗煄涓庨棬搴楀樊寮?- `price match` / `price protection` / `low-price guarantee` / `post-purchase adjustment` / `store-level discretionary matching` 鐨勫噯纭被鍨?- 鏃堕棿绐楀彛
+   对比当前外部竞品价格并匹配当前价格，通常要求 `identical item`、`current price`、`proof`。
+2. `price protection`
+   购买后若官方价格下调，退还差额或发放 credit。
+3. `low-price guarantee` / `best rate guarantee`
+   官方宣称最低价，若发现更低公开价格则 match 或额外补偿。
+4. `post-purchase adjustment`
+   不做竞品匹配，但允许购买后因本站/本店降价申请差额退还。
+5. `store-level discretionary matching`
+   不是统一官方政策，只在部分门店、客服或地区站点根据店内裁量处理。
+
+判定原则：
+
+- 若来源明确写明官方政策，直接按对应类型表述，不要再写 `may offer` 这类过度保守说法。
+- 若只在部分国家、站点、门店、产品线或活动页支持，必须明确写出适用范围。
+- 若只有论坛、门店经验、客服回复或零散报告支撑，必须明确写 `based on current public policy or store-level reports` 的对应表达。
+- 若实际是不支持 `price match`、但支持 `post-purchase adjustment`，必须明确写“不提供官方 price match，但支持购买后本站降价调整”。
+
+## 改写规则
+
+### 标准答案结构
+
+答案必须优先写成 `2-3` 句，结构固定为：
+
+1. 先直接说明品牌是否提供 `official price guarantee / official price match`
+2. 再补一句渠道、地区、站点、门店或产品线范围
+3. 最后补一句关键限制条件
+
+不要把“是否支持”拖到句子后半段。
+
+### 句式要求
+
+- 避免高频重复句式
+- 改用更自然但结构一致的表达
+- 可以在肯定句中交替使用 “Yes”, “{Mer.} does offer”, “{Mer.} has an official...” 等自然表达
+- 在否定句中交替使用 “No”, “{Mer.} does not have an official...”, “There is no official...” 等自然表达
+- 句式变化不能影响信息顺序和可读性
+
+### 必须优先保留的信息
+
+- 适用国家差异、区域差异、站点差异
+- 官方商城与门店差异
+- `price match` / `price protection` / `low-price guarantee` / `post-purchase adjustment` / `store-level discretionary matching` 的准确类型
+- 时间窗口
 - `required proof`
-- 鏄惁鍙檺 `current price`
-- 鏄惁鍙檺 `identical item`
-- 鏄惁鎺掗櫎 `third-party sellers`
-- `excluded categories`锛屽 clearance銆乺efurbished銆乷pen-box銆乭oliday deals銆乫inal sale銆乵arketplace items
-- 宸环杩旇繕鏂瑰紡锛屽 refund銆乻tore credit銆乬ift card銆乤ccount credit
-### 鐢ㄨ瘝寮哄急瑙勫垯
-- 璇佹嵁寮猴細鐩存帴鍐?`offers`銆乣has`銆乣provides`
-- 璇佹嵁寮憋細鏄庣‘鍐?`based on current public policy` 鎴?`based on store-level reports`
-- 涓嶈鍦ㄥ畼鏂硅瘉鎹槑纭椂鍐?`may offer`
-- 涓嶈涓轰簡淇濆畧鎶婄‘瀹氭€х殑瀹樻柟鏀跨瓥鍐欒櫄
-### 闀垮害瑙勫垯
-- 榛樿鎺у埗鍦?`2-3` 鍙?- 鍏佽鐣ラ暱锛屼絾涓嶈兘鐪佺暐楂樹环鍊奸檺鍒舵潯浠?- 涓嶅啀浠ユ瀬鐭瓟妗堜负鐩爣
-### 鏂囬瑕佹眰
-- 鐩存帴鍥炵瓟闂锛屼笉鍐欒儗鏅摵鍨?- 淇濈暀浜嬪疄锛屼笉琛ュ厖鏈粰鍑虹殑瑙勫垯
-- 鍘绘帀鍣煶淇℃伅锛屽鈥滄樉绀烘洿澶氣€濃€淎I 鍙兘鍑洪敊鈥濃€滃垎浜€濃€淲ould you like me to...鈥?- 鍘绘帀閲嶅姝ラ锛屽彧淇濈暀鏈€鍏抽敭鐨勭敵璇疯矾寰勬垨闄愬埗鏉′欢
-- 涓嶅啓 CTA锛屼笉寮曞鐢ㄦ埛鈥滃幓鏌ョ湅瀹樼綉鈥?- 涓嶄娇鐢ㄧ涓€浜虹О
-## 鍦烘櫙瑙勫垯
-### 瀹樻柟 `price match`
-鑻ヨ瘉鎹樉绀哄搧鐗屾湁姝ｅ紡 `price match` 鏀跨瓥锛?
-- 寮€澶存槑纭啓鎻愪緵 `official price match`
-- 绗簩鍙ュ啓鏀寔鐨勬笭閬撱€佺珵鍝佽寖鍥淬€佸浗瀹舵垨闂ㄥ簵/瀹樼綉鑼冨洿
-- 鏈€鍚庝竴鍙ュ啓 `identical item`銆乣current price`銆乣proof`銆乣third-party sellers excluded` 绛夊叧閿檺鍒?
-### 瀹樻柟 `price protection` / `post-purchase adjustment`
-鑻ヨ瘉鎹樉绀烘槸璐拱鍚庡樊浠蜂繚鎶ゆ垨鏈珯闄嶄环琛ュ樊锛?
-- 寮€澶存槑纭啓涓嶆槸绔炲搧鍖归厤杩樻槸璐拱鍚庝环淇?- 绗簩鍙ュ啓閫傜敤绔欑偣鎴栬鍗曡寖鍥?- 鏈€鍚庝竴鍙ュ啓鏃堕棿绐楀彛銆侀€€娆炬柟寮忋€乪xcluded categories
+- 是否只限 `current price`
+- 是否只限 `identical item`
+- 是否排除 `third-party sellers`
+- `excluded categories`，如 clearance、refurbished、open-box、holiday deals、final sale、marketplace items
+- 差价返还方式，如 refund、store credit、gift card、account credit
+
+### 用词强弱规则
+
+- 证据强：直接写 `offers`、`has`、`provides`
+- 证据弱：明确写 `based on current public policy` 或 `based on store-level reports`
+- 不要在官方证据明确时写 `may offer`
+- 不要为了保守把确定性的官方政策写虚
+
+### 长度规则
+
+- 默认控制在 `2-3` 句
+- 允许略长，但不能省略高价值限制条件
+- 不再以极短答案为目标
+
+### 文风要求
+
+- 直接回答问题，不写背景铺垫
+- 保留事实，不补充未给出的规则
+- 去掉噪音信息，如“显示更多”“AI 可能出错”“分享”“Would you like me to...”
+- 去掉重复步骤，只保留最关键的申请路径或限制条件
+- 不写 CTA，不引导用户“去查看官网”
+- 不使用第一人称
+
+## 场景规则
+
+### 官方 `price match`
+
+若证据显示品牌有正式 `price match` 政策：
+
+- 开头明确写提供 `official price match`
+- 第二句写支持的渠道、竞品范围、国家或门店/官网范围
+- 最后一句写 `identical item`、`current price`、`proof`、`third-party sellers excluded` 等关键限制
+
+### 官方 `price protection` / `post-purchase adjustment`
+
+若证据显示是购买后差价保护或本站降价补差：
+
+- 开头明确写不是竞品匹配还是购买后价保
+- 第二句写适用站点或订单范围
+- 最后一句写时间窗口、退款方式、excluded categories
+
 ### `low-price guarantee` / `best rate guarantee`
-鑻ヨ瘉鎹樉绀哄畼鏂规渶浣庝环鎵胯锛?
-- 寮€澶存槑纭啓鏄?`low-price guarantee` 鎴?`best rate guarantee`
-- 绗簩鍙ュ啓閫傜敤 booking channel / official site / qualifying listings
-- 鏈€鍚庝竴鍙ュ啓绱㈣禂绐楀彛銆乵atching criteria銆侀澶栬ˉ鍋?
+
+若证据显示官方最低价承诺：
+
+- 开头明确写是 `low-price guarantee` 或 `best rate guarantee`
+- 第二句写适用 booking channel / official site / qualifying listings
+- 最后一句写索赔窗口、matching criteria、额外补偿
+
 ### `store-level discretionary matching`
-鑻ヨ瘉鎹彧鏀寔閮ㄥ垎闂ㄥ簵鎴栧簵鍛樿閲忥細
-- 寮€澶村厛鏄庣‘鈥滀笉瀛樺湪缁熶竴瀹樻柟鏀跨瓥鈥濇垨鈥滄病鏈夊畼鏂圭粺涓€鐨?price match鈥?- 绗簩鍙ュ啓鍙湪閮ㄥ垎闂ㄥ簵銆佸湴鍖烘垨瀹㈡湇娓犻亾鏈夊鐞嗘渚?- 鏈€鍚庝竴鍙ュ啓 `based on current public policy or store-level reports` 鐨勪簨瀹炲熀纭€涓庝富瑕侀檺鍒?
-### 涓嶆敮鎸佸満鏅?
-鑻?`discount_details` 鏄庢樉琛ㄧず涓嶆彁渚涘畼鏂逛环鏍间繚闅滐細
-- 绗竴鍙ュ繀椤绘槑纭啓涓嶆彁渚?`official price guarantee` 鎴?`official price match`
-- 绗簩鍙ヨˉ鍏呮槸鍚︿粎鏀寔鏈珯闄嶄环璋冩暣銆侀€€娆俱€侀€€璐ч噸涔般€佹弧鎰忎繚璇佺瓑鏇夸唬鏂规
-- 鏈€鍚庝竴鍙ュ啓鏈€鍏抽敭鐨勯€傜敤鑼冨洿鎴栭檺鍒?
-## 娓呮礂 `discount_details`
-鏀瑰啓鍓嶅厛娓呮礂鍘熸枃涓殑浣庝环鍊煎櫔闊筹細
-- 骞冲彴 UI 鏂囨锛歚Mostrar todo`銆乣AI 妯″紡`銆乣鏌ョ湅鍏ㄩ儴`銆乣瓿奠湢`
-- 鏃犲叧鏉ユ簮鏍囪锛歚Instagram`銆乣Bankier.pl +5`
-- CTA 鎴栬拷闂細`Would you like me to...`
-- 閲嶅姝ラ涓庨噸澶嶅彞
-- 娉涘寲鎻愰啋锛歚AI answers may contain errors`
-鍙繚鐣欒兘鍥炵瓟 FAQ 鐨勬湁鏁堜簨瀹炪€?
-## 璐ㄦ娓呭崟
-姣忔潯杈撳嚭瀹屾垚鍚庢鏌ワ細
-| 妫€鏌ラ」 | 鏍囧噯 |
+
+若证据只支持部分门店或店员裁量：
+
+- 开头先明确“不存在统一官方政策”或“没有官方统一的 price match”
+- 第二句写只在部分门店、地区或客服渠道有处理案例
+- 最后一句写 `based on current public policy or store-level reports` 的事实基础与主要限制
+
+### 不支持场景
+
+若 `discount_details` 明显表示不提供官方价格保障：
+
+- 第一句必须明确写不提供 `official price guarantee` 或 `official price match`
+- 第二句补充是否仅支持本站降价调整、退款、退货重买、满意保证等替代方案
+- 最后一句写最关键的适用范围或限制
+
+## 清洗 `discount_details`
+
+改写前先清洗原文中的低价值噪音：
+
+- 平台 UI 文案：`Mostrar todo`、`AI 模式`、`查看全部`、`공유`
+- 无关来源标记：`Instagram`、`Bankier.pl +5`
+- CTA 或追问：`Would you like me to...`
+- 重复步骤与重复句
+- 泛化提醒：`AI answers may contain errors`
+
+只保留能回答 FAQ 的有效事实。
+
+## 质检清单
+
+每条输出完成后检查：
+
+| 检查项 | 标准 |
 |------|------|
-| 璇█涓€鑷?| 闂鍜岀瓟妗堜弗鏍兼寜 `country` 鏄犲皠璇█杈撳嚭 |
-| 绫诲瀷鍒ゅ畾 | 宸插厛鍖哄垎 `price match`銆乣price protection`銆乣low-price guarantee`銆乣post-purchase adjustment`銆乣store-level discretionary matching` |
-| 鍙橀噺鏇挎崲 | 浣跨敤 `{Mer.}`锛屼笉鐩存帴鏆撮湶鍝佺墝鍚?|
-| 淇℃伅椤哄簭 | 鍏堟槸鍚︽敮鎸侊紝鍐嶈寖鍥达紝鍐嶅叧閿檺鍒?|
-| 鑼冨洿娓呮 | 鍥藉/绔欑偣/闂ㄥ簵/鍝佺被宸紓鍐欐竻妤?|
-| 璇佹嵁寮哄急 | 瀹樻柟璇佹嵁涓嶇敤 `may offer`锛屽急璇佹嵁鏄庣‘鏍囨敞鏉ユ簮寮哄害 |
-| 涓嶇紪閫?| 鏈湪鍘熸枃鍑虹幇鐨勪俊鎭笉琛ュ啓 |
-| 鍘诲櫔瀹屾垚 | 鏃犲钩鍙板櫔闊炽€佹棤鏃犲叧鎻愮ず |
-| 杈撳嚭瀛楁姝ｇ‘ | 琛ㄥご涓庢槧灏勫畬鍏ㄤ竴鑷?|
-| `Source`/`鏉垮潡鍚嶇О` | 蹇呴』鐣欑┖ |
-## 鍙傝€冩枃浠?
-- `references/input-schema.md` 鈥?琛ㄦ牸杈撳叆杈撳嚭瀛楁璇存槑
-- `references/examples.md` 鈥?浠锋牸淇濋殰 FAQ 绀轰緥
-- `templates/answer-template.txt` 鈥?FAQ 璧疯崏妯℃澘
+| 语言一致 | 问题和答案严格按 `country` 映射语言输出 |
+| 类型判定 | 已先区分 `price match`、`price protection`、`low-price guarantee`、`post-purchase adjustment`、`store-level discretionary matching` |
+| 变量替换 | 使用 `{Mer.}`，不直接暴露品牌名 |
+| 信息顺序 | 先是否支持，再范围，再关键限制 |
+| 范围清楚 | 国家/站点/门店/品类差异写清楚 |
+| 证据强弱 | 官方证据不用 `may offer`，弱证据明确标注来源强度 |
+| 不编造 | 未在原文出现的信息不补写 |
+| 去噪完成 | 无平台噪音、无无关提示 |
+| 输出字段正确 | 表头与映射完全一致 |
+| `Source`/`板块名称` | 必须留空 |
+
+## 参考文件
+
+- `references/input-schema.md` — 表格输入输出字段说明
+- `references/examples.md` — 价格保障 FAQ 示例
+- `templates/answer-template.txt` — FAQ 起草模板

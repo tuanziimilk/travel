@@ -17,6 +17,8 @@ import {
   markGenerationJobRunning,
 } from "./faqOutputJobStore";
 
+const BOARD_NAME_FIELD = "板块名称" as const;
+
 const faqOutputRowSchema = z.object({
   term_id: z.string().optional().default(""),
   country: z.string().optional().default(""),
@@ -40,7 +42,7 @@ const faqOutputItemSchema = z.object({
   Domain: z.string(),
   Source: z.string(),
   Subclass: z.string(),
-  板块名称: z.literal("faq"),
+  [BOARD_NAME_FIELD]: z.literal("faq"),
   Titile1: z.string().trim().min(1),
   "Brief Introduction": z.string().trim().min(1),
   "Href Kw": z.string(),
@@ -84,7 +86,7 @@ const outputHeaders = [
   "Domain",
   "Source",
   "Subclass",
-  "板块名称",
+  BOARD_NAME_FIELD,
   "Titile1",
   "Brief Introduction",
   "Href Kw",
@@ -161,7 +163,7 @@ function buildGenerationPrompt(skillMd: string, outputFormatMd: string, row: Faq
       Domain: "",
       Source: "AI",
       Subclass: subclass,
-      板块名称: "faq",
+      [BOARD_NAME_FIELD]: "faq",
       Titile1: "",
       "Brief Introduction": "",
       "Href Kw": "",
@@ -192,12 +194,30 @@ function withGenerationDefaults(value: Record<string, unknown>, subclass: string
     Domain: "",
     Source: "AI",
     Subclass: subclass,
-    板块名称: "faq",
+    [BOARD_NAME_FIELD]: "faq",
     Titile1: "",
     "Brief Introduction": "",
     "Href Kw": "",
     "Href Url": "",
     ...normalizedValue,
+  };
+}
+
+export function finalizeGenerationItem(item: FaqOutputItem, row: FaqOutputInputRow, subclass: string): FaqOutputItem {
+  const normalized = withGenerationDefaults(item, subclass);
+  return {
+    ContentType: "faq",
+    Country: normalizeCountryCode(normalized.Country || row.country),
+    TermID: normalized.TermID || row.term_id,
+    TermName: normalized.TermName || row.term_name,
+    Domain: normalized.Domain || row.domain,
+    Source: normalized.Source || "AI",
+    Subclass: subclass,
+    [BOARD_NAME_FIELD]: "faq",
+    Titile1: normalized.Titile1 || "",
+    "Brief Introduction": normalized["Brief Introduction"] || "",
+    "Href Kw": normalized["Href Kw"] || "",
+    "Href Url": normalized["Href Url"] || "",
   };
 }
 
@@ -236,7 +256,7 @@ function buildRepairMessages(candidate: string, errors: string[], subclass: stri
       "Keep the same meaning, but make the object valid.",
       `Subclass must stay exactly "${subclass}".`,
       "The object must contain non-empty Titile1 and Brief Introduction.",
-      'Optional link fields may be empty strings.',
+      "Optional link fields may be empty strings.",
     ].join("\n"),
     user: [
       "Fix this JSON candidate.",
@@ -320,7 +340,7 @@ function buildFallbackOutput(row: FaqOutputInputRow, subclass: string): FaqOutpu
     Domain: row.domain,
     Source: "AI",
     Subclass: subclass,
-    板块名称: "faq",
+    [BOARD_NAME_FIELD]: "faq",
     Titile1: buildFallbackQuestion(row.term_name, subclass),
     "Brief Introduction": buildFallbackBrief(row, subclass),
     "Href Kw": "",
@@ -370,13 +390,16 @@ async function runWithConcurrency<TInput, TResult>(
   return results;
 }
 
-async function executeFaqOutputGeneration(jobId: string, input: {
-  scType: ScType;
-  uploader: Uploader;
-  note?: string;
-  fileName: string;
-  fileBase64: string;
-}) {
+async function executeFaqOutputGeneration(
+  jobId: string,
+  input: {
+    scType: ScType;
+    uploader: Uploader;
+    note?: string;
+    fileName: string;
+    fileBase64: string;
+  },
+) {
   const rows = parseFaqOutputFile(input.fileName, input.fileBase64);
   if (!rows.length) throw new Error("上传文件为空，无法生成 FAQ 输出。");
 
@@ -432,6 +455,8 @@ async function executeFaqOutputGeneration(jobId: string, input: {
         buildRepairMessages: (candidate, errors) => buildRepairMessages(candidate, errors, item.subclass),
       });
 
+      const finalized = finalizeGenerationItem(executed.result, item.row, item.subclass);
+
       return {
         rowIndex: item.rowIndex,
         status: "success" as const,
@@ -439,19 +464,15 @@ async function executeFaqOutputGeneration(jobId: string, input: {
         factType: item.row.fact_type,
         routeKey: skill?.routeKey || item.route.skillKey,
         output: {
-          ...executed.result,
-          Country: normalizeCountryCode(executed.result.Country || item.row.country),
-          TermID: executed.result.TermID || item.row.term_id,
-          TermName: executed.result.TermName || item.row.term_name,
-          Domain: executed.result.Domain || item.row.domain,
-          Source: executed.result.Source || "AI",
+          ...finalized,
+          Source: finalized.Source || "AI",
           Subclass: item.subclass,
           ContentType: "faq" as const,
-          板块名称: "faq" as const,
-          Titile1: executed.result.Titile1 || "",
-          "Brief Introduction": executed.result["Brief Introduction"] || "",
-          "Href Kw": executed.result["Href Kw"] || "",
-          "Href Url": executed.result["Href Url"] || "",
+          [BOARD_NAME_FIELD]: "faq" as const,
+          Titile1: finalized.Titile1 || "",
+          "Brief Introduction": finalized["Brief Introduction"] || "",
+          "Href Kw": finalized["Href Kw"] || "",
+          "Href Url": finalized["Href Url"] || "",
         },
         runtime: {
           elapsedMs: Date.now() - startedAt,
@@ -497,7 +518,7 @@ async function executeFaqOutputGeneration(jobId: string, input: {
   const failedRows = results.filter((item): item is Extract<GenerationRowResult, { status: "error" }> => item.status === "error");
 
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(successRows.map((item) => item.output), { header: [...outputHeaders] }), "FAQ 输出");
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(successRows.map((item) => item.output), { header: [...outputHeaders] }), "FAQ输出");
   XLSX.utils.book_append_sheet(
     workbook,
     XLSX.utils.json_to_sheet(
