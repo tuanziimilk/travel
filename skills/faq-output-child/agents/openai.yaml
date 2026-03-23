@@ -1,0 +1,4 @@
+version: 1
+display_name: Child Discount FAQ
+short_description: 基于表格中的 Google AI Overview 结果，生成 HotDeals 儿童优惠 FAQ 并输出标准 Excel。
+default_prompt: 读取我提供的表格，先校验结果是否属于当前 merchant，再判断是否存在 child pricing、child fare、free child policy、kids sale on merchant-owned kids items；严格排除 student、education、family plan、insurance、license 和错误实体，并输出适合前台 FAQ 展示的最终答案：Yes 类以 `Yes.` 开头，No 类以 `No.` 开头。

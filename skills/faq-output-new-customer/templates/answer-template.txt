@@ -1,0 +1,96 @@
+## Output Row Template
+
+ContentType: faq
+Country: [country]
+TermID: [term_id]
+TermName: [term_name]
+Domain: [domain]
+Source:
+Subclass: [fact_type]
+板块名称:
+Titile1: [natural question in country language with {Mer.}]
+Brief Introduction: [answer that starts with Yes, No, or Not exactly, then mechanism, then condition or next action]
+Href Kw:
+Href Url:
+
+---
+
+## Question Patterns For `new customer`
+
+Use the language from `country`, not the source text.
+Choose the question type that best fits the merchant:
+
+Retail EN:
+- Does {Mer.} have a first-order discount?
+- Can new shoppers get a welcome offer at {Mer.}?
+
+Retail DE:
+- Gibt es bei {Mer.} einen Rabatt für die erste Bestellung?
+
+Retail FR:
+- {Mer.} propose-t-il une réduction sur la première commande ?
+
+Retail NL:
+- Biedt {Mer.} korting op de eerste bestelling?
+
+Retail IT:
+- {Mer.} offre uno sconto sul primo ordine?
+
+Retail PT:
+- A {Mer.} oferece desconto na primeira compra?
+
+Retail EL:
+- Η {Mer.} προσφέρει έκπτωση για την πρώτη παραγγελία;
+
+Subscription EN:
+- Does {Mer.} offer a free trial or new-plan savings?
+
+Food Delivery EN:
+- Is there a first app order discount at {Mer.}?
+
+Service EN:
+- Does {Mer.} have a new account or first booking offer?
+
+Retail ES:
+- ¿{Mer.} tiene descuento en la primera compra?
+- ¿Hay una oferta de bienvenida para nuevos clientes en {Mer.}?
+
+Retail SV:
+- Har {Mer.} rabatt på första beställningen?
+
+Retail KR:
+- {Mer.} 첫 주문 할인은 있나요?
+- {Mer.} 신규 고객 웰컴 혜택이 있나요?
+
+Retail CS:
+- Nabízí {Mer.} slevu na první objednávku?
+
+Retail DA:
+- Har {Mer.} rabat på den første bestilling?
+
+Retail SK:
+- Ponúka {Mer.} zľavu na prvú objednávku?
+
+Retail JA:
+- {Mer.} では初回注文の割引がありますか？
+
+Retail ZH-HANT:
+- {Mer.} 有首單優惠嗎？
+
+Retail PL:
+- Czy {Mer.} ma zniżkę na pierwsze zamówienie?
+- Czy nowi klienci mogą dostać ofertę powitalną w {Mer.}?
+
+---
+
+## Answer Drafting Rule
+
+Always:
+1. Start with `Yes,`, `No,`, or `Not exactly,`
+2. Explain the offer mechanism or why it does not qualify
+3. Add one more sentence with the key limit, redemption path, or alternative saving action
+
+Keep the answer in the language required by `country`.
+Replace merchant names with `{Mer.}`.
+Do not treat general promotions, seasonal sales, loyalty pricing, wholesale pricing, auto-renew discounts, or identity-based discounts as a true new customer discount.
+When no clear new customer offer exists, include the most common alternative saving path and a next action.

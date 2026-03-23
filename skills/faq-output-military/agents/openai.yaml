@@ -1,0 +1,4 @@
+interface:
+  display_name: "Military Discount FAQ"
+  short_description: "Answer military discount FAQ rows"
+  default_prompt: "Use $military-discount-faq-answer to turn merchant evidence into a concise military discount FAQ answer or output row."

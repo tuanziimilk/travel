@@ -1,0 +1,452 @@
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import type { Capability, ModuleId, ScType } from "@about-demo/trpc";
+import { resolveSkillRoot } from "./skillPath";
+import { getModuleSkillMd, getModuleSkillOverride, readModuleSkillFile, saveModuleSkillMd } from "./skillStore";
+
+export const faqOutputSubclasses = [
+  "shipping",
+  "newsletter/first order/sign up",
+  "student",
+  "military",
+  "senior",
+  "birthday",
+  "teacher",
+  "first responder",
+  "child",
+  "new customer",
+  "nhs",
+  "loyalty program",
+  "employee",
+  "referral",
+  "existing customer",
+  "app",
+  "clearance",
+  "family",
+  "blue light card",
+  "aaa",
+  "gift card",
+  "price guarantee",
+  "return",
+] as const;
+
+export type SkillRouteMatch = {
+  capability: Capability;
+  scType: ScType;
+  subclass: string;
+  skillKey: string;
+  skillLabel: string;
+  matchedBy: "subclass" | "default";
+  status: "active" | "placeholder";
+  notes: string;
+  source: "route_rule" | "override";
+  hasOverride: boolean;
+};
+
+export type SkillRouteRecord = SkillRouteMatch & {
+  defaultSkillKey: string;
+};
+
+type SkillRouteRule = {
+  capability: Capability;
+  scType: ScType;
+  subclass: string;
+  skillKey: string;
+  skillLabel: string;
+  status: "active" | "placeholder";
+  notes: string;
+};
+
+type SkillOverrideRecord = {
+  capability: Capability;
+  scType: ScType;
+  subclass: string;
+  skillMd: string;
+  updatedAt: string;
+};
+
+export type SkillRouteDocument = {
+  skillMd: string;
+  source: string;
+  isLive: boolean;
+  canEditLive: boolean;
+  message: string;
+  updatedAt?: string;
+};
+
+const faqFactTypeAliases: Record<string, string> = {
+  shipping_policy: "shipping",
+  newsletter_discount: "newsletter/first order/sign up",
+  first_order_discount: "newsletter/first order/sign up",
+  sign_up_discount: "newsletter/first order/sign up",
+  student_discount: "student",
+  military_discount: "military",
+  senior_discount: "senior",
+  birthday_discount: "birthday",
+  teacher_discount: "teacher",
+  first_responder_discount: "first responder",
+  child_discount: "child",
+  new_customer_discount: "new customer",
+  nhs_discount: "nhs",
+  loyalty_program: "loyalty program",
+  employee_discount: "employee",
+  referral_discount: "referral",
+  existing_customer_discount: "existing customer",
+  app_discount: "app",
+  clearance_discount: "clearance",
+  family_discount: "family",
+  blue_light_card_discount: "blue light card",
+  aaa_discount: "aaa",
+  gift_card: "gift card",
+  price_guarantee: "price guarantee",
+  return_policy: "return",
+};
+
+const generationRouteRules: SkillRouteRule[] = faqOutputSubclasses.map((subclass) => ({
+  capability: "generation",
+  scType: "faq",
+  subclass,
+  skillKey: `faq-output-${subclass.replaceAll("/", "-").replace(/\s+/g, "-")}`,
+  skillLabel: `FAQ 输出 / ${subclass}`,
+  status: "placeholder",
+  notes: `等待挂接 FAQ 输出 skill: ${subclass}`,
+}));
+
+generationRouteRules.push({
+  capability: "generation",
+  scType: "faq",
+  subclass: "",
+  skillKey: "faq-output-default",
+  skillLabel: "FAQ 输出 / 未命中 subclass",
+  status: "placeholder",
+  notes: "当 fact_type 未命中任何 FAQ subclass 时，落到这条兜底输出 skill。",
+});
+
+const qualityRouteRules: SkillRouteRule[] = [
+  {
+    capability: "quality",
+    scType: "about",
+    subclass: "",
+    skillKey: "about-quality-default",
+    skillLabel: "About 质检 / 默认",
+    status: "active",
+    notes: "当前 About 质检默认 skill。",
+  },
+  {
+    capability: "quality",
+    scType: "faq",
+    subclass: "",
+    skillKey: "faq-quality-default",
+    skillLabel: "FAQ 质检 / 默认",
+    status: "active",
+    notes: "当前 FAQ 质检默认 skill。",
+  },
+];
+
+const routeRules = [...generationRouteRules, ...qualityRouteRules];
+const skillOverrides = new Map<string, SkillOverrideRecord>();
+
+function normalizeSubclass(value?: string) {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
+}
+
+function makeRouteId(capability: Capability, scType: ScType, subclass?: string) {
+  return `${capability}::${scType}::${normalizeSubclass(subclass)}`;
+}
+
+function resolveQualityModuleId(scType: ScType): ModuleId | null {
+  if (scType === "about" || scType === "faq") return scType;
+  return null;
+}
+
+function resolveGenerationSkillRoot(scType: ScType, subclass?: string) {
+  if (scType !== "faq") return null;
+  const normalizedSubclass = normalizeSubclass(subclass);
+  if (!normalizedSubclass) return null;
+  const slug = normalizedSubclass.replaceAll("/", "-").replace(/\s+/g, "-");
+  return resolveSkillRoot(`skills/faq-output-${slug}`);
+}
+
+function hasGenerationSkillFile(scType: ScType, subclass?: string) {
+  const root = resolveGenerationSkillRoot(scType, subclass);
+  if (!root) return false;
+  return existsSync(join(root, "SKILL.md"));
+}
+
+async function readGenerationSkillFile(scType: ScType, subclass?: string) {
+  const root = resolveGenerationSkillRoot(scType, subclass);
+  if (!root) return null;
+  const filePath = join(root, "SKILL.md");
+  if (!existsSync(filePath)) return null;
+  const skillMd = await readFile(filePath, "utf8");
+  return {
+    root,
+    skillMd,
+    source: "file" as const,
+  };
+}
+
+function getStoredOverride(capability: Capability, scType: ScType, subclass?: string) {
+  const normalizedSubclass = normalizeSubclass(subclass);
+  if (capability === "quality" && !normalizedSubclass) {
+    const moduleId = resolveQualityModuleId(scType);
+    if (!moduleId) return null;
+    return getModuleSkillOverride(moduleId);
+  }
+
+  return skillOverrides.get(makeRouteId(capability, scType, normalizedSubclass)) || null;
+}
+
+export function normalizeFaqSubclassFromFactType(value?: string) {
+  const raw = normalizeSubclass(value).replace(/\s+/g, "_");
+  return faqFactTypeAliases[raw] || normalizeSubclass(value);
+}
+
+function toRecord(rule: SkillRouteRule): SkillRouteRecord {
+  const override = getStoredOverride(rule.capability, rule.scType, rule.subclass);
+  const hasFileBackedSkill =
+    rule.capability === "generation" && rule.subclass ? hasGenerationSkillFile(rule.scType, rule.subclass) : false;
+  const effectiveStatus = override || hasFileBackedSkill ? "active" : rule.status;
+
+  return {
+    capability: rule.capability,
+    scType: rule.scType,
+    subclass: rule.subclass,
+    skillKey: override ? `${rule.skillKey} (override)` : rule.skillKey,
+    defaultSkillKey: rule.skillKey,
+    skillLabel: rule.skillLabel,
+    matchedBy: rule.subclass ? "subclass" : "default",
+    status: effectiveStatus,
+    notes: override
+      ? `已覆盖，更新时间 ${override.updatedAt}`
+      : hasFileBackedSkill
+        ? "已检测到本地 skill 文件。"
+        : rule.notes,
+    source: override ? "override" : "route_rule",
+    hasOverride: Boolean(override),
+  };
+}
+
+export function listSkillRoutes(filters?: { capability?: Capability; scType?: ScType; subclass?: string }) {
+  const subclass = normalizeSubclass(filters?.subclass);
+  return routeRules
+    .filter((rule) => (filters?.capability ? rule.capability === filters.capability : true))
+    .filter((rule) => (filters?.scType ? rule.scType === filters.scType : true))
+    .filter((rule) => (subclass ? rule.subclass.includes(subclass) : true))
+    .map(toRecord);
+}
+
+export function getSkillRouteOverride(input: { capability: Capability; scType: ScType; subclass?: string }) {
+  return getStoredOverride(input.capability, input.scType, input.subclass);
+}
+
+export async function getSkillRouteDocument(input: {
+  capability: Capability;
+  scType: ScType;
+  subclass?: string;
+}): Promise<SkillRouteDocument> {
+  if (input.capability === "quality") {
+    const moduleId = resolveQualityModuleId(input.scType);
+    if (!moduleId) {
+      return {
+        skillMd: "",
+        source: "unavailable",
+        isLive: false,
+        canEditLive: false,
+        message: "当前只有 About 和 FAQ 质检已接入真实执行链路。",
+      };
+    }
+
+    const moduleSkill = await getModuleSkillMd(moduleId);
+    return {
+      skillMd: moduleSkill.skillMd,
+      source: moduleSkill.source,
+      isLive: true,
+      canEditLive: true,
+      updatedAt: "updatedAt" in moduleSkill ? moduleSkill.updatedAt : undefined,
+      message: "当前展示的是线上实际生效的质检 SKILL.md 内容。",
+    };
+  }
+
+  const override = getSkillRouteOverride(input);
+  if (override) {
+    return {
+      skillMd: override.skillMd,
+      source: "route_override",
+      isLive: false,
+      canEditLive: false,
+      updatedAt: override.updatedAt,
+      message: "当前展示的是路由覆盖内容；输出链路将优先读取这里的覆盖内容。",
+    };
+  }
+
+  const fileDocument = await readGenerationSkillFile(input.scType, input.subclass);
+  if (fileDocument) {
+    return {
+      skillMd: fileDocument.skillMd,
+      source: fileDocument.source,
+      isLive: false,
+      canEditLive: false,
+      message: "当前展示的是仓库内的本地输出 skill 文件。该文件已就位，但 FAQ 输出自动执行器尚未正式接入。",
+    };
+  }
+
+  return {
+    skillMd: "",
+    source: "route_rule",
+    isLive: false,
+    canEditLive: false,
+    message: "当前路由下还没有可直接查看的生效 SKILL.md 内容。",
+  };
+}
+
+export async function saveSkillRouteOverride(input: {
+  capability: Capability;
+  scType: ScType;
+  subclass?: string;
+  skillMd: string;
+  overwrite?: boolean;
+}) {
+  const normalizedSubclass = normalizeSubclass(input.subclass);
+
+  if (input.capability === "quality" && !normalizedSubclass) {
+    const moduleId = resolveQualityModuleId(input.scType);
+    if (!moduleId) {
+      throw new Error(`Unsupported quality route scType: ${input.scType}`);
+    }
+    return saveModuleSkillMd(moduleId, input.skillMd);
+  }
+
+  const routeId = makeRouteId(input.capability, input.scType, normalizedSubclass);
+  if (!input.overwrite && skillOverrides.has(routeId)) {
+    throw new Error("该 skill 路由已经存在覆盖内容，请勾选覆盖后再保存。");
+  }
+
+  const record: SkillOverrideRecord = {
+    capability: input.capability,
+    scType: input.scType,
+    subclass: normalizedSubclass,
+    skillMd: input.skillMd,
+    updatedAt: new Date().toISOString(),
+  };
+  skillOverrides.set(routeId, record);
+  return { ok: true, routeId, updatedAt: record.updatedAt };
+}
+
+export function resolveSkillRoute(input: {
+  capability: Capability;
+  scType: ScType;
+  subclass?: string;
+}): SkillRouteMatch {
+  const subclass =
+    input.scType === "faq" && input.capability === "generation"
+      ? normalizeFaqSubclassFromFactType(input.subclass)
+      : normalizeSubclass(input.subclass);
+
+  const exactRule = routeRules.find(
+    (rule) => rule.capability === input.capability && rule.scType === input.scType && rule.subclass === subclass,
+  );
+
+  const fallbackRule =
+    exactRule ||
+    routeRules.find((rule) => rule.capability === input.capability && rule.scType === input.scType && !rule.subclass);
+
+  if (!fallbackRule) {
+    return {
+      capability: input.capability,
+      scType: input.scType,
+      subclass,
+      skillKey: `${input.capability}-${input.scType}-unmapped`,
+      skillLabel: "未配置 skill",
+      matchedBy: "default",
+      status: "placeholder",
+      notes: "当前组合还没有配置 skill 路由规则。",
+      source: "route_rule",
+      hasOverride: false,
+    };
+  }
+
+  return toRecord({ ...fallbackRule, subclass: exactRule?.subclass ?? fallbackRule.subclass });
+}
+
+export async function getActiveQualitySkill(input: { scType: ScType }) {
+  const moduleId = resolveQualityModuleId(input.scType);
+  if (!moduleId) {
+    throw new Error(`Unsupported quality route scType: ${input.scType}`);
+  }
+
+  const route = resolveSkillRoute({
+    capability: "quality",
+    scType: input.scType,
+    subclass: "",
+  });
+
+  const override = getModuleSkillOverride(moduleId);
+  if (override) {
+    return {
+      route,
+      document: {
+        moduleId,
+        skillMd: override.skillMd,
+        source: override.source,
+        updatedAt: override.updatedAt,
+      },
+    };
+  }
+
+  const document = await readModuleSkillFile(moduleId);
+  return { route, document };
+}
+
+export function getGenerationFramework(scType: ScType) {
+  return {
+    scType,
+    uploadColumns: [
+      "term_id",
+      "country",
+      "domain",
+      "term_name",
+      "fact_type",
+      "supported",
+      "status",
+      "discount_type",
+      "discount_value",
+      "currency",
+      "discount_details",
+      "url",
+    ],
+    outputColumns: [
+      "ContentType",
+      "Country",
+      "TermID",
+      "TermName",
+      "Domain",
+      "Source",
+      "Subclass",
+      "板块名称",
+      "Titile1",
+      "Brief Introduction",
+      "Href Kw",
+      "Href Url",
+    ],
+    sampleOutput: {
+      ContentType: "faq",
+      Country: "NO",
+      TermID: "102472",
+      TermName: "Junkyard",
+      Domain: "junkyard.no",
+      Source: "Blog",
+      Subclass: "gift card",
+      板块名称: "faq",
+      Titile1: "Tillater {Mer.} meg å kjøpe gavekortet deres?",
+      "Brief Introduction":
+        "{Mer.} gavekort er definitivt den perfekte hjelpen når du ikke har en bestemt gaveide i tankene! De vakre gavekortene deres kan kjøpes direkte fra nettbutikken og kan brukes til hele nettbutikkens produktspekter! Du kan sende elektroniske gavekort digitalt via e-post: Velg en dato for å sende dem!",
+      "Href Kw": "chez Luminaire.fr",
+      "Href Url": "https://www.luminaire.fr/",
+    },
+    supportedSubclasses: [...faqOutputSubclasses],
+  };
+}

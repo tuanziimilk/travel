@@ -1,0 +1,4 @@
+version: 1
+display_name: Teacher Discount FAQ
+short_description: 基于表格中的 Google AI Overview 结果，生成 HotDeals 教师优惠 FAQ 并输出标准 Excel。
+default_prompt: 读取我提供的表格，分析 country、term_name 和 discount_details，按模板输出 teacher discount FAQ Excel。

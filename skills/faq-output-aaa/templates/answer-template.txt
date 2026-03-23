@@ -1,0 +1,89 @@
+## Output Row Template
+
+ContentType: faq
+Country: [country]
+TermID: [term_id]
+TermName: [term_name]
+Domain: [domain]
+Source:
+Subclass: [fact_type]
+板块名称:
+Titile1: [localized question with {Mer.}]
+Brief Introduction: [rewritten answer from discount_details]
+Href Kw:
+Href Url:
+
+---
+
+## Question Patterns
+
+EN:
+Does {Mer.} offer an AAA discount?
+
+DE:
+Bietet {Mer.} einen AAA-Rabatt an?
+
+FR:
+{Mer.} propose-t-il une réduction AAA ?
+
+NL:
+Biedt {Mer.} een AAA-korting aan?
+
+IT:
+{Mer.} offre uno sconto AAA?
+
+PT:
+A {Mer.} oferece desconto AAA?
+
+EL:
+Η {Mer.} προσφέρει έκπτωση AAA;
+
+PL:
+Czy {Mer.} oferuje zniżkę AAA?
+
+ES:
+¿{Mer.} ofrece descuento AAA?
+
+SV:
+Erbjuder {Mer.} AAA-rabatt?
+
+KO:
+{Mer.}는 AAA 할인을 제공하나요?
+
+CS:
+Nabízí {Mer.} slevu AAA?
+
+DA:
+Tilbyder {Mer.} AAA-rabat?
+
+SK:
+Ponúka {Mer.} zľavu AAA?
+
+JA:
+{Mer.}ではAAA割引がありますか。
+
+ZH-HANT:
+{Mer.} 有提供 AAA 折扣嗎？
+
+---
+
+## Answer Drafting Rule
+
+Keep the answer in the language mapped from `country`, not the source language.
+Rewrite from `discount_details`.
+First classify the source as:
+1. direct AAA discount
+2. AAA portal cashback
+3. AAA travel/member booking benefit
+4. non-AAA general offer
+
+Preserve information in this order:
+1. Offer type and core benefit
+2. Core benefit
+3. Key condition
+
+Replace merchant names with `{Mer.}`.
+Leave `Source` and `板块名称` blank.
+Prefer 1-2 sentences.
+Avoid repetitive template sentences.
+Do not weaken strong evidence into vague phrases like "may offer" or "other savings may be available".

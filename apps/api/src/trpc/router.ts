@@ -10,9 +10,19 @@ import {
   batchRetryInputSchema,
   batchStartInputSchema,
   batchStatusInputSchema,
+  generationFrameworkGetInputSchema,
+  generationQueueInputSchema,
+  generationResultInputSchema,
+  generationRetryInputSchema,
+  generationStatusInputSchema,
+  generationRunInputSchema,
   manualScoreInputSchema,
   manualFaqScoreInputSchema,
   runtimeAiConfigSetInputSchema,
+  skillRouteDocumentInputSchema,
+  skillRouteListInputSchema,
+  skillRouteResolveInputSchema,
+  skillRouteSaveInputSchema,
   type ManualScoreInput,
   skillGetInputSchema,
   skillSaveInputSchema,
@@ -37,8 +47,18 @@ import {
   toCsv,
 } from "../jobs/ingestWorker";
 import { env, getAiRuntimeConfig, setAiRuntimeModel } from "../env";
+import { retryFaqOutputGeneration, startFaqOutputGeneration } from "../generation/faqOutputGenerator";
+import { getGenerationJobResult, getGenerationJobStatus, listGenerationJobs } from "../generation/faqOutputJobStore";
 import { scoreAboutByAiWithMeta } from "../scoring/aboutAiScorer";
 import { getModuleSkillMd, saveModuleSkillMd } from "../skills/skillStore";
+import {
+  getGenerationFramework,
+  getSkillRouteDocument,
+  getSkillRouteOverride,
+  listSkillRoutes,
+  resolveSkillRoute,
+  saveSkillRouteOverride,
+} from "../skills/skillRouter";
 
 const t = initTRPC.create();
 
@@ -240,12 +260,47 @@ export const appRouter = t.router({
       return analyticsSummary(input);
     }),
   }),
+  generation: t.router({
+    framework: t.procedure.input(generationFrameworkGetInputSchema).query(({ input }) => {
+      return getGenerationFramework(input.scType);
+    }),
+    resolveSkill: t.procedure.input(skillRouteResolveInputSchema).query(({ input }) => {
+      return resolveSkillRoute(input);
+    }),
+    run: t.procedure.input(generationRunInputSchema).mutation(({ input }) => {
+      return startFaqOutputGeneration(input);
+    }),
+    queue: t.procedure.input(generationQueueInputSchema).query(({ input }) => {
+      return listGenerationJobs(input.page, input.pageSize, input.scType);
+    }),
+    status: t.procedure.input(generationStatusInputSchema).query(({ input }) => {
+      return getGenerationJobStatus(input.jobId);
+    }),
+    retry: t.procedure.input(generationRetryInputSchema).mutation(({ input }) => {
+      return retryFaqOutputGeneration(input.jobId);
+    }),
+    result: t.procedure.input(generationResultInputSchema).query(({ input }) => {
+      return getGenerationJobResult(input.jobId);
+    }),
+  }),
   skill: t.router({
     get: t.procedure.input(skillGetInputSchema).query(async ({ input }) => {
       return getModuleSkillMd(input.moduleId);
     }),
     save: t.procedure.input(skillSaveInputSchema).mutation(async ({ input }) => {
       return saveModuleSkillMd(input.moduleId, input.skillMd);
+    }),
+    routes: t.procedure.input(skillRouteListInputSchema).query(({ input }) => {
+      return listSkillRoutes(input);
+    }),
+    routeOverride: t.procedure.input(skillRouteResolveInputSchema).query(({ input }) => {
+      return getSkillRouteOverride(input);
+    }),
+    routeDocument: t.procedure.input(skillRouteDocumentInputSchema).query(({ input }) => {
+      return getSkillRouteDocument(input);
+    }),
+    saveRouteOverride: t.procedure.input(skillRouteSaveInputSchema).mutation(({ input }) => {
+      return saveSkillRouteOverride(input);
     }),
   }),
   runtime: t.router({

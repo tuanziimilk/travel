@@ -1,0 +1,75 @@
+## Output Row Template
+
+ContentType: faq
+Country: [country]
+TermID: [term_id]
+TermName: [term_name]
+Domain: [domain]
+Source:
+Subclass: [fact_type]
+板块名称:
+Titile1: [localized question with {Mer.}]
+Brief Introduction: [rewritten answer from discount_details]
+Href Kw:
+Href Url:
+
+---
+
+## Language Rule
+
+Always output the FAQ question and answer in the language mapped from `country`.
+Do not follow the source language in `discount_details`.
+
+UK/AU/CA -> EN
+DE/AT/CH -> DE
+FR -> FR
+NL/BE -> NL
+IT -> IT
+PT/BR -> PT
+GR -> EL
+PL -> PL
+ES -> ES
+SE -> SV
+KR -> KO
+CZ -> CS
+DK -> DA
+SK -> SK
+JP -> JA
+HK -> ZH-HANT
+
+Fallback: EN
+
+---
+
+## Question Patterns
+
+ES:
+¿{Mer.} ofrece descuentos para clientes existentes?
+
+KR:
+{Mer.}는 기존 고객 할인을 제공하나요?
+
+PL:
+Czy {Mer.} oferuje zniżki dla obecnych klientów?
+
+EN:
+Does {Mer.} offer an existing customer discount?
+
+---
+
+## Answer Drafting Rule
+
+Start by judging whether `{Mer.}` has a dedicated existing-customer discount.
+If not, make that negative judgment explicit in the target language.
+Rewrite from `discount_details`.
+Preserve information in this order:
+1. Dedicated discount judgment
+2. Most valuable mechanism
+3. Core benefit
+4. Key condition or claim path
+
+Replace merchant names with `{Mer.}`.
+Leave `Source` and `板块名称` blank.
+Prefer 1-2 sentences.
+Prioritize mechanisms such as points, member tiers, birthday coupons, subscriber rates, account-only offers, and app/member pricing.
+Avoid repeating the same stock sentence pattern across rows.

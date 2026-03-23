@@ -1,0 +1,7 @@
+interface:
+  display_name: "Free Shipping FAQ"
+  short_description: "Generate concise free shipping FAQ outputs"
+  default_prompt: "Use $free-shipping-faq-answer to turn merchant shipping evidence into a concise free shipping FAQ answer or structured row."
+
+policy:
+  allow_implicit_invocation: true

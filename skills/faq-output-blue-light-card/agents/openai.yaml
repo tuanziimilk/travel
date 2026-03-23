@@ -1,0 +1,4 @@
+interface:
+  display_name: "Blue Light Card FAQ"
+  short_description: "Answer Blue Light Card discount FAQ rows"
+  default_prompt: "Use $blue-light-card-discount-faq-answer to turn merchant evidence into a concise Blue Light Card discount FAQ answer or output row."

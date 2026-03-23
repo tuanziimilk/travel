@@ -1,56 +1,115 @@
-import { Link, useLocation } from "wouter";
+import * as Accordion from "@radix-ui/react-accordion";
 import * as Select from "@radix-ui/react-select";
-import { moduleOptions, type AiModel, type ModuleId } from "@about-demo/trpc";
+import { useEffect, useState, type ReactNode } from "react";
+import { Link, useLocation } from "wouter";
+import type { AiModel, ModuleId } from "@about-demo/trpc";
 import { trpc } from "./lib/trpc";
-import { ManualPage } from "./pages/ManualPage";
-import { UploadPage } from "./pages/UploadPage";
-import { HistoryPage } from "./pages/HistoryPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
-import { SkillConfigPage } from "./pages/SkillConfigPage";
-import { FaqManualPage } from "./pages/FaqManualPage";
-import { FaqUploadPage } from "./pages/FaqUploadPage";
-import { FaqHistoryPage } from "./pages/FaqHistoryPage";
 import { FaqAnalyticsPage } from "./pages/FaqAnalyticsPage";
+import { FaqHistoryPage } from "./pages/FaqHistoryPage";
+import { FaqManualPage } from "./pages/FaqManualPage";
+import { FaqOutputPage } from "./pages/FaqOutputPage";
+import { FaqUploadPage } from "./pages/FaqUploadPage";
+import { HistoryPage } from "./pages/HistoryPage";
+import { ManualPage } from "./pages/ManualPage";
+import { PostlaunchSamplingPage } from "./pages/PostlaunchSamplingPage";
+import { PrelaunchSamplingPage } from "./pages/PrelaunchSamplingPage";
+import { SkillConfigPage } from "./pages/SkillConfigPage";
+import { UploadPage } from "./pages/UploadPage";
 
-function NavLink({ href, label, tone = "page" }: { href: string; label: string; tone?: "module" | "page" }) {
+type WorkspaceId = "quality" | "output" | "sampling-pre" | "sampling-post" | "skills";
+type QualityPageId = "manual" | "upload" | "history" | "analytics";
+
+function sectionForWorkspace(workspaceId: WorkspaceId) {
+  if (workspaceId === "sampling-pre" || workspaceId === "sampling-post") return "sampling";
+  return workspaceId;
+}
+
+function NavLink({
+  href,
+  label,
+  activePrefix,
+}: {
+  href: string;
+  label: string;
+  activePrefix?: string;
+}) {
   const [location] = useLocation();
-  const active = location === href;
+  const active = activePrefix ? location.startsWith(activePrefix) : location === href;
+  const slashIndex = label.indexOf("/");
+  const prefix = slashIndex >= 0 ? label.slice(0, slashIndex + 1).trim() : "";
+  const suffix = slashIndex >= 0 ? label.slice(slashIndex + 1).trim() : label;
   return (
     <Link href={href}>
-      <span className={`nav-btn nav-btn-${tone} ${active ? (tone === "module" ? "active-module" : "active") : ""}`}>{label}</span>
+      <span className={`nav-btn sidebar-subnav-btn ${active ? "active" : ""}`}>
+        {prefix ? <span className="sidebar-subnav-prefix">{prefix}</span> : null}
+        <span>{suffix}</span>
+      </span>
     </Link>
   );
 }
 
-const pageOptions = ["manual", "upload", "history", "analytics", "skills"] as const;
-type PageId = (typeof pageOptions)[number];
-
-function parseLocation(path: string): { moduleId: ModuleId; pageId: PageId } {
+function parseLocation(path: string): {
+  workspaceId: WorkspaceId;
+  moduleId: ModuleId;
+  pageId: QualityPageId;
+} {
   const parts = path.split("/").filter(Boolean);
-  const maybeModule = parts[0] as ModuleId | undefined;
-  const maybePage = parts[1] as PageId | undefined;
-
-  const moduleId: ModuleId = moduleOptions.includes(maybeModule as ModuleId) ? (maybeModule as ModuleId) : "about";
-  const pageId: PageId = pageOptions.includes(maybePage as PageId)
-    ? (maybePage as PageId)
-    : moduleOptions.includes(maybeModule as ModuleId)
-      ? "manual"
-      : pageOptions.includes(maybeModule as PageId)
-        ? (maybeModule as PageId)
-        : "manual";
-
-  return { moduleId, pageId };
+  const workspaceId = (parts[0] as WorkspaceId) || "quality";
+  if (workspaceId === "quality") {
+    const moduleId = (parts[1] as ModuleId) || "about";
+    const pageId = (parts[2] as QualityPageId) || "manual";
+    return { workspaceId, moduleId, pageId };
+  }
+  if (workspaceId === "skills") {
+    const moduleId = (parts[1] as ModuleId) || "faq";
+    return { workspaceId, moduleId, pageId: "manual" };
+  }
+  return { workspaceId, moduleId: "faq", pageId: "manual" };
 }
 
-function moduleLabel(moduleId: ModuleId) {
-  if (moduleId === "about") return "About 质检";
-  if (moduleId === "faq") return "FAQ 质检";
-  return moduleId;
+function workspaceLabel(workspaceId: WorkspaceId) {
+  if (workspaceId === "quality") return "内容质检";
+  if (workspaceId === "output") return "内容输出";
+  if (workspaceId === "sampling-pre") return "上线前抽检";
+  if (workspaceId === "sampling-post") return "上线后抽检";
+  return "Skills 配置";
+}
+
+function qualityModuleLabel(moduleId: ModuleId) {
+  return moduleId === "about" ? "About" : "FAQ";
+}
+
+function qualityModuleHref(moduleId: ModuleId, pageId: QualityPageId) {
+  return `/quality/${moduleId}/${pageId}`;
+}
+
+function SidebarGroup({
+  value,
+  title,
+  children,
+}: {
+  value: string;
+  title: string;
+  children?: ReactNode;
+}) {
+  return (
+    <Accordion.Item className="sidebar-accordion-item" value={value}>
+      <Accordion.Header>
+        <Accordion.Trigger className="sidebar-accordion-trigger">
+          <span>{title}</span>
+          <span className="sidebar-accordion-arrow" aria-hidden="true" />
+        </Accordion.Trigger>
+      </Accordion.Header>
+      <Accordion.Content className="sidebar-accordion-content">{children}</Accordion.Content>
+    </Accordion.Item>
+  );
 }
 
 export default function App() {
   const [location] = useLocation();
-  const { moduleId, pageId } = parseLocation(location);
+  const { workspaceId, moduleId, pageId } = parseLocation(location);
+  const [openSections, setOpenSections] = useState<string[]>([sectionForWorkspace(workspaceId)]);
   const utils = trpc.useUtils();
   const aiConfigQuery = trpc.runtime.aiConfig.get.useQuery();
   const aiConfigSetMutation = trpc.runtime.aiConfig.set.useMutation({
@@ -64,54 +123,79 @@ export default function App() {
     aiConfigSetMutation.mutate({ aiModel: value as AiModel });
   };
 
+  useEffect(() => {
+    const activeSection = sectionForWorkspace(workspaceId);
+    setOpenSections((current) => (current.includes(activeSection) ? current : [...current, activeSection]));
+  }, [workspaceId]);
+
   const renderPage = () => {
+    if (workspaceId === "output") return <FaqOutputPage />;
+    if (workspaceId === "sampling-pre") return <PrelaunchSamplingPage />;
+    if (workspaceId === "sampling-post") return <PostlaunchSamplingPage />;
+    if (workspaceId === "skills") return <SkillConfigPage moduleId={moduleId} />;
+
     if (moduleId === "faq") {
       if (pageId === "manual") return <FaqManualPage />;
       if (pageId === "upload") return <FaqUploadPage />;
       if (pageId === "history") return <FaqHistoryPage />;
-      if (pageId === "analytics") return <FaqAnalyticsPage />;
-      return <SkillConfigPage moduleId={moduleId} />;
+      return <FaqAnalyticsPage />;
     }
+
     if (pageId === "manual") return <ManualPage />;
     if (pageId === "upload") return <UploadPage />;
     if (pageId === "history") return <HistoryPage />;
-    if (pageId === "analytics") return <AnalyticsPage />;
-    return <SkillConfigPage moduleId={moduleId} />;
+    return <AnalyticsPage />;
   };
 
   return (
-    <div className={`app-shell app-theme-${moduleId}`}>
+    <div className={`app-shell app-theme-${workspaceId === "quality" ? moduleId : "faq"}`}>
       <aside className="app-sidebar">
         <div className="sidebar-panel">
-          <section className="sidebar-group">
-            <div className="sidebar-title">模块切换</div>
-            <nav className="sidebar-nav sidebar-nav-module">
-              {moduleOptions.map((item) => (
-                <NavLink key={item} href={`/${item}/${pageId}`} label={moduleLabel(item)} tone="module" />
-              ))}
-            </nav>
-          </section>
+          <div className="sidebar-title">工作台分区</div>
+          <Accordion.Root className="sidebar-accordion" type="multiple" value={openSections} onValueChange={setOpenSections}>
+            <SidebarGroup value="quality" title="内容质检">
+              <div className="sub-tab-switch">
+                <Link href={qualityModuleHref("about", pageId)}>
+                  <span className={`tab-btn ${moduleId === "about" ? "active" : ""}`}>ABOUT</span>
+                </Link>
+                <Link href={qualityModuleHref("faq", pageId)}>
+                  <span className={`tab-btn ${moduleId === "faq" ? "active" : ""}`}>FAQ</span>
+                </Link>
+              </div>
+              <div className="sidebar-subnav">
+                <NavLink href={`/quality/${moduleId}/manual`} label={`${qualityModuleLabel(moduleId)} / 手动评分`} activePrefix={`/quality/${moduleId}/manual`} />
+                <NavLink href={`/quality/${moduleId}/upload`} label={`${qualityModuleLabel(moduleId)} / 批量上传`} activePrefix={`/quality/${moduleId}/upload`} />
+                <NavLink href={`/quality/${moduleId}/history`} label={`${qualityModuleLabel(moduleId)} / 历史批次`} activePrefix={`/quality/${moduleId}/history`} />
+                <NavLink href={`/quality/${moduleId}/analytics`} label={`${qualityModuleLabel(moduleId)} / 评估看板`} activePrefix={`/quality/${moduleId}/analytics`} />
+              </div>
+            </SidebarGroup>
 
-          <section className="sidebar-group" style={{ marginTop: 14 }}>
-            <div className="sidebar-title-row">
-              <div className="sidebar-title">功能导航</div>
-              <span className="sidebar-mini-tag">{moduleId.toUpperCase()}</span>
-            </div>
-            <nav className="sidebar-nav sidebar-nav-page">
-              <NavLink href={`/${moduleId}/manual`} label="手动评分" />
-              <NavLink href={`/${moduleId}/upload`} label="批量上传" />
-              <NavLink href={`/${moduleId}/history`} label="历史批次" />
-              <NavLink href={`/${moduleId}/analytics`} label="评估看板" />
-              <NavLink href={`/${moduleId}/skills`} label="规则配置" />
-            </nav>
-          </section>
+            <SidebarGroup value="output" title="内容输出">
+              <div className="sidebar-subnav">
+                <NavLink href="/output/faq" label="FAQ 输出" activePrefix="/output/faq" />
+              </div>
+            </SidebarGroup>
+
+            <SidebarGroup value="sampling" title="抽检">
+              <div className="sidebar-subnav">
+                <NavLink href="/sampling-pre" label="上线前抽检 / 抽检任务" activePrefix="/sampling-pre" />
+                <NavLink href="/sampling-post" label="上线后抽检 / TL 抽检" activePrefix="/sampling-post" />
+              </div>
+            </SidebarGroup>
+
+            <SidebarGroup value="skills" title="Skills 配置">
+              <div className="sidebar-subnav">
+                <NavLink href="/skills/faq" label="Skills 管理面板" activePrefix="/skills/" />
+              </div>
+            </SidebarGroup>
+          </Accordion.Root>
         </div>
       </aside>
 
       <div className="app-content">
         <div className="container">
           <section className="top-nav">
-            <div className="logo-text">内容质检对比工具</div>
+            <div className="logo-text">SC 内容生产与质检工具</div>
             <div className="btn-group">
               <div className="model-switch" aria-label="runtime-ai-model">
                 <span className="model-switch-label">模型</span>
@@ -136,7 +220,7 @@ export default function App() {
                   </Select.Portal>
                 </Select.Root>
               </div>
-              <span className="module-chip">当前模块：{moduleLabel(moduleId)}</span>
+              <span className="module-chip">{workspaceLabel(workspaceId)}</span>
             </div>
           </section>
 

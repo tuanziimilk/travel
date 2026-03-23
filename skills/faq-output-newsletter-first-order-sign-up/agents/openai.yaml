@@ -1,0 +1,4 @@
+interface:
+  display_name: "First Order FAQ Answer"
+  short_description: "Rewrite first-order discount FAQ answers"
+  default_prompt: "Use $first-order-discount-faq-answer to turn merchant discount evidence into a concise FAQ answer."

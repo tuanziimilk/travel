@@ -47,6 +47,18 @@ export const moduleOptions = ["about", "faq"] as const;
 export const moduleSchema = z.enum(moduleOptions);
 export type ModuleId = z.infer<typeof moduleSchema>;
 
+export const capabilityOptions = ["quality", "generation", "sampling_prelaunch", "sampling_postlaunch"] as const;
+export const capabilitySchema = z.enum(capabilityOptions);
+export type Capability = z.infer<typeof capabilitySchema>;
+
+export const scTypeOptions = ["about", "faq", "st"] as const;
+export const scTypeSchema = z.enum(scTypeOptions);
+export type ScType = z.infer<typeof scTypeSchema>;
+
+export const marketGroupOptions = ["HD-A", "HD-B", "HD-C"] as const;
+export const marketGroupSchema = z.enum(marketGroupOptions);
+export type MarketGroup = z.infer<typeof marketGroupSchema>;
+
 export const outputModeOptions = ["full", "compact"] as const;
 export const outputModeSchema = z.enum(outputModeOptions);
 export type OutputMode = z.infer<typeof outputModeSchema>;
@@ -209,8 +221,60 @@ export const skillSaveInputSchema = z.object({
   skillMd: z.string().min(1),
 });
 
+export const skillRouteListInputSchema = z.object({
+  capability: capabilitySchema.optional(),
+  scType: scTypeSchema.optional(),
+  subclass: z.string().optional().default(""),
+});
+
+export const skillRouteSaveInputSchema = z.object({
+  capability: capabilitySchema,
+  scType: scTypeSchema,
+  subclass: z.string().optional().default(""),
+  skillMd: z.string().min(1),
+  overwrite: z.boolean().optional().default(true),
+});
+
 export const runtimeAiConfigSetInputSchema = z.object({
   aiModel: aiModelSchema,
 });
+
+export const generationFrameworkGetInputSchema = z.object({
+  scType: scTypeSchema.optional().default("faq"),
+});
+
+export const generationRunInputSchema = z.object({
+  scType: scTypeSchema.optional().default("faq"),
+  uploader: uploaderSchema,
+  note: z.string().optional().default(""),
+  fileName: z.string().min(1),
+  fileBase64: z.string().min(1),
+});
+
+export const generationQueueInputSchema = z.object({
+  scType: scTypeSchema.optional().default("faq"),
+  page: z.number().int().min(1).optional().default(1),
+  pageSize: z.number().int().min(1).max(50).optional().default(10),
+});
+
+export const generationResultInputSchema = z.object({
+  jobId: z.string(),
+});
+
+export const generationStatusInputSchema = z.object({
+  jobId: z.string(),
+});
+
+export const generationRetryInputSchema = z.object({
+  jobId: z.string(),
+});
+
+export const skillRouteResolveInputSchema = z.object({
+  capability: capabilitySchema,
+  scType: scTypeSchema,
+  subclass: z.string().optional().default(""),
+});
+
+export const skillRouteDocumentInputSchema = skillRouteResolveInputSchema;
 
 export type ManualScoreInput = z.infer<typeof manualScoreInputSchema>;

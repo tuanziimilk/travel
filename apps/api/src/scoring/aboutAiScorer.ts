@@ -3,7 +3,7 @@ import { ManualScoreInput, type OutputMode, ScoreOutput } from "@about-demo/trpc
 import { env } from "../env";
 import { skillRegistry } from "../skills/skillRegistry";
 import { aiExecutor } from "../skills/aiExecutor";
-import { getModuleSkillMd } from "../skills/skillStore";
+import { getActiveQualitySkill } from "../skills/skillRouter";
 import { validateScoreOutput } from "./validators/scoreValidator";
 
 const compactIssueFlagsSchema = z.object({
@@ -92,6 +92,25 @@ type ScoringDiagnostics = {
 type ValidatedScorePayload = {
   output: ScoreOutput;
   diagnostics?: ScoringDiagnostics;
+};
+
+export type ScoreRuntimeMeta = {
+  elapsedMs: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
+  aiModel: string;
+  moduleId: "about" | "faq";
+  skillSource: string;
+  outputMode: OutputMode;
+  skillRouteKey: string;
+};
+
+export type ScoreWithMetaResult = {
+  output: ScoreOutput;
+  diagnostics?: ScoringDiagnostics;
+  runtime: ScoreRuntimeMeta;
 };
 
 type PromptRefs = Record<string, string>;
@@ -478,13 +497,19 @@ export async function scoreAboutByAi(input: ManualScoreInput): Promise<ScoreOutp
 export async function scoreAboutByAiWithMeta(
   input: ManualScoreInput,
   options?: { requestTimeoutMs?: number; outputMode?: OutputMode },
-) {
+): Promise<ScoreWithMetaResult> {
   const startedAt = Date.now();
   const moduleId = input.moduleId || "about";
   const outputMode = options?.outputMode ?? "full";
   const skill = await skillRegistry.getModuleSkill(moduleId);
-  const moduleSkill = await getModuleSkillMd(moduleId);
-  const prompt = buildPrompt(input, moduleSkill.skillMd || skill.skillMd, skill.references, outputMode, moduleId);
+  const activeQualitySkill = await getActiveQualitySkill({ scType: moduleId });
+  const prompt = buildPrompt(
+    input,
+    activeQualitySkill.document.skillMd || skill.skillMd,
+    skill.references,
+    outputMode,
+    moduleId,
+  );
 
   const executed = await aiExecutor.execute<ValidatedScorePayload>({
     maxRetries: env.aiExecutorMaxRetries,
@@ -513,8 +538,9 @@ export async function scoreAboutByAiWithMeta(
       estimatedCostUsd: Math.round(estimatedCostUsd * 1_000_000) / 1_000_000,
       aiModel: env.aiModel,
       moduleId,
-      skillSource: moduleSkill.source,
+      skillSource: activeQualitySkill.document.source,
       outputMode,
+      skillRouteKey: activeQualitySkill.route.skillKey,
     },
   };
 }

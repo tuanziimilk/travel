@@ -1,0 +1,47 @@
+## Output Row Template
+
+ContentType: faq
+Country: [country]
+TermID: [term_id]
+TermName: [term_name]
+Domain: [domain]
+Source:
+Subclass: [fact_type]
+板块名称:
+Titile1: [localized question with {Mer.}]
+Brief Introduction: [rewritten answer from discount_details]
+Href Kw:
+Href Url:
+
+---
+
+## Question Patterns
+
+ES:
+¿{Mer.} tiene sección de liquidación o outlet?
+
+KR:
+{Mer.}에는 클리어런스나 아울렛 상품이 있나요?
+
+PL:
+Czy {Mer.} ma sekcję clearance lub outlet?
+
+EN:
+Does {Mer.} have a clearance or outlet section?
+
+---
+
+## Answer Drafting Rule
+
+Keep the answer in the language mapped from `country`.
+Rewrite from `discount_details`.
+Preserve information in this order:
+1. Whether there is a real clearance / outlet / final sale / closeout / sale section
+2. If yes, the strongest clearance detail, pricing, or category
+3. Key limitation
+4. If no, the most common alternative discount type
+
+Replace merchant names with `{Mer.}`.
+Leave `Source` and `板块名称` blank.
+Prefer 2 sentences.
+Do not treat holiday sales, promo codes, bundle offers, app deals, membership pricing, or limited-time discounts as clearance by default.

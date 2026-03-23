@@ -1,0 +1,82 @@
+## Output Row Template
+
+ContentType: faq
+Country: [country]
+TermID: [term_id]
+TermName: [term_name]
+Domain: [domain]
+Source:
+Subclass: [fact_type]
+板块名称:
+Titile1: [localized question with {Mer.}]
+Brief Introduction: [rewritten answer from discount_details]
+Href Kw:
+Href Url:
+
+---
+
+## Question Patterns
+
+EN:
+Does {Mer.} offer free returns?
+
+DE:
+Bietet {Mer.} kostenlose Ruecksendungen an?
+
+FR:
+{Mer.} propose-t-il des retours gratuits ?
+
+NL:
+Biedt {Mer.} gratis retourneren aan?
+
+IT:
+{Mer.} offre resi gratuiti?
+
+PT:
+{Mer.} oferece devolucoes gratis?
+
+EL:
+Η {Mer.} προσφερει δωρεαν επιστροφες;
+
+PL:
+Czy w {Mer.} mozna skorzystac z darmowego zwrotu?
+
+ES:
+¿{Mer.} ofrece devoluciones gratuitas?
+
+SV:
+Erbjuder {Mer.} fria returer?
+
+KO:
+{Mer.}는 무료 반품을 지원하나요?
+
+CS:
+Nabizi {Mer.} vraceni zbozi zdarma?
+
+DA:
+Tilbyder {Mer.} gratis returnering?
+
+SK:
+Ponuka {Mer.} bezplatne vratenie tovaru?
+
+JA:
+{Mer.}では送料無料で返品できますか？
+
+ZH-HANT:
+{Mer.} 提供免費退貨嗎？
+
+---
+
+## Answer Drafting Rule
+
+Keep the answer strictly in the language mapped from `country`.
+Rewrite from `discount_details`.
+Preserve information in this order:
+1. Give the conclusion first
+2. State which return or refund method is free or not free
+3. Add only the single most important limitation
+
+Replace merchant names with `{Mer.}`.
+Leave `Source` and `板块名称` blank.
+Prefer 1-2 sentences.
+Do not call `cancellation policy`, `money-back guarantee`, `free exchange`, `damaged-item replacement`, or `subscription cancellation` by the name `free returns`.

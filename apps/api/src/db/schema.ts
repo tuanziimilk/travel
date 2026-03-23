@@ -105,3 +105,127 @@ export const ingestJobs = mysqlTable("ingest_jobs", {
     .notNull()
     .$onUpdateFn(() => new Date()),
 });
+
+export const contentGenerationJobs = mysqlTable("content_generation_jobs", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  capability: varchar("capability", { length: 32 }).notNull().default("generation"),
+  scType: varchar("sc_type", { length: 32 }).notNull(),
+  subclass: varchar("subclass", { length: 255 }).notNull().default(""),
+  sourceBatchId: varchar("source_batch_id", { length: 36 }),
+  uploader: varchar("uploader", { length: 32 }).notNull(),
+  note: varchar("note", { length: 255 }).notNull().default(""),
+  marketGroup: varchar("market_group", { length: 32 }).notNull().default(""),
+  status: varchar("status", { length: 32 }).notNull().default("pending"),
+  inputFileName: varchar("input_file_name", { length: 255 }).notNull().default(""),
+  inputFileBase64: text("input_file_base64"),
+  totalRows: int("total_rows").notNull().default(0),
+  executableRows: int("executable_rows").notNull().default(0),
+  successRows: int("success_rows").notNull().default(0),
+  failedRows: int("failed_rows").notNull().default(0),
+  skippedRows: int("skipped_rows").notNull().default(0),
+  promptTokensSum: int("prompt_tokens_sum").notNull().default(0),
+  completionTokensSum: int("completion_tokens_sum").notNull().default(0),
+  totalTokensSum: int("total_tokens_sum").notNull().default(0),
+  estimatedCostUsdSum: decimal("estimated_cost_usd_sum", { precision: 12, scale: 6 }).notNull().default("0"),
+  aiModel: varchar("ai_model", { length: 100 }).notNull().default(""),
+  errorReason: varchar("error_reason", { length: 512 }),
+  resultFileName: varchar("result_file_name", { length: 255 }).notNull().default(""),
+  resultFileBase64: text("result_file_base64"),
+  routeSummaryJson: json("route_summary_json"),
+  rowResultsJson: json("row_results_json"),
+  routeSnapshot: json("route_snapshot"),
+  outputSchemaSnapshot: json("output_schema_snapshot"),
+  resultFilePath: varchar("result_file_path", { length: 255 }),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  finishedAt: timestamp("finished_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .notNull()
+    .$onUpdateFn(() => new Date()),
+});
+
+export const prelaunchSamplingBatches = mysqlTable("prelaunch_sampling_batches", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  sourceBatchId: varchar("source_batch_id", { length: 36 }),
+  scType: varchar("sc_type", { length: 32 }).notNull(),
+  marketGroup: varchar("market_group", { length: 32 }).notNull().default(""),
+  uploader: varchar("uploader", { length: 32 }).notNull(),
+  reviewer: varchar("reviewer", { length: 32 }).notNull().default(""),
+  previousReviewer: varchar("previous_reviewer", { length: 32 }).notNull().default(""),
+  sampleSize: int("sample_size").notNull().default(0),
+  totalRows: int("total_rows").notNull().default(0),
+  severeCount: int("severe_count").notNull().default(0),
+  normalCount: int("normal_count").notNull().default(0),
+  status: varchar("status", { length: 32 }).notNull().default("draft"),
+  resultSummary: json("result_summary"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .notNull()
+    .$onUpdateFn(() => new Date()),
+});
+
+export const prelaunchSamplingRows = mysqlTable("prelaunch_sampling_rows", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  batchId: varchar("batch_id", { length: 36 }).notNull(),
+  scType: varchar("sc_type", { length: 32 }).notNull(),
+  country: varchar("country", { length: 16 }).notNull(),
+  marketGroup: varchar("market_group", { length: 32 }).notNull().default(""),
+  termId: varchar("term_id", { length: 191 }).notNull(),
+  termName: varchar("term_name", { length: 255 }).notNull().default(""),
+  domain: varchar("domain", { length: 255 }).notNull().default(""),
+  originalContent: text("original_content"),
+  originalContentZh: text("original_content_zh"),
+  aiScore: decimal("ai_score", { precision: 4, scale: 1 }),
+  aiComment: text("ai_comment"),
+  aiSuggestion: text("ai_suggestion"),
+  issueCategory: varchar("issue_category", { length: 64 }).notNull().default(""),
+  issueSeverity: varchar("issue_severity", { length: 32 }).notNull().default(""),
+  uploader: varchar("uploader", { length: 32 }).notNull(),
+  reviewer: varchar("reviewer", { length: 32 }).notNull().default(""),
+  previousReviewer: varchar("previous_reviewer", { length: 32 }).notNull().default(""),
+  reviewResult: varchar("review_result", { length: 32 }).notNull().default("pending"),
+  reviewNote: text("review_note"),
+  recheckResult: varchar("recheck_result", { length: 32 }).notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .notNull()
+    .$onUpdateFn(() => new Date()),
+});
+
+export const postlaunchSamplingBatches = mysqlTable("postlaunch_sampling_batches", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  sourceBatchId: varchar("source_batch_id", { length: 36 }),
+  scType: varchar("sc_type", { length: 32 }).notNull(),
+  ownerTl: varchar("owner_tl", { length: 32 }).notNull(),
+  sampleSize: int("sample_size").notNull().default(0),
+  status: varchar("status", { length: 32 }).notNull().default("draft"),
+  resultSummary: json("result_summary"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .notNull()
+    .$onUpdateFn(() => new Date()),
+});
+
+export const postlaunchSamplingRows = mysqlTable("postlaunch_sampling_rows", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  batchId: varchar("batch_id", { length: 36 }).notNull(),
+  pageUrl: varchar("page_url", { length: 512 }).notNull().default(""),
+  country: varchar("country", { length: 16 }).notNull().default(""),
+  scType: varchar("sc_type", { length: 32 }).notNull(),
+  uploader: varchar("uploader", { length: 32 }).notNull().default(""),
+  issueCategory: varchar("issue_category", { length: 64 }).notNull().default(""),
+  issueSeverity: varchar("issue_severity", { length: 32 }).notNull().default(""),
+  issueOwner: varchar("issue_owner", { length: 32 }).notNull().default(""),
+  rootCause: varchar("root_cause", { length: 64 }).notNull().default(""),
+  reviewNote: text("review_note"),
+  recheckResult: varchar("recheck_result", { length: 32 }).notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .notNull()
+    .$onUpdateFn(() => new Date()),
+});

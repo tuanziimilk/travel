@@ -1,0 +1,51 @@
+## Output Row Template
+
+ContentType: faq
+Country: [country]
+TermID: [term_id]
+TermName: [term_name]
+Domain: [domain]
+Source:
+Subclass: [fact_type]
+板块名称:
+Titile1: [localized question with {Mer.} based on country and policy type]
+Brief Introduction: [2-3 sentence rewritten answer from discount_details]
+Href Kw:
+Href Url:
+
+---
+
+## Language Rule
+
+Always output the FAQ in the language mapped from `country`.
+Do not follow the source language in `discount_details`.
+
+---
+
+## Question Drafting Rule
+
+Match the question to the actual policy type:
+
+- `price match`: ask whether `{Mer.}` offers an official price match
+- `price protection`: ask whether `{Mer.}` offers official price protection
+- `low-price guarantee` / `best rate guarantee`: ask whether `{Mer.}` offers a low-price guarantee
+- `post-purchase adjustment`: ask whether `{Mer.}` offers post-purchase price adjustment
+- mixed or unclear: ask whether `{Mer.}` has an official price guarantee policy
+
+Replace merchant names with `{Mer.}`.
+
+---
+
+## Answer Drafting Rule
+
+Write the answer in 2-3 sentences.
+Preserve information in this order:
+1. Whether `{Mer.}` offers an official price guarantee / official price match
+2. Scope by country, site, store, channel, or product line
+3. Key restrictions such as time window, proof, identical item, current price, third-party sellers, excluded categories, and refund method
+
+Do not mix `price match`, `price protection`, `low-price guarantee`, `post-purchase adjustment`, and `store-level discretionary matching`.
+When evidence is official and clear, use direct wording such as `offers`, `has`, or `provides`.
+When evidence is limited, explicitly frame it as based on current public policy or store-level reports.
+
+Leave `Source` and `板块名称` blank.

@@ -1,0 +1,84 @@
+## Output Row Template
+
+ContentType: faq
+Country: [country]
+TermID: [term_id]
+TermName: [term_name]
+Domain: [domain]
+Source:
+Subclass: [fact_type]
+板块名称:
+Titile1: [question in the language mapped from country, with {Mer.}]
+Brief Introduction: [rewritten answer from discount_details, scoped to the correct business entity]
+Href Kw:
+Href Url:
+
+---
+
+## Question Patterns
+
+EN (`UK`/`AU`/`CA`):
+Does {Mer.} offer a referral discount?
+
+DE (`DE`/`AT`/`CH`):
+Bietet {Mer.} einen Empfehlungsrabatt an?
+
+FR:
+{Mer.} propose-t-il une remise de parrainage ?
+
+NL (`NL`/`BE`):
+Biedt {Mer.} een referral-korting aan?
+
+IT:
+{Mer.} offre uno sconto per il referral?
+
+PT (`PT`/`BR`):
+{Mer.} oferece um desconto por indicação?
+
+EL:
+Η {Mer.} προσφέρει έκπτωση σύστασης;
+
+PL:
+Czy {Mer.} oferuje zniżkę za polecenie?
+
+ES:
+¿{Mer.} ofrece un descuento por recomendación?
+
+SV:
+Erbjuder {Mer.} en värvningsrabatt?
+
+KO:
+{Mer.}는 추천인 할인을 제공하나요?
+
+CS:
+Nabízí {Mer.} slevu za doporučení?
+
+DA:
+Tilbyder {Mer.} en henvisningsrabat?
+
+SK:
+Ponúka {Mer.} zľavu za odporúčanie?
+
+JA:
+{Mer.}は紹介割引を提供していますか。
+
+ZH-HANT:
+{Mer.} 有提供推薦折扣嗎？
+
+---
+
+## Answer Drafting Rule
+
+Keep the answer in the language mapped from `country`, not the source language.
+Rewrite from `discount_details`.
+Preserve information in this order:
+1. Referral offer
+2. Reward recipient and benefit
+3. Key condition
+4. Entity scope if needed
+
+Replace merchant names with `{Mer.}`.
+Confirm the correct business entity before drafting.
+Leave `Source` and `板块名称` blank.
+Prefer 1-2 sentences.
+Avoid repetitive stock phrasing; state firm facts directly when evidence is strong.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Employee Discount FAQ Answer"
+  short_description: "Rewrite employee discount FAQ answers from snippets"
+  default_prompt: "Use $employee-discount-faq-answer to turn merchant discount evidence into a concise employee discount FAQ answer or output row."
