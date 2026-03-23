@@ -303,28 +303,30 @@ export function UploadPage() {
             {(queueQuery.data?.rows ?? []).map((item) => (
               <tr key={item.id}>
                 <td title={item.id}>{formatJobId(item.id)}</td>
-                <td>{queueStatusText[item.status] ?? item.status}</td>
-                <td>
+                <td title={queueStatusText[item.status] ?? item.status}>{queueStatusText[item.status] ?? item.status}</td>
+                <td title={`${item.doneRows}/${item.totalRows}${item.failedRows > 0 ? `（失败 ${item.failedRows}）` : ""}`}>
                   {item.doneRows}/{item.totalRows}
                   {item.failedRows > 0 ? `（失败 ${item.failedRows}）` : ""}
                 </td>
-                <td>{formatDuration(item.elapsedMs)}</td>
-                <td>{item.totalTokensSum}</td>
+                <td title={formatDuration(item.elapsedMs)}>{formatDuration(item.elapsedMs)}</td>
+                <td title={String(item.totalTokensSum)}>{item.totalTokensSum}</td>
                 <td
                   className="queue-reason-cell"
                   title={item.errorReason || (item.failedRows > 0 ? "存在失败行，请下载结果查看失败原因列" : "")}
                 >
                   {item.errorReason || (item.failedRows > 0 ? "存在失败行，请查看导出文件" : "-")}
                 </td>
-                <td>{formatUsd(item.estimatedCostUsdSum)}</td>
-                <td>{new Date(item.startedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}</td>
+                <td title={formatUsd(item.estimatedCostUsdSum)}>{formatUsd(item.estimatedCostUsdSum)}</td>
+                <td title={new Date(item.startedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}>
+                  {new Date(item.startedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}
+                </td>
                 <td className="queue-action-cell">
                   {item.status === "running" || item.status === "pending" ? (
-                    <button className="btn-ghost about-queue-action-btn" type="button" onClick={() => void cancelJob(item.id)}>
+                    <button className="btn-ghost about-queue-action-btn" type="button" title="取消" onClick={() => void cancelJob(item.id)}>
                       取消
                     </button>
                   ) : item.status === "done" || item.status === "failed" || item.status === "cancelled" ? (
-                    <button className="btn-ghost about-queue-action-btn" type="button" onClick={() => void downloadBatchXlsx(item.batchId)}>
+                    <button className="btn-ghost about-queue-action-btn" type="button" title="下载" onClick={() => void downloadBatchXlsx(item.batchId)}>
                       下载
                     </button>
                   ) : (
