@@ -1682,7 +1682,7 @@ button {
 
 .about-queue-table th:nth-child(1),
 .about-queue-table td:nth-child(1) {
-  width: 14%;
+  width: 10%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1696,7 +1696,7 @@ button {
 
 .about-queue-table th:nth-child(3),
 .about-queue-table td:nth-child(3) {
-  width: 11%;
+  width: 15%;
 }
 
 .about-queue-table th:nth-child(4),
@@ -1721,7 +1721,7 @@ button {
 
 .about-queue-table th:nth-child(8),
 .about-queue-table td:nth-child(8) {
-  width: 20%;
+  width: 19%;
 }
 
 .about-queue-table th:nth-child(9) {

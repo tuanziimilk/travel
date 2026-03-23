@@ -37,8 +37,8 @@ function formatCny(value?: number | string | null) {
 
 function formatJobId(jobId?: string | null) {
   const value = String(jobId || "");
-  if (value.length <= 14) return value;
-  return `${value.slice(0, 8)}***${value.slice(-6)}`;
+  if (value.length <= 10) return value;
+  return `${value.slice(0, 4)}***${value.slice(-4)}`;
 }
 
 export function UploadPage() {
