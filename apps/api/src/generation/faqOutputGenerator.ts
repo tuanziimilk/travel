@@ -105,7 +105,7 @@ function mapOutputRow(row: Record<string, unknown>) {
   const pick = (key: string) => String(mapped.get(key) ?? "").trim();
   return faqOutputRowSchema.parse({
     term_id: pick("term_id"),
-    country: pick("country"),
+    country: normalizeCountryCode(pick("country")),
     domain: pick("domain"),
     term_name: pick("term_name"),
     fact_type: pick("fact_type"),

@@ -8,6 +8,7 @@ import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { FaqAnalyticsPage } from "./pages/FaqAnalyticsPage";
 import { FaqHistoryPage } from "./pages/FaqHistoryPage";
 import { FaqManualPage } from "./pages/FaqManualPage";
+import { FaqOutputHistoryPage } from "./pages/FaqOutputHistoryPage";
 import { FaqOutputPage } from "./pages/FaqOutputPage";
 import { FaqUploadPage } from "./pages/FaqUploadPage";
 import { HistoryPage } from "./pages/HistoryPage";
@@ -19,6 +20,8 @@ import { UploadPage } from "./pages/UploadPage";
 
 type WorkspaceId = "quality" | "output" | "sampling-pre" | "sampling-post" | "skills";
 type QualityPageId = "manual" | "upload" | "history" | "analytics";
+type OutputPageId = "faq" | "history";
+type AppPageId = QualityPageId | OutputPageId;
 
 function sectionForWorkspace(workspaceId: WorkspaceId) {
   if (workspaceId === "sampling-pre" || workspaceId === "sampling-post") return "sampling";
@@ -52,19 +55,27 @@ function NavLink({
 function parseLocation(path: string): {
   workspaceId: WorkspaceId;
   moduleId: ModuleId;
-  pageId: QualityPageId;
+  pageId: AppPageId;
 } {
   const parts = path.split("/").filter(Boolean);
   const workspaceId = (parts[0] as WorkspaceId) || "quality";
+
   if (workspaceId === "quality") {
     const moduleId = (parts[1] as ModuleId) || "about";
     const pageId = (parts[2] as QualityPageId) || "manual";
     return { workspaceId, moduleId, pageId };
   }
+
   if (workspaceId === "skills") {
     const moduleId = (parts[1] as ModuleId) || "faq";
     return { workspaceId, moduleId, pageId: "manual" };
   }
+
+  if (workspaceId === "output") {
+    const pageId = (parts[1] as OutputPageId) || "faq";
+    return { workspaceId, moduleId: "faq", pageId };
+  }
+
   return { workspaceId, moduleId: "faq", pageId: "manual" };
 }
 
@@ -129,7 +140,10 @@ export default function App() {
   }, [workspaceId]);
 
   const renderPage = () => {
-    if (workspaceId === "output") return <FaqOutputPage />;
+    if (workspaceId === "output") {
+      if (pageId === "history") return <FaqOutputHistoryPage />;
+      return <FaqOutputPage />;
+    }
     if (workspaceId === "sampling-pre") return <PrelaunchSamplingPage />;
     if (workspaceId === "sampling-post") return <PostlaunchSamplingPage />;
     if (workspaceId === "skills") return <SkillConfigPage moduleId={moduleId} />;
@@ -155,10 +169,10 @@ export default function App() {
           <Accordion.Root className="sidebar-accordion" type="multiple" value={openSections} onValueChange={setOpenSections}>
             <SidebarGroup value="quality" title="内容质检">
               <div className="sub-tab-switch">
-                <Link href={qualityModuleHref("about", pageId)}>
+                <Link href={qualityModuleHref("about", (pageId as QualityPageId) || "manual")}>
                   <span className={`tab-btn ${moduleId === "about" ? "active" : ""}`}>ABOUT</span>
                 </Link>
-                <Link href={qualityModuleHref("faq", pageId)}>
+                <Link href={qualityModuleHref("faq", (pageId as QualityPageId) || "manual")}>
                   <span className={`tab-btn ${moduleId === "faq" ? "active" : ""}`}>FAQ</span>
                 </Link>
               </div>
@@ -171,8 +185,9 @@ export default function App() {
             </SidebarGroup>
 
             <SidebarGroup value="output" title="内容输出">
-              <div className="sidebar-subnav">
-                <NavLink href="/output/faq" label="FAQ 输出" activePrefix="/output/faq" />
+              <div className="sidebar-subnav sidebar-subnav-output">
+                <NavLink href="/output/faq" label="FAQ / 输出" activePrefix="/output/faq" />
+                <NavLink href="/output/history" label="FAQ / 历史结果" activePrefix="/output/history" />
               </div>
             </SidebarGroup>
 

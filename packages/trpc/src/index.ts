@@ -269,6 +269,29 @@ export const generationRetryInputSchema = z.object({
   jobId: z.string(),
 });
 
+export const generationHistoryFilterSchema = z.object({
+  scType: scTypeSchema.optional().default("faq"),
+  country: z.string().optional().default(""),
+  subclass: z.string().optional().default(""),
+  uploader: uploaderSchema.optional(),
+  keyword: z.string().optional().default(""),
+  startDate: z.string().optional().default(""),
+  endDate: z.string().optional().default(""),
+  page: z.number().int().min(1).optional().default(1),
+  pageSize: z.number().int().min(1).max(100).optional().default(20),
+});
+
+export const generationHistoryExportInputSchema = z.object({
+  scType: scTypeSchema.optional().default("faq"),
+  country: z.string().optional().default(""),
+  subclass: z.string().optional().default(""),
+  uploader: uploaderSchema.optional(),
+  keyword: z.string().optional().default(""),
+  startDate: z.string().optional().default(""),
+  endDate: z.string().optional().default(""),
+  format: z.enum(["xlsx", "csv"]).optional().default("xlsx"),
+});
+
 export const skillRouteResolveInputSchema = z.object({
   capability: capabilitySchema,
   scType: scTypeSchema,

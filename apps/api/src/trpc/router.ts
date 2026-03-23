@@ -11,6 +11,8 @@ import {
   batchStartInputSchema,
   batchStatusInputSchema,
   generationFrameworkGetInputSchema,
+  generationHistoryExportInputSchema,
+  generationHistoryFilterSchema,
   generationQueueInputSchema,
   generationResultInputSchema,
   generationRetryInputSchema,
@@ -48,7 +50,14 @@ import {
 } from "../jobs/ingestWorker";
 import { env, getAiRuntimeConfig, setAiRuntimeModel } from "../env";
 import { retryFaqOutputGeneration, startFaqOutputGeneration } from "../generation/faqOutputGenerator";
-import { getGenerationJobResult, getGenerationJobStatus, listGenerationJobs } from "../generation/faqOutputJobStore";
+import {
+  exportGenerationHistory,
+  getGenerationHistorySummary,
+  getGenerationJobResult,
+  getGenerationJobStatus,
+  listGenerationHistoryRows,
+  listGenerationJobs,
+} from "../generation/faqOutputJobStore";
 import { scoreAboutByAiWithMeta } from "../scoring/aboutAiScorer";
 import { getModuleSkillMd, saveModuleSkillMd } from "../skills/skillStore";
 import {
@@ -281,6 +290,15 @@ export const appRouter = t.router({
     }),
     result: t.procedure.input(generationResultInputSchema).query(({ input }) => {
       return getGenerationJobResult(input.jobId);
+    }),
+    historySummary: t.procedure.input(generationHistoryFilterSchema).query(({ input }) => {
+      return getGenerationHistorySummary(input);
+    }),
+    historyRows: t.procedure.input(generationHistoryFilterSchema).query(({ input }) => {
+      return listGenerationHistoryRows(input);
+    }),
+    historyExport: t.procedure.input(generationHistoryExportInputSchema).query(({ input }) => {
+      return exportGenerationHistory(input);
     }),
   }),
   skill: t.router({

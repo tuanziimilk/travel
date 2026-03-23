@@ -68,10 +68,13 @@ function formatDuration(start?: string | Date | null, end?: string | Date | null
   const endMs = new Date(end).getTime();
   if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) return "-";
   const totalSeconds = Math.round((endMs - startMs) / 1000);
-  if (totalSeconds < 60) return `${totalSeconds}秒`;
+  if (totalSeconds < 60) return `${totalSeconds} 秒`;
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
-  return `${minutes}分 ${seconds}秒`;
+  if (minutes < 60) return `${minutes} 分 ${seconds} 秒`;
+  const hours = Math.floor(minutes / 60);
+  const remainMinutes = minutes % 60;
+  return `${hours} 小时 ${remainMinutes} 分`;
 }
 
 function mapOutputRow(row: Record<string, unknown>): ParsedFaqOutputRow {
@@ -124,11 +127,9 @@ function toBase64(file: File) {
   });
 }
 
-function downloadBase64File(fileName: string, base64: string) {
+function downloadBase64File(fileName: string, base64: string, mimeType = "application/octet-stream") {
   const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
-  const blob = new Blob([bytes], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
+  const blob = new Blob([bytes], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -147,9 +148,14 @@ function getSummaryText(item: {
   return `${item.executableRows}/${item.totalRows} 可执行，成功 ${item.successRows}，失败 ${item.failedRows}，跳过 ${item.skippedRows}`;
 }
 
+function safeValue(value: string | null | undefined) {
+  return value && value.trim() ? value : "-";
+}
+
 export function FaqOutputPage() {
   const scType = "faq" as const;
   const uploadInputId = "faq-output-file-input";
+  const queuePageSize = 8;
   const [uploader, setUploader] = useState<(typeof uploaderOptions)[number]>("Ella");
   const [note, setNote] = useState("");
   const [fileName, setFileName] = useState("");
@@ -161,18 +167,19 @@ export function FaqOutputPage() {
   const [routePreviewRows, setRoutePreviewRows] = useState<RoutePreviewRow[]>([]);
   const [showRouteDetails, setShowRouteDetails] = useState(false);
   const [queuePage, setQueuePage] = useState(1);
-
   const utils = trpc.useUtils();
-  const queuePageSize = 8;
+
   const queueQuery = trpc.generation.queue.useQuery(
     { scType, page: queuePage, pageSize: queuePageSize },
     { refetchInterval: 4000 },
   );
+
   const runMutation = trpc.generation.run.useMutation({
     onSuccess: async () => {
       await queueQuery.refetch();
     },
   });
+
   const statusQuery = trpc.generation.status.useQuery(
     { jobId: currentJobId },
     {
@@ -191,7 +198,9 @@ export function FaqOutputPage() {
       const factType = row.fact_type || "(empty)";
       counts.set(factType, (counts.get(factType) || 0) + 1);
     }
-    return Array.from(counts.entries()).map(([factType, count]) => ({ factType, count }));
+    return Array.from(counts.entries())
+      .map(([factType, count]) => ({ factType, count }))
+      .sort((a, b) => b.count - a.count || a.factType.localeCompare(b.factType));
   }, [rows]);
 
   const routeSummary = useMemo(() => {
@@ -304,7 +313,7 @@ export function FaqOutputPage() {
   async function downloadJobResult(jobId: string) {
     const data = await utils.client.generation.result.query({ jobId });
     if (!data.xlsxBase64) return;
-    downloadBase64File(data.fileName, data.xlsxBase64);
+    downloadBase64File(data.fileName, data.xlsxBase64, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   }
 
   async function runGeneration() {
@@ -334,18 +343,20 @@ export function FaqOutputPage() {
   }
 
   return (
-    <div className="grid">
-      <section className="section-header">
+    <div className="grid faq-output-page">
+      <section className="section-header faq-output-header faq-poster-header">
         <h2>FAQ 输出</h2>
-        <p>上传源表后，系统会按 `fact_type` 自动匹配并执行对应 subclass skill，同一个文件里可以同时包含多个 subclass。</p>
+        <p>
+          上传源表后，系统会按 <code>fact_type</code> 自动匹配并执行对应 subclass skill，同一个文件里可以同时包含多个 subclass。
+        </p>
       </section>
 
-      <div className="card output-layout-card">
+      <div className="card output-layout-card faq-output-main-card faq-poster-card">
         <div className="output-config-grid output-config-grid-simple">
           <div className="field">
             <label>输出人</label>
             <Select.Root value={uploader} onValueChange={(value) => setUploader(value as (typeof uploaderOptions)[number])}>
-              <Select.Trigger className="select-trigger" aria-label="faq-output-uploader">
+              <Select.Trigger className="select-trigger faq-poster-trigger" aria-label="faq-output-uploader">
                 <Select.Value />
               </Select.Trigger>
               <Select.Portal>
@@ -364,14 +375,14 @@ export function FaqOutputPage() {
 
           <div className="field">
             <label>批次备注</label>
-            <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="例如：FAQ 输出首轮生成" />
+            <input className="faq-poster-input" value={note} onChange={(event) => setNote(event.target.value)} placeholder="例如：FAQ 输出首轮生成" />
           </div>
         </div>
 
         <div className="output-upload-bar">
           <div className="field" style={{ margin: 0 }}>
             <label>上传 FAQ 输出源表</label>
-            <label className="output-dropzone" htmlFor={uploadInputId}>
+            <label className="output-dropzone faq-output-dropzone" htmlFor={uploadInputId} title={fileName || "点击或拖拽文件到此处上传"}>
               <span className="output-dropzone-copy">
                 <strong>{fileName || "点击或拖拽文件到此处上传"}</strong>
                 <span>支持 `.csv` 和 `.xlsx`，系统会读取首个工作表</span>
@@ -385,13 +396,13 @@ export function FaqOutputPage() {
               onChange={(event) => void handleFileChange(event.target.files?.[0] || null)}
             />
           </div>
-          <button className="btn-ghost output-template-btn" type="button" onClick={downloadTemplate}>
+          <button className="btn-ghost output-template-btn faq-poster-btn-small" type="button" onClick={downloadTemplate}>
             下载模板
           </button>
         </div>
 
-        <div className="output-status-row">
-          <div className="output-status-chip">
+        <div className="output-status-row faq-output-status-row">
+          <div className="output-status-chip" title={fileName || "未上传"}>
             <span>当前文件</span>
             <strong>{fileName || "未上传"}</strong>
           </div>
@@ -405,13 +416,13 @@ export function FaqOutputPage() {
           </div>
         </div>
 
-        <p className="muted output-muted-note output-warning-note">
-          系统会先按 `fact_type` 预览路由，命中已接入的 skill 则执行生成，未接入或占位路由会自动跳过。
+        <p className="muted output-muted-note output-warning-note faq-output-warning">
+          系统会先按 <code>fact_type</code> 预览路由，命中已接入的 skill 才会执行生成，未接入或占位路由会自动跳过。
         </p>
         {error ? <p className="error-text">{error}</p> : null}
         {resultNotice ? <p className="output-success-text">{resultNotice}</p> : null}
 
-        <div className="upload-actions">
+        <div className="upload-actions faq-output-primary-action">
           <button
             className="btn-primary"
             type="button"
@@ -423,7 +434,7 @@ export function FaqOutputPage() {
         </div>
       </div>
 
-      <div className="card">
+      <div className="card faq-output-summary-card faq-poster-card faq-poster-card-tight">
         <div className="output-summary-head">
           <div>
             <h3>路由摘要</h3>
@@ -433,12 +444,12 @@ export function FaqOutputPage() {
                 : "上传文件后，这里会告诉你哪些 fact_type 已接入真实执行，哪些会被跳过。"}
             </p>
           </div>
-          <button className="btn-ghost output-inline-btn" type="button" onClick={() => setShowRouteDetails((prev) => !prev)}>
+          <button className="btn-ghost output-inline-btn faq-poster-btn-small" type="button" onClick={() => setShowRouteDetails((prev) => !prev)}>
             {showRouteDetails ? "收起明细" : "查看明细"}
           </button>
         </div>
 
-        <div className="output-route-kpis">
+        <div className="output-route-kpis faq-output-kpis">
           <div className="output-route-kpi">
             <span>fact_type</span>
             <strong>{routeSummary.factTypeCount}</strong>
@@ -458,7 +469,7 @@ export function FaqOutputPage() {
         </div>
 
         {showRouteDetails ? (
-          <div className="table-scroll" style={{ marginTop: 14 }}>
+          <div className="table-scroll faq-output-table-scroll">
             <table className="history-table output-route-detail-table">
               <thead>
                 <tr>
@@ -475,9 +486,9 @@ export function FaqOutputPage() {
                   <tr key={item.factType}>
                     <td title={item.factType}>{item.factType}</td>
                     <td>{item.count}</td>
-                    <td>{item.skillLabel}</td>
+                    <td title={item.skillLabel}>{item.skillLabel}</td>
                     <td title={item.skillKey}>{item.skillKey}</td>
-                    <td>{item.source}</td>
+                    <td title={item.source}>{item.source}</td>
                     <td title={item.notes}>{item.notes}</td>
                   </tr>
                 ))}
@@ -492,24 +503,24 @@ export function FaqOutputPage() {
         ) : null}
       </div>
 
-      <div className="card">
+      <div className="card faq-output-summary-card faq-poster-card faq-poster-card-tight">
         <div className="output-summary-head">
           <div>
             <h3>任务队列</h3>
-            <p className="muted output-summary-copy">保留 FAQ 输出任务的状态、执行摘要、token、费用和结果下载，结构尽量与质检队列保持一致。</p>
+            <p className="muted output-summary-copy">保留 FAQ 输出任务的状态、执行摘要、token、费用、耗时和结果下载。</p>
           </div>
-          <button className="btn-ghost output-inline-btn" type="button" onClick={() => void queueQuery.refetch()}>
+          <button className="btn-ghost output-inline-btn faq-poster-btn-small" type="button" onClick={() => void queueQuery.refetch()}>
             刷新队列
           </button>
         </div>
 
-        <div className="table-scroll">
+        <div className="table-scroll faq-output-table-scroll">
           <table className="history-table queue-table faq-queue-table">
             <thead>
               <tr>
                 <th>任务 ID</th>
                 <th>状态</th>
-                <th>上传人</th>
+                <th>输出人</th>
                 <th>批次备注</th>
                 <th>执行摘要</th>
                 <th>Token</th>
@@ -532,11 +543,13 @@ export function FaqOutputPage() {
                       </span>
                     </td>
                     <td title={item.uploader}>{item.uploader}</td>
-                    <td title={item.note || "-"}>{item.note || "-"}</td>
+                    <td title={safeValue(item.note)}>{safeValue(item.note)}</td>
                     <td title={item.errorReason || getSummaryText(item)}>{getSummaryText(item)}</td>
                     <td title={String(item.totalTokensSum)}>{item.totalTokensSum}</td>
                     <td title={formatUsd(item.estimatedCostUsdSum)}>{formatUsd(item.estimatedCostUsdSum)}</td>
-                    <td title={formatDuration(item.startedAt || item.createdAt, item.finishedAt)}>{formatDuration(item.startedAt || item.createdAt, item.finishedAt)}</td>
+                    <td title={formatDuration(item.startedAt || item.createdAt, item.finishedAt)}>
+                      {formatDuration(item.startedAt || item.createdAt, item.finishedAt)}
+                    </td>
                     <td title={formatDateTime(item.startedAt || item.createdAt)}>{formatDateTime(item.startedAt || item.createdAt)}</td>
                     <td className="queue-action-cell">
                       <div className="queue-action-group">
@@ -562,13 +575,15 @@ export function FaqOutputPage() {
           </table>
         </div>
 
-        <div className="upload-actions" style={{ marginTop: 10, justifyContent: "space-between" }}>
+        <div className="upload-actions faq-pagination-row">
           <span className="muted">共 {queueQuery.data?.total ?? 0} 条任务</span>
           <div className="upload-actions" style={{ gap: 8 }}>
             <button className="btn-ghost" type="button" disabled={queuePage <= 1} onClick={() => setQueuePage((prev) => Math.max(1, prev - 1))}>
               上一页
             </button>
-            <span style={{ fontWeight: 900, minWidth: 72, textAlign: "center" }}>{queuePage}/{queueTotalPages}</span>
+            <span className="faq-pagination-indicator">
+              {queuePage}/{queueTotalPages}
+            </span>
             <button
               className="btn-ghost"
               type="button"
