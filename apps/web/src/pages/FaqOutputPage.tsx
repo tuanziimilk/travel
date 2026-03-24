@@ -1,6 +1,7 @@
 import * as Select from "@radix-ui/react-select";
 import * as XLSX from "xlsx";
 import { useEffect, useMemo, useState } from "react";
+import type { DragEvent } from "react";
 import { faqOutputUploadMaxFileBytes, faqOutputUploadMaxRows, uploaderOptions } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
 
@@ -185,6 +186,7 @@ export function FaqOutputPage() {
   const [note, setNote] = useState("");
   const [fileName, setFileName] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isDragActive, setIsDragActive] = useState(false);
   const [rows, setRows] = useState<ParsedFaqOutputRow[]>([]);
   const [error, setError] = useState("");
   const [resultNotice, setResultNotice] = useState("");
@@ -330,6 +332,23 @@ export function FaqOutputPage() {
     }
   }
 
+  function handleDropzoneDragOver(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setIsDragActive(true);
+  }
+
+  function handleDropzoneDragLeave(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setIsDragActive(false);
+  }
+
+  function handleDropzoneDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setIsDragActive(false);
+    const nextFile = event.dataTransfer.files?.[0] || null;
+    void handleFileChange(nextFile);
+  }
+
   function downloadTemplate() {
     const blob = new Blob([faqOutputTemplateCsv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -410,7 +429,14 @@ export function FaqOutputPage() {
         </div>
 
         <div className="output-upload-bar">
-          <div className="field faq-output-upload-field" style={{ margin: 0 }}>
+          <div
+            className={`field faq-output-upload-field${isDragActive ? " is-drag-active" : ""}`}
+            style={{ margin: 0 }}
+            onDragOver={handleDropzoneDragOver}
+            onDragEnter={handleDropzoneDragOver}
+            onDragLeave={handleDropzoneDragLeave}
+            onDrop={handleDropzoneDrop}
+          >
             <div className="faq-output-upload-head">
               <label>上传 FAQ 输出源表</label>
               <button className="btn-ghost output-template-btn faq-poster-btn-small" type="button" onClick={downloadTemplate}>

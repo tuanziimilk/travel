@@ -2516,6 +2516,8 @@ th {
 .faq-queue-inline-progress {
   margin-top: 6px;
   height: 10px;
+  width: 130px;
+  max-width: 100%;
 }
 
 .result-ai .progress-fill {
@@ -3476,6 +3478,11 @@ pre {
 
 .faq-output-dropzone {
   min-height: 76px;
+}
+
+.faq-output-upload-field.is-drag-active .output-dropzone {
+  background: #fff8b8;
+  border-style: solid;
 }
 
 .faq-output-upload-field {
