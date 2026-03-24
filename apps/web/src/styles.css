@@ -4864,6 +4864,76 @@ pre {
   box-shadow: 2px 2px 0 var(--black);
 }
 
+.faq-queue-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.faq-queue-table th:nth-child(1),
+.faq-queue-table td:nth-child(1) {
+  width: 9%;
+}
+
+.faq-queue-table th:nth-child(2),
+.faq-queue-table td:nth-child(2) {
+  width: 8%;
+}
+
+.faq-queue-table th:nth-child(3),
+.faq-queue-table td:nth-child(3) {
+  width: 7%;
+}
+
+.faq-queue-table th:nth-child(4),
+.faq-queue-table td:nth-child(4) {
+  width: 12%;
+}
+
+.faq-queue-table th:nth-child(5),
+.faq-queue-table td:nth-child(5) {
+  width: 23%;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.faq-queue-table th:nth-child(6),
+.faq-queue-table td:nth-child(6) {
+  width: 8%;
+}
+
+.faq-queue-table th:nth-child(7),
+.faq-queue-table td:nth-child(7) {
+  width: 8%;
+}
+
+.faq-queue-table th:nth-child(8),
+.faq-queue-table td:nth-child(8) {
+  width: 6%;
+}
+
+.faq-queue-table th:nth-child(9),
+.faq-queue-table td:nth-child(9) {
+  width: 11%;
+}
+
+.faq-queue-table th:nth-child(10),
+.faq-queue-table td:nth-child(10) {
+  width: 8%;
+  text-align: left;
+}
+
+.faq-queue-table .queue-action-cell {
+  text-align: left;
+  padding-left: 6px;
+  padding-right: 6px;
+  min-width: 76px;
+}
+
+.faq-queue-table .queue-action-group {
+  justify-content: flex-start;
+}
+
 @media (max-width: 1180px) {
   .faq-queue-table {
     min-width: 980px;
