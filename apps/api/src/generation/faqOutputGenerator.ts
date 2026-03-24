@@ -145,6 +145,19 @@ function estimateCostUsd(promptTokens: number, completionTokens: number) {
   return Math.round(usd * 1_000_000) / 1_000_000;
 }
 
+function buildPromptInputRow(row: FaqOutputInputRow, subclass: string) {
+  return {
+    term_id: row.term_id,
+    country: row.country,
+    domain: row.domain,
+    term_name: row.term_name,
+    fact_type: row.fact_type,
+    subclass,
+    discount_details: row.discount_details,
+    url: row.url,
+  };
+}
+
 function buildGenerationPrompt(skillMd: string, outputFormatMd: string, row: FaqOutputInputRow, subclass: string) {
   const system = [
     "You are a structured FAQ generation engine.",
@@ -174,8 +187,10 @@ function buildGenerationPrompt(skillMd: string, outputFormatMd: string, row: Faq
   const user = [
     "Generate one FAQ output row from this input record.",
     "Keep the content faithful to the source facts.",
+    "Use discount_details as the primary fact source when writing the answer.",
+    "Do not rely on structured discount fields that may be stale or lossy.",
     "If the source indicates no standard offer, answer in a complete sentence and keep output compliant.",
-    JSON.stringify(row, null, 2),
+    JSON.stringify(buildPromptInputRow(row, subclass), null, 2),
   ].join("\n\n");
 
   return { system, user };

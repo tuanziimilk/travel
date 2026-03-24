@@ -15,6 +15,13 @@
       "when": 1773976926911,
       "tag": "0001_app_schema_upgrade",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1774483200000,
+      "tag": "0002_content_generation_job_longtext",
+      "breakpoints": true
     }
   ]
 }

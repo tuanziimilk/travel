@@ -22,7 +22,7 @@ const upgradeCreateTableSql = [
     market_group varchar(32) NOT NULL DEFAULT '',
     status varchar(32) NOT NULL DEFAULT 'pending',
     input_file_name varchar(255) NOT NULL DEFAULT '',
-    input_file_base64 text,
+    input_file_base64 longtext,
     total_rows int NOT NULL DEFAULT 0,
     executable_rows int NOT NULL DEFAULT 0,
     success_rows int NOT NULL DEFAULT 0,
@@ -35,7 +35,7 @@ const upgradeCreateTableSql = [
     ai_model varchar(100) NOT NULL DEFAULT '',
     error_reason varchar(512),
     result_file_name varchar(255) NOT NULL DEFAULT '',
-    result_file_base64 text,
+    result_file_base64 longtext,
     route_summary_json json,
     row_results_json json,
     route_snapshot json,
@@ -175,18 +175,27 @@ async function recordMigration(connection: mysql.Connection, tag: string, when: 
   await connection.query("INSERT INTO __drizzle_migrations (`hash`, `created_at`) VALUES (?, ?)", [hash, when]);
 }
 
+async function updateContentGenerationJobBase64Columns(connection: mysql.Connection) {
+  if (!(await tableExists(connection, "content_generation_jobs"))) return;
+  await connection.query(`
+    ALTER TABLE \`content_generation_jobs\`
+      MODIFY COLUMN \`input_file_base64\` longtext,
+      MODIFY COLUMN \`result_file_base64\` longtext
+  `);
+}
+
 async function applyBaseline(connection: mysql.Connection, baseline: JournalEntry) {
   const hasLegacy = await hasLegacyBaseline(connection);
   if (hasLegacy) {
     await recordMigration(connection, baseline.tag, baseline.when);
-    console.log("[db:migrate:safe] 已为旧数据库写入 0000_init 基线记录。");
+    console.log("[db:migrate:safe] recorded baseline 0000_init for existing database");
     return;
   }
 
   const baselineSql = await readFile(join(process.cwd(), "drizzle", `${baseline.tag}.sql`), "utf8");
   await connection.query(baselineSql);
   await recordMigration(connection, baseline.tag, baseline.when);
-  console.log("[db:migrate:safe] 已执行 0000_init 基线迁移。");
+  console.log("[db:migrate:safe] applied 0000_init");
 }
 
 async function applyUpgrade(connection: mysql.Connection, upgrade: JournalEntry) {
@@ -221,20 +230,28 @@ async function applyUpgrade(connection: mysql.Connection, upgrade: JournalEntry)
   }
 
   await recordMigration(connection, upgrade.tag, upgrade.when);
-  console.log("[db:migrate:safe] 已执行 0001_app_schema_upgrade 升级迁移。");
+  console.log("[db:migrate:safe] applied 0001_app_schema_upgrade");
+}
+
+async function applyContentGenerationJobLongtextUpgrade(connection: mysql.Connection, migration: JournalEntry) {
+  await updateContentGenerationJobBase64Columns(connection);
+  await recordMigration(connection, migration.tag, migration.when);
+  console.log("[db:migrate:safe] applied 0002_content_generation_job_longtext");
 }
 
 async function main() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
-    throw new Error("DATABASE_URL 未配置。");
+    throw new Error("DATABASE_URL is not configured");
   }
 
   const entries = await readJournalEntries();
   const baseline = entries.find((entry) => entry.tag === "0000_init");
   const upgrade = entries.find((entry) => entry.tag === "0001_app_schema_upgrade");
-  if (!baseline || !upgrade) {
-    throw new Error("迁移 journal 缺少 0000_init 或 0001_app_schema_upgrade。");
+  const longtextUpgrade = entries.find((entry) => entry.tag === "0002_content_generation_job_longtext");
+
+  if (!baseline || !upgrade || !longtextUpgrade) {
+    throw new Error("required migration entries are missing from drizzle/meta/_journal.json");
   }
 
   const connection = await mysql.createConnection({
@@ -255,14 +272,19 @@ async function main() {
       await applyUpgrade(connection, upgrade);
       appliedTimes.add(upgrade.when);
     }
+
+    if (!appliedTimes.has(longtextUpgrade.when)) {
+      await applyContentGenerationJobLongtextUpgrade(connection, longtextUpgrade);
+      appliedTimes.add(longtextUpgrade.when);
+    }
   } finally {
     await connection.end();
   }
 
-  console.log("[db:migrate:safe] 迁移完成。");
+  console.log("[db:migrate:safe] migration complete");
 }
 
 void main().catch((error) => {
-  console.error("[db:migrate:safe] 失败:", error instanceof Error ? error.message : String(error));
+  console.error("[db:migrate:safe] failed:", error instanceof Error ? error.message : String(error));
   process.exit(1);
 });

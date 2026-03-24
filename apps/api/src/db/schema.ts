@@ -6,6 +6,7 @@ import {
   decimal,
   json,
   text,
+  longtext,
 } from "drizzle-orm/mysql-core";
 import { sql } from "drizzle-orm";
 
@@ -117,7 +118,7 @@ export const contentGenerationJobs = mysqlTable("content_generation_jobs", {
   marketGroup: varchar("market_group", { length: 32 }).notNull().default(""),
   status: varchar("status", { length: 32 }).notNull().default("pending"),
   inputFileName: varchar("input_file_name", { length: 255 }).notNull().default(""),
-  inputFileBase64: text("input_file_base64"),
+  inputFileBase64: longtext("input_file_base64"),
   totalRows: int("total_rows").notNull().default(0),
   executableRows: int("executable_rows").notNull().default(0),
   successRows: int("success_rows").notNull().default(0),
@@ -130,7 +131,7 @@ export const contentGenerationJobs = mysqlTable("content_generation_jobs", {
   aiModel: varchar("ai_model", { length: 100 }).notNull().default(""),
   errorReason: varchar("error_reason", { length: 512 }),
   resultFileName: varchar("result_file_name", { length: 255 }).notNull().default(""),
-  resultFileBase64: text("result_file_base64"),
+  resultFileBase64: longtext("result_file_base64"),
   routeSummaryJson: json("route_summary_json"),
   rowResultsJson: json("row_results_json"),
   routeSnapshot: json("route_snapshot"),
