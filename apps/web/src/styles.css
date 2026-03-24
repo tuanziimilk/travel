@@ -4899,7 +4899,7 @@ pre {
 
 .faq-queue-table th:nth-child(5),
 .faq-queue-table td:nth-child(5) {
-  width: 23%;
+  width: 21%;
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
@@ -4917,12 +4917,12 @@ pre {
 
 .faq-queue-table th:nth-child(8),
 .faq-queue-table td:nth-child(8) {
-  width: 5%;
+  width: 7%;
 }
 
 .faq-queue-table th:nth-child(9),
 .faq-queue-table td:nth-child(9) {
-  width: 14%;
+  width: 13%;
 }
 
 .faq-queue-table th:nth-child(10),
