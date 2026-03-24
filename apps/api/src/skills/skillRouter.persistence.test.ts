@@ -1,7 +1,33 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { getSkillRouteOverride, saveSkillRouteOverride } from "./skillRouter";
+
+vi.mock("./skillVersionService", () => ({
+  saveVersionedSkill: vi.fn(async (input: { capability: string; scType: string; subclass?: string; skillMd: string }) => {
+    const filePath = resolve(
+      process.cwd(),
+      ".runtime",
+      "skill-overrides",
+      input.capability,
+      input.scType,
+      String(input.subclass || "__default__"),
+      "SKILL.md",
+    );
+    rmSync(resolve(process.cwd(), ".runtime"), { force: true, recursive: true });
+    const dirPath = resolve(filePath, "..");
+    await import("node:fs/promises").then(({ mkdir, writeFile }) =>
+      mkdir(dirPath, { recursive: true }).then(() => writeFile(filePath, input.skillMd, "utf8")),
+    );
+    return {
+      id: "version-1",
+      versionNo: 1,
+      createdAt: new Date(),
+    };
+  }),
+  listVersionedSkillHistory: vi.fn(),
+  rollbackSkillVersion: vi.fn(),
+}));
 
 const overrideFilePath = resolve(
   process.cwd(),
@@ -26,6 +52,8 @@ describe("skill route override persistence", () => {
       scType: "faq",
       subclass: "student",
       skillMd,
+      editor: "tester",
+      changeNote: "save test",
       overwrite: true,
     });
 

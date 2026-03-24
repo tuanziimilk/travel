@@ -5,7 +5,7 @@ import { env } from "../env";
 import { formatChinaDateTimeLabel } from "../utils/time";
 import { resolveSkillRoot } from "./skillPath";
 
-function resolveSkillPath(moduleId: ModuleId) {
+export function resolveSkillPath(moduleId: ModuleId) {
   if (moduleId === "about") return join(resolveSkillRoot(env.aboutSkillPath), "SKILL.md");
   if (moduleId === "faq") return join(resolveSkillRoot(env.faqSkillPath), "SKILL.md");
   return join(resolveSkillRoot(env.aboutSkillPath), "SKILL.md");

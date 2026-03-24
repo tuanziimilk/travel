@@ -230,3 +230,18 @@ export const postlaunchSamplingRows = mysqlTable("postlaunch_sampling_rows", {
     .notNull()
     .$onUpdateFn(() => new Date()),
 });
+
+export const skillVersionHistory = mysqlTable("skill_version_history", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  capability: varchar("capability", { length: 32 }).notNull(),
+  scType: varchar("sc_type", { length: 32 }).notNull(),
+  subclass: varchar("subclass", { length: 255 }).notNull().default(""),
+  targetType: varchar("target_type", { length: 32 }).notNull(),
+  versionNo: int("version_no").notNull(),
+  actionType: varchar("action_type", { length: 32 }).notNull(),
+  editor: varchar("editor", { length: 64 }).notNull(),
+  changeNote: varchar("change_note", { length: 255 }).notNull().default(""),
+  skillMd: longtext("skill_md").notNull(),
+  sourceSnapshot: varchar("source_snapshot", { length: 64 }).notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});

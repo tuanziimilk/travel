@@ -2,6 +2,7 @@ import * as Select from "@radix-ui/react-select";
 import { useEffect, useMemo, useState } from "react";
 import { capabilityOptions, type Capability, type ModuleId, type ScType } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
+import { formatChinaDateTime } from "../utils/time";
 
 const capabilityLabelMap: Record<Capability, string> = {
   quality: "质检",
@@ -27,6 +28,12 @@ const documentSourceLabelMap: Record<string, string> = {
   route_override: "路由覆盖",
   route_rule: "默认规则",
   unavailable: "暂不可用",
+};
+
+const actionTypeLabelMap: Record<string, string> = {
+  save: "保存",
+  rollback: "回退",
+  bootstrap: "初始化",
 };
 
 const skillScTypeOptions = ["all", "about", "faq"] as const;
@@ -72,6 +79,10 @@ function getDisplaySubclass(subclass: string) {
   return subclass || "未命中 subclass";
 }
 
+function toRouteId(item: { capability: Capability; scType: ScType; subclass: string }) {
+  return `${item.capability}::${item.scType}::${item.subclass}`;
+}
+
 export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
   const [capability, setCapability] = useState<Capability>("generation");
   const [scType, setScType] = useState<SkillScTypeFilter>("all");
@@ -79,8 +90,11 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
   const [statusFilter, setStatusFilter] = useState<RouteStatusFilter>("all");
   const [selectedRouteId, setSelectedRouteId] = useState("");
   const [editor, setEditor] = useState("");
+  const [editorName, setEditorName] = useState("");
+  const [changeNote, setChangeNote] = useState("");
   const [overwrite, setOverwrite] = useState(true);
   const [uploadedSkillFileName, setUploadedSkillFileName] = useState("");
+  const [activeHistoryVersionId, setActiveHistoryVersionId] = useState("");
 
   const normalizedSubclassFilter =
     subclassFilter === subclassFilterAll ? "" : subclassFilter === subclassFilterFallback ? "" : subclassFilter;
@@ -103,7 +117,6 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
         ...faqSubclassOptions.map((item) => ({ value: item, label: item })),
       ];
     }
-
     return [
       { value: subclassFilterAll, label: "ALL" },
       { value: subclassFilterFallback, label: "未命中 subclass" },
@@ -122,7 +135,7 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
   }, [routesQuery.data, statusFilter]);
 
   const selectedRoute = useMemo(
-    () => filteredRoutes.find((item) => `${item.capability}::${item.scType}::${item.subclass}` === selectedRouteId) || null,
+    () => filteredRoutes.find((item) => toRouteId(item) === selectedRouteId) || null,
     [filteredRoutes, selectedRouteId],
   );
 
@@ -136,33 +149,43 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
       scType: selectedRoute?.scType || fallbackScType,
       subclass: selectedRoute?.subclass || "",
     },
-    {
-      enabled: Boolean(selectedRoute),
-      refetchOnWindowFocus: false,
-    },
+    { enabled: Boolean(selectedRoute), refetchOnWindowFocus: false },
   );
 
-  const overrideQuery = trpc.skill.routeOverride.useQuery(
+  const historyQuery = trpc.skill.history.useQuery(
     {
       capability: selectedRoute?.capability || capability,
       scType: selectedRoute?.scType || fallbackScType,
       subclass: selectedRoute?.subclass || "",
     },
-    {
-      enabled: Boolean(selectedRoute) && !isLiveQualityRoute,
-      refetchOnWindowFocus: false,
-    },
+    { enabled: Boolean(selectedRoute), refetchOnWindowFocus: false },
   );
+
+  const historyDetailQuery = trpc.skill.historyDetail.useQuery(
+    { versionId: activeHistoryVersionId },
+    { enabled: Boolean(activeHistoryVersionId), refetchOnWindowFocus: false },
+  );
+
+  const refreshSkillState = async () => {
+    await Promise.all([routesQuery.refetch(), routeDocumentQuery.refetch(), historyQuery.refetch()]);
+  };
 
   const saveModuleMutation = trpc.skill.save.useMutation({
     onSuccess: async () => {
-      await Promise.all([routesQuery.refetch(), routeDocumentQuery.refetch()]);
+      await refreshSkillState();
     },
   });
 
   const saveRouteMutation = trpc.skill.saveRouteOverride.useMutation({
     onSuccess: async () => {
-      await Promise.all([routesQuery.refetch(), overrideQuery.refetch(), routeDocumentQuery.refetch()]);
+      await refreshSkillState();
+    },
+  });
+
+  const rollbackMutation = trpc.skill.rollback.useMutation({
+    onSuccess: async () => {
+      await refreshSkillState();
+      setActiveHistoryVersionId("");
     },
   });
 
@@ -182,16 +205,16 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
       setSelectedRouteId("");
       return;
     }
-
-    const hasCurrent = filteredRoutes.some((item) => `${item.capability}::${item.scType}::${item.subclass}` === selectedRouteId);
+    const hasCurrent = filteredRoutes.some((item) => toRouteId(item) === selectedRouteId);
     if (!hasCurrent) {
-      const next = filteredRoutes[0];
-      setSelectedRouteId(`${next.capability}::${next.scType}::${next.subclass}`);
+      setSelectedRouteId(toRouteId(filteredRoutes[0]));
     }
   }, [filteredRoutes, selectedRouteId]);
 
   useEffect(() => {
     setEditor(routeDocumentQuery.data?.skillMd || "");
+    setUploadedSkillFileName("");
+    setActiveHistoryVersionId("");
   }, [routeDocumentQuery.data?.skillMd, selectedRouteId]);
 
   async function handleSkillFile(file: File | null) {
@@ -208,6 +231,8 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
       await saveModuleMutation.mutateAsync({
         moduleId: selectedRoute.scType as "about" | "faq",
         skillMd: editor,
+        editor: editorName,
+        changeNote,
       });
       return;
     }
@@ -217,12 +242,28 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
       scType: selectedRoute.scType,
       subclass: selectedRoute.subclass,
       skillMd: editor,
+      editor: editorName,
+      changeNote,
       overwrite,
     });
   }
 
+  async function onRollback(versionId: string, versionNo: number) {
+    if (!selectedRoute) return;
+    const confirmed = window.confirm(`确认回退到版本 V${versionNo} 吗？回退后会生成一条新的历史版本。`);
+    if (!confirmed) return;
+    await rollbackMutation.mutateAsync({
+      capability: selectedRoute.capability,
+      scType: selectedRoute.scType,
+      subclass: selectedRoute.subclass,
+      versionId,
+      editor: editorName,
+      changeNote,
+    });
+  }
+
   const currentSourceLabel = routeDocumentQuery.data?.source
-    ? (documentSourceLabelMap[routeDocumentQuery.data.source] || routeDocumentQuery.data.source)
+    ? documentSourceLabelMap[routeDocumentQuery.data.source] || routeDocumentQuery.data.source
     : selectedRoute
       ? routeSourceLabelMap[selectedRoute.source]
       : "-";
@@ -230,20 +271,33 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
   const executionBadge = isLiveQualityRoute
     ? { label: "已接管真实执行", text: "这里保存的质检 skill，会直接影响 About / FAQ 实际评分。" }
     : capability === "generation"
-      ? { label: "已接入路由管理", text: "当前可查看 FAQ 输出路由、线上生效文档与覆盖配置，便于后续继续扩展自动执行。" }
-      : { label: "配置阶段", text: "当前能力仍处于配置或占位阶段，修改不会直接触发线上执行。" };
+      ? { label: "已接入路由管理", text: "这里可以查看 FAQ 输出当前生效内容、历史版本和回退记录。" }
+      : { label: "配置阶段", text: "当前能力仍处于配置阶段，修改不会直接触发线上执行。" };
 
   const scopeText = isLiveQualityRoute
     ? "影响范围：当前选中路由对应的 About / FAQ 质检任务。"
     : capability === "generation"
-      ? "影响范围：当前 FAQ 输出路由的匹配与挂载，不影响现有质检。"
+      ? "影响范围：当前 FAQ 输出路由的覆盖内容与历史版本。"
       : "影响范围：仅当前路由配置。";
+
+  const latestHistory = historyQuery.data?.[0];
+  const currentContent = routeDocumentQuery.data?.skillMd?.trim() || "";
+  const draftContent = editor.trim();
+  const isUnchanged = Boolean(currentContent && draftContent === currentContent);
+  const saveDisabled =
+    !selectedRoute ||
+    !draftContent ||
+    !editorName.trim() ||
+    !changeNote.trim() ||
+    saveRouteMutation.isPending ||
+    saveModuleMutation.isPending ||
+    rollbackMutation.isPending;
 
   return (
     <div className="grid">
       <section className="section-header">
         <h2>Skills 配置</h2>
-        <p>可按能力、SC 类型、subclass、状态筛选，并直接查看当前线上生效中的 `SKILL.md` 内容。</p>
+        <p>按能力、SC 类型和 subclass 查看当前生效 skill，并支持历史版本查看与回退。</p>
       </section>
 
       <div className="card">
@@ -355,7 +409,7 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
               </thead>
               <tbody>
                 {filteredRoutes.map((item) => {
-                  const routeId = `${item.capability}::${item.scType}::${item.subclass}`;
+                  const routeId = toRouteId(item);
                   const active = routeId === selectedRouteId;
                   return (
                     <tr key={routeId} className={active ? "skill-route-row active" : "skill-route-row"} onClick={() => setSelectedRouteId(routeId)}>
@@ -410,7 +464,29 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
             <div className="skill-detail-notice">
               <strong>当前 skill key：{selectedRoute?.defaultSkillKey || "-"}</strong>
               <span>文档来源：{currentSourceLabel}</span>
-              <p>{routeDocumentQuery.data?.message || "当前路由下已接通可直接查看的生效 SKILL.md 内容。"}</p>
+              <p>{routeDocumentQuery.data?.message || "当前路由下还没有可直接查看的生效 SKILL.md 内容。"}</p>
+              {latestHistory ? (
+                <p className="skill-history-latest">
+                  最近修改：V{latestHistory.versionNo} / {latestHistory.editor} / {formatChinaDateTime(latestHistory.createdAt)}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="skill-edit-meta-grid">
+              <div className="field">
+                <label className="skill-block-label">修改人</label>
+                <input className="input" value={editorName} maxLength={64} onChange={(event) => setEditorName(event.target.value)} placeholder="例如：Chelsea" />
+              </div>
+              <div className="field">
+                <label className="skill-block-label">修改备注</label>
+                <input
+                  className="input"
+                  value={changeNote}
+                  maxLength={255}
+                  onChange={(event) => setChangeNote(event.target.value)}
+                  placeholder="例如：修复错误覆盖，恢复优惠资格描述"
+                />
+              </div>
             </div>
 
             <div className="field">
@@ -418,12 +494,7 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
               <label className="skill-upload-dropzone">
                 <span className="skill-upload-action">选择文件</span>
                 <span className="skill-upload-name">{uploadedSkillFileName || "未选择任何文件"}</span>
-                <input
-                  className="skill-upload-input"
-                  type="file"
-                  accept=".md,.txt"
-                  onChange={(event) => void handleSkillFile(event.target.files?.[0] || null)}
-                />
+                <input className="skill-upload-input" type="file" accept=".md,.txt" onChange={(event) => void handleSkillFile(event.target.files?.[0] || null)} />
               </label>
             </div>
 
@@ -442,37 +513,111 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
                 onChange={(event) => setEditor(event.target.value)}
                 placeholder="可直接粘贴 SKILL.md，或通过上方上传文件导入。"
               />
+              {isUnchanged ? <p className="muted">当前草稿与线上生效内容一致；如继续保存，仍会生成一条历史版本。</p> : null}
             </div>
 
             <div className="upload-actions skill-detail-actions">
-              <button
-                className="btn-ghost"
-                type="button"
-                onClick={() => void Promise.all([routesQuery.refetch(), overrideQuery.refetch(), routeDocumentQuery.refetch()])}
-              >
+              <button className="btn-ghost" type="button" onClick={() => void refreshSkillState()}>
                 刷新
               </button>
-              <button
-                className="btn-primary"
-                type="button"
-                disabled={!selectedRoute || !editor.trim() || saveRouteMutation.isPending || saveModuleMutation.isPending}
-                onClick={() => void onSave()}
-              >
-                {saveRouteMutation.isPending || saveModuleMutation.isPending
-                  ? "保存中..."
-                  : isLiveQualityRoute
-                    ? "保存生效 skill"
-                    : "保存覆盖"}
+              <button className="btn-primary" type="button" disabled={saveDisabled} onClick={() => void onSave()}>
+                {saveRouteMutation.isPending || saveModuleMutation.isPending ? "保存中..." : isLiveQualityRoute ? "保存生效 skill" : "保存覆盖"}
               </button>
             </div>
 
             {selectedRoute?.notes ? <p className="muted">备注：{selectedRoute.notes}</p> : null}
             {saveRouteMutation.error ? <p className="error-text">{saveRouteMutation.error.message}</p> : null}
             {saveModuleMutation.error ? <p className="error-text">{saveModuleMutation.error.message}</p> : null}
+            {rollbackMutation.error ? <p className="error-text">{rollbackMutation.error.message}</p> : null}
             {saveRouteMutation.isSuccess || saveModuleMutation.isSuccess ? <p className="output-success-text">保存成功</p> : null}
+            {rollbackMutation.isSuccess ? <p className="output-success-text">回退成功</p> : null}
+
+            <div className="skill-history-panel">
+              <div className="skill-history-head">
+                <h4>历史版本</h4>
+                <span>{historyQuery.data?.length || 0} 条</span>
+              </div>
+              <div className="table-scroll">
+                <table className="skill-history-table">
+                  <thead>
+                    <tr>
+                      <th>版本</th>
+                      <th>时间</th>
+                      <th>修改人</th>
+                      <th>动作</th>
+                      <th>备注</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(historyQuery.data || []).map((item) => (
+                      <tr key={item.id}>
+                        <td>V{item.versionNo}</td>
+                        <td>{formatChinaDateTime(item.createdAt)}</td>
+                        <td>{item.editor}</td>
+                        <td>{actionTypeLabelMap[item.actionType] || item.actionType}</td>
+                        <td title={item.changeNote}>{item.changeNote}</td>
+                        <td className="skill-history-actions">
+                          <button className="btn-ghost" type="button" onClick={() => setActiveHistoryVersionId(item.id)}>
+                            查看
+                          </button>
+                          <button
+                            className="btn-ghost"
+                            type="button"
+                            disabled={!editorName.trim() || !changeNote.trim() || rollbackMutation.isPending}
+                            onClick={() => void onRollback(item.id, item.versionNo)}
+                          >
+                            回退
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {!historyQuery.isLoading && !historyQuery.data?.length ? (
+                      <tr>
+                        <td colSpan={6}>当前 skill 暂无历史版本。</td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
+      {activeHistoryVersionId ? (
+        <div className="history-detail-overlay" role="dialog" aria-modal="true" onClick={() => setActiveHistoryVersionId("")}>
+          <div className="history-detail-card skill-history-modal-card" onClick={(event) => event.stopPropagation()}>
+            <div className="history-detail-head">
+              <h3>历史版本详情</h3>
+              <button className="history-detail-close" type="button" aria-label="关闭详情" onClick={() => setActiveHistoryVersionId("")}>
+                ×
+              </button>
+            </div>
+
+            <div className="skill-history-compare-grid">
+              <div className="skill-history-compare-col">
+                <div className="skill-history-compare-head">历史版本</div>
+                <div className="skill-history-version-meta">
+                  <span>版本：V{historyDetailQuery.data?.versionNo || "-"}</span>
+                  <span>修改人：{historyDetailQuery.data?.editor || "-"}</span>
+                  <span>时间：{formatChinaDateTime(historyDetailQuery.data?.createdAt)}</span>
+                  <span>备注：{historyDetailQuery.data?.changeNote || "-"}</span>
+                </div>
+                <textarea className="skill-history-textarea" readOnly value={historyDetailQuery.data?.skillMd || ""} />
+              </div>
+              <div className="skill-history-compare-col">
+                <div className="skill-history-compare-head">当前生效内容</div>
+                <div className="skill-history-version-meta">
+                  <span>来源：{currentSourceLabel}</span>
+                  <span>当前路由：{selectedRoute?.defaultSkillKey || "-"}</span>
+                </div>
+                <textarea className="skill-history-textarea" readOnly value={routeDocumentQuery.data?.skillMd || ""} />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/dbMigrateSafe.ts",
-    "backfill:china-timezone": "tsx scripts/backfillChinaTimezone.ts"
+    "backfill:china-timezone": "tsx scripts/backfillChinaTimezone.ts",
+    "bootstrap:skill-history": "tsx scripts/bootstrapSkillHistory.ts"
   },
   "dependencies": {
     "@about-demo/trpc": "1.0.0",

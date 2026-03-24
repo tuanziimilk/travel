@@ -5,6 +5,7 @@ import type { Capability, ModuleId, ScType } from "@about-demo/trpc";
 import { formatChinaDateTimeLabel } from "../utils/time";
 import { resolveSkillRoot } from "./skillPath";
 import { getModuleSkillMd, readModuleSkillFile, saveModuleSkillMd } from "./skillStore";
+import { listVersionedSkillHistory, rollbackSkillVersion, saveVersionedSkill } from "./skillVersionService";
 
 const BOARD_NAME_FIELD = "板块名称";
 
@@ -77,6 +78,10 @@ export type SkillRouteDocument = {
   message: string;
   updatedAt?: string;
 };
+
+function resolveHistoryTargetType(capability: Capability, subclass?: string) {
+  return capability === "quality" && !normalizeSubclass(subclass) ? "module_live" : "route_override";
+}
 
 const faqFactTypeAliases: Record<string, string> = {
   shipping_policy: "shipping",
@@ -366,6 +371,8 @@ export async function saveSkillRouteOverride(input: {
   scType: ScType;
   subclass?: string;
   skillMd: string;
+  editor: string;
+  changeNote: string;
   overwrite?: boolean;
 }) {
   const normalizedSubclass = normalizeSubclass(input.subclass);
@@ -375,7 +382,22 @@ export async function saveSkillRouteOverride(input: {
     if (!moduleId) {
       throw new Error(`Unsupported quality route scType: ${input.scType}`);
     }
-    return saveModuleSkillMd(moduleId, input.skillMd);
+    const record = await saveVersionedSkill({
+      capability: input.capability,
+      scType: input.scType,
+      subclass: normalizedSubclass,
+      targetType: "module_live",
+      skillMd: input.skillMd,
+      editor: input.editor,
+      changeNote: input.changeNote,
+    });
+    return {
+      ok: true,
+      moduleId,
+      versionId: record.id,
+      versionNo: record.versionNo,
+      updatedAt: formatChinaDateTimeLabel(record.createdAt),
+    };
   }
 
   const routeId = makeRouteId(input.capability, input.scType, normalizedSubclass);
@@ -384,9 +406,74 @@ export async function saveSkillRouteOverride(input: {
     throw new Error("Skill route override already exists, please enable overwrite and save again.");
   }
 
-  mkdirSync(getParentDir(filePath), { recursive: true });
-  writeFileSync(filePath, input.skillMd, "utf8");
-  return { ok: true, routeId, updatedAt: formatChinaDateTimeLabel(new Date()) };
+  const record = await saveVersionedSkill({
+    capability: input.capability,
+    scType: input.scType,
+    subclass: normalizedSubclass,
+    targetType: "route_override",
+    skillMd: input.skillMd,
+    editor: input.editor,
+    changeNote: input.changeNote,
+  });
+  return {
+    ok: true,
+    routeId,
+    versionId: record.id,
+    versionNo: record.versionNo,
+    updatedAt: formatChinaDateTimeLabel(record.createdAt),
+  };
+}
+
+export async function listSkillHistory(input: { capability: Capability; scType: ScType; subclass?: string }) {
+  const rows = await listVersionedSkillHistory({
+    capability: input.capability,
+    scType: input.scType,
+    subclass: normalizeSubclass(input.subclass),
+    targetType: resolveHistoryTargetType(input.capability, input.subclass),
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    versionNo: row.versionNo,
+    actionType: row.actionType,
+    editor: row.editor,
+    changeNote: row.changeNote,
+    sourceSnapshot: row.sourceSnapshot,
+    createdAt: row.createdAt,
+    summary: row.skillMd.split(/\r?\n/).find((line) => line.trim())?.slice(0, 120) || "",
+  }));
+}
+
+export async function getSkillHistoryDetail(input: { versionId: string }) {
+  const { getSkillVersionDetail } = await import("./skillVersionStore");
+  const row = await getSkillVersionDetail(input.versionId);
+  if (!row) throw new Error("未找到指定历史版本");
+  return row;
+}
+
+export async function rollbackSkillHistory(input: {
+  capability: Capability;
+  scType: ScType;
+  subclass?: string;
+  versionId: string;
+  editor: string;
+  changeNote: string;
+}) {
+  const result = await rollbackSkillVersion({
+    capability: input.capability,
+    scType: input.scType,
+    subclass: normalizeSubclass(input.subclass),
+    targetType: resolveHistoryTargetType(input.capability, input.subclass),
+    versionId: input.versionId,
+    editor: input.editor,
+    changeNote: input.changeNote,
+  });
+  return {
+    ok: true,
+    versionId: result.version.id,
+    versionNo: result.version.versionNo,
+    updatedAt: formatChinaDateTimeLabel(result.version.createdAt),
+    restoredFromVersionNo: result.restoredFrom.versionNo,
+  };
 }
 
 export function resolveSkillRoute(input: {

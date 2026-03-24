@@ -21,9 +21,12 @@ import {
   manualScoreInputSchema,
   manualFaqScoreInputSchema,
   runtimeAiConfigSetInputSchema,
+  skillHistoryDetailInputSchema,
+  skillHistoryListInputSchema,
   skillRouteDocumentInputSchema,
   skillRouteListInputSchema,
   skillRouteResolveInputSchema,
+  skillRollbackInputSchema,
   skillRouteSaveInputSchema,
   type ManualScoreInput,
   skillGetInputSchema,
@@ -59,15 +62,19 @@ import {
   listGenerationJobs,
 } from "../generation/faqOutputJobStore";
 import { scoreAboutByAiWithMeta } from "../scoring/aboutAiScorer";
-import { getModuleSkillMd, saveModuleSkillMd } from "../skills/skillStore";
+import { getModuleSkillMd } from "../skills/skillStore";
 import {
+  getSkillHistoryDetail,
   getGenerationFramework,
   getSkillRouteDocument,
   getSkillRouteOverride,
+  listSkillHistory,
   listSkillRoutes,
+  rollbackSkillHistory,
   resolveSkillRoute,
   saveSkillRouteOverride,
 } from "../skills/skillRouter";
+import { saveVersionedSkill } from "../skills/skillVersionService";
 
 const t = initTRPC.create();
 
@@ -306,10 +313,24 @@ export const appRouter = t.router({
       return getModuleSkillMd(input.moduleId);
     }),
     save: t.procedure.input(skillSaveInputSchema).mutation(async ({ input }) => {
-      return saveModuleSkillMd(input.moduleId, input.skillMd);
+      return saveVersionedSkill({
+        capability: "quality",
+        scType: input.moduleId,
+        subclass: "",
+        targetType: "module_live",
+        skillMd: input.skillMd,
+        editor: input.editor,
+        changeNote: input.changeNote,
+      });
     }),
     routes: t.procedure.input(skillRouteListInputSchema).query(({ input }) => {
       return listSkillRoutes(input);
+    }),
+    history: t.procedure.input(skillHistoryListInputSchema).query(({ input }) => {
+      return listSkillHistory(input);
+    }),
+    historyDetail: t.procedure.input(skillHistoryDetailInputSchema).query(({ input }) => {
+      return getSkillHistoryDetail(input);
     }),
     routeOverride: t.procedure.input(skillRouteResolveInputSchema).query(({ input }) => {
       return getSkillRouteOverride(input);
@@ -319,6 +340,9 @@ export const appRouter = t.router({
     }),
     saveRouteOverride: t.procedure.input(skillRouteSaveInputSchema).mutation(({ input }) => {
       return saveSkillRouteOverride(input);
+    }),
+    rollback: t.procedure.input(skillRollbackInputSchema).mutation(({ input }) => {
+      return rollbackSkillHistory(input);
     }),
   }),
   runtime: t.router({

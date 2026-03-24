@@ -4621,6 +4621,12 @@ pre {
   min-height: 44px;
 }
 
+.skill-edit-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .skill-subclass-cell {
   min-width: 180px;
   max-width: 0;
@@ -4667,6 +4673,114 @@ pre {
 
 .skill-overwrite-row input {
   width: auto;
+}
+
+.skill-history-panel {
+  border: 3px solid var(--black);
+  background: #fff;
+  box-shadow: 4px 4px 0 var(--black);
+  padding: 12px;
+}
+
+.skill-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.skill-history-head h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.skill-history-head span {
+  font-size: 12px;
+  font-weight: 800;
+  color: #5c5c5c;
+}
+
+.skill-history-table th:nth-child(1),
+.skill-history-table td:nth-child(1) {
+  width: 74px;
+}
+
+.skill-history-table th:nth-child(2),
+.skill-history-table td:nth-child(2) {
+  width: 180px;
+}
+
+.skill-history-table th:nth-child(3),
+.skill-history-table td:nth-child(3) {
+  width: 100px;
+}
+
+.skill-history-table th:nth-child(4),
+.skill-history-table td:nth-child(4) {
+  width: 88px;
+}
+
+.skill-history-actions {
+  display: flex;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.skill-history-actions .btn-ghost {
+  width: auto;
+  padding: 6px 10px;
+}
+
+.skill-history-modal-card {
+  width: min(1180px, 96vw);
+}
+
+.skill-history-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.skill-history-compare-col {
+  display: grid;
+  gap: 10px;
+}
+
+.skill-history-compare-head {
+  padding: 8px 10px;
+  border: 3px solid var(--black);
+  background: var(--yellow);
+  box-shadow: 4px 4px 0 var(--black);
+  font-weight: 900;
+}
+
+.skill-history-version-meta {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 3px solid var(--black);
+  background: #f5f5f5;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.skill-history-textarea {
+  min-height: 420px;
+  border: 3px solid var(--black);
+  background: #fffdf3;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: none;
+}
+
+.skill-history-latest {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #173f9e;
 }
 
 @media (max-width: 920px) {
@@ -4765,6 +4879,8 @@ pre {
   .skill-filter-grid,
   .skill-config-layout,
   .skill-detail-actions,
+  .skill-edit-meta-grid,
+  .skill-history-compare-grid,
   .output-upload-bar {
     grid-template-columns: 1fr;
   }

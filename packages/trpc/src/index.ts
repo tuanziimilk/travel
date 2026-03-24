@@ -224,6 +224,8 @@ export const skillGetInputSchema = z.object({
 export const skillSaveInputSchema = z.object({
   moduleId: moduleSchema,
   skillMd: z.string().min(1),
+  editor: z.string().trim().min(1).max(64),
+  changeNote: z.string().trim().min(1).max(255),
 });
 
 export const skillRouteListInputSchema = z.object({
@@ -237,7 +239,28 @@ export const skillRouteSaveInputSchema = z.object({
   scType: scTypeSchema,
   subclass: z.string().optional().default(""),
   skillMd: z.string().min(1),
+  editor: z.string().trim().min(1).max(64),
+  changeNote: z.string().trim().min(1).max(255),
   overwrite: z.boolean().optional().default(true),
+});
+
+export const skillHistoryListInputSchema = z.object({
+  capability: capabilitySchema,
+  scType: scTypeSchema,
+  subclass: z.string().optional().default(""),
+});
+
+export const skillHistoryDetailInputSchema = z.object({
+  versionId: z.string().min(1),
+});
+
+export const skillRollbackInputSchema = z.object({
+  capability: capabilitySchema,
+  scType: scTypeSchema,
+  subclass: z.string().optional().default(""),
+  versionId: z.string().min(1),
+  editor: z.string().trim().min(1).max(64),
+  changeNote: z.string().trim().min(1).max(255),
 });
 
 export const runtimeAiConfigSetInputSchema = z.object({

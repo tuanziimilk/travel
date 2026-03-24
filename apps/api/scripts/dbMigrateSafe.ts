@@ -120,6 +120,21 @@ const upgradeCreateTableSql = [
     updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id)
   )`,
+  `CREATE TABLE IF NOT EXISTS skill_version_history (
+    id varchar(36) NOT NULL,
+    capability varchar(32) NOT NULL,
+    sc_type varchar(32) NOT NULL,
+    subclass varchar(255) NOT NULL DEFAULT '',
+    target_type varchar(32) NOT NULL,
+    version_no int NOT NULL,
+    action_type varchar(32) NOT NULL,
+    editor varchar(64) NOT NULL,
+    change_note varchar(255) NOT NULL DEFAULT '',
+    skill_md longtext NOT NULL,
+    source_snapshot varchar(64) NOT NULL DEFAULT '',
+    created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id)
+  )`,
 ] as const;
 
 async function readJournalEntries() {
@@ -239,6 +254,28 @@ async function applyContentGenerationJobLongtextUpgrade(connection: mysql.Connec
   console.log("[db:migrate:safe] applied 0002_content_generation_job_longtext");
 }
 
+async function applySkillVersionHistoryMigration(connection: mysql.Connection, migration: JournalEntry) {
+  await connection.query(`
+    CREATE TABLE IF NOT EXISTS skill_version_history (
+      id varchar(36) NOT NULL,
+      capability varchar(32) NOT NULL,
+      sc_type varchar(32) NOT NULL,
+      subclass varchar(255) NOT NULL DEFAULT '',
+      target_type varchar(32) NOT NULL,
+      version_no int NOT NULL,
+      action_type varchar(32) NOT NULL,
+      editor varchar(64) NOT NULL,
+      change_note varchar(255) NOT NULL DEFAULT '',
+      skill_md longtext NOT NULL,
+      source_snapshot varchar(64) NOT NULL DEFAULT '',
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id)
+    )
+  `);
+  await recordMigration(connection, migration.tag, migration.when);
+  console.log("[db:migrate:safe] applied 0003_skill_version_history");
+}
+
 async function main() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
@@ -249,8 +286,9 @@ async function main() {
   const baseline = entries.find((entry) => entry.tag === "0000_init");
   const upgrade = entries.find((entry) => entry.tag === "0001_app_schema_upgrade");
   const longtextUpgrade = entries.find((entry) => entry.tag === "0002_content_generation_job_longtext");
+  const skillVersionMigration = entries.find((entry) => entry.tag === "0003_skill_version_history");
 
-  if (!baseline || !upgrade || !longtextUpgrade) {
+  if (!baseline || !upgrade || !longtextUpgrade || !skillVersionMigration) {
     throw new Error("required migration entries are missing from drizzle/meta/_journal.json");
   }
 
@@ -276,6 +314,11 @@ async function main() {
     if (!appliedTimes.has(longtextUpgrade.when)) {
       await applyContentGenerationJobLongtextUpgrade(connection, longtextUpgrade);
       appliedTimes.add(longtextUpgrade.when);
+    }
+
+    if (!appliedTimes.has(skillVersionMigration.when)) {
+      await applySkillVersionHistoryMigration(connection, skillVersionMigration);
+      appliedTimes.add(skillVersionMigration.when);
     }
   } finally {
     await connection.end();
