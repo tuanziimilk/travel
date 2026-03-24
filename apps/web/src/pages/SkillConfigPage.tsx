@@ -85,8 +85,15 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
   const normalizedSubclassFilter =
     subclassFilter === subclassFilterAll ? "" : subclassFilter === subclassFilterFallback ? "" : subclassFilter;
 
-  const resolvedQueryScType = scType === "all" ? undefined : (scType as ScType);
-  const fallbackScType = scType === "all" ? (moduleId === "about" ? "about" : "faq") : (scType as ScType);
+  const availableScTypeOptions = useMemo(
+    () => (capability === "generation" ? (["faq"] as const) : skillScTypeOptions),
+    [capability],
+  );
+
+  const resolvedQueryScType =
+    capability === "generation" ? "faq" : scType === "all" ? undefined : (scType as ScType);
+  const fallbackScType =
+    capability === "generation" ? "faq" : scType === "all" ? (moduleId === "about" ? "about" : "faq") : (scType as ScType);
 
   const subclassOptions = useMemo(() => {
     if (capability === "generation") {
@@ -162,6 +169,12 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
   useEffect(() => {
     setSubclassFilter(subclassFilterAll);
     setStatusFilter("all");
+  }, [capability, scType]);
+
+  useEffect(() => {
+    if (capability === "generation" && scType !== "faq") {
+      setScType("faq");
+    }
   }, [capability, scType]);
 
   useEffect(() => {
@@ -258,14 +271,14 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
 
           <div className="field">
             <label>SC 类型</label>
-            <Select.Root value={scType} onValueChange={(value) => setScType(value as SkillScTypeFilter)}>
+            <Select.Root value={capability === "generation" ? "faq" : scType} onValueChange={(value) => setScType(value as SkillScTypeFilter)}>
               <Select.Trigger className="select-trigger">
                 <Select.Value />
               </Select.Trigger>
               <Select.Portal>
                 <Select.Content className="select-content" position="popper" sideOffset={8}>
                   <Select.Viewport className="select-viewport">
-                    {skillScTypeOptions.map((item) => (
+                    {availableScTypeOptions.map((item) => (
                       <Select.Item className="select-item" key={item} value={item}>
                         <Select.ItemText>{item === "all" ? "ALL" : item.toUpperCase()}</Select.ItemText>
                       </Select.Item>
@@ -373,6 +386,7 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
               </tbody>
             </table>
           </div>
+          {routesQuery.error ? <p className="error-text">加载路由失败：{routesQuery.error.message}</p> : null}
         </div>
 
         <div className="card skill-config-editor-card">
