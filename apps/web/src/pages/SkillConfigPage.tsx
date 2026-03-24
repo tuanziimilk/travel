@@ -1,6 +1,6 @@
 import * as Select from "@radix-ui/react-select";
 import { useEffect, useMemo, useState } from "react";
-import { capabilityOptions, type Capability, type ModuleId, type ScType } from "@about-demo/trpc";
+import { capabilityOptions, uploaderOptions, type Capability, type ModuleId, type ScType } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
 import { formatChinaDateTime } from "../utils/time";
 
@@ -90,7 +90,7 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
   const [statusFilter, setStatusFilter] = useState<RouteStatusFilter>("all");
   const [selectedRouteId, setSelectedRouteId] = useState("");
   const [editor, setEditor] = useState("");
-  const [editorName, setEditorName] = useState("");
+  const [editorName, setEditorName] = useState<(typeof uploaderOptions)[number]>("Zoe");
   const [changeNote, setChangeNote] = useState("");
   const [overwrite, setOverwrite] = useState(true);
   const [uploadedSkillFileName, setUploadedSkillFileName] = useState("");
@@ -475,7 +475,22 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
             <div className="skill-edit-meta-grid">
               <div className="field">
                 <label className="skill-block-label">修改人</label>
-                <input className="input" value={editorName} maxLength={64} onChange={(event) => setEditorName(event.target.value)} placeholder="例如：Chelsea" />
+                <Select.Root value={editorName} onValueChange={(value) => setEditorName(value as (typeof uploaderOptions)[number])}>
+                  <Select.Trigger className="select-trigger">
+                    <Select.Value />
+                  </Select.Trigger>
+                  <Select.Portal>
+                    <Select.Content className="select-content" position="popper" sideOffset={8}>
+                      <Select.Viewport className="select-viewport">
+                        {uploaderOptions.map((item) => (
+                          <Select.Item className="select-item" key={item} value={item}>
+                            <Select.ItemText>{item}</Select.ItemText>
+                          </Select.Item>
+                        ))}
+                      </Select.Viewport>
+                    </Select.Content>
+                  </Select.Portal>
+                </Select.Root>
               </div>
               <div className="field">
                 <label className="skill-block-label">修改备注</label>
