@@ -1,15 +1,8 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { moduleSchema, type ModuleId } from "@about-demo/trpc";
 import { env } from "../env";
 import { resolveSkillRoot } from "./skillPath";
-
-type ModuleSkillOverrideRecord = {
-  skillMd: string;
-  updatedAt: string;
-};
-
-const skillOverrides = new Map<ModuleId, ModuleSkillOverrideRecord>();
 
 function resolveSkillPath(moduleId: ModuleId) {
   if (moduleId === "about") return join(resolveSkillRoot(env.aboutSkillPath), "SKILL.md");
@@ -33,32 +26,19 @@ export async function readModuleSkillFile(moduleId: ModuleId) {
 }
 
 export function getModuleSkillOverride(moduleIdRaw: string) {
-  const moduleId = moduleSchema.parse(moduleIdRaw);
-  const override = skillOverrides.get(moduleId);
-  if (!override) return null;
-  return {
-    moduleId,
-    skillMd: override.skillMd,
-    updatedAt: override.updatedAt,
-    source: "override" as const,
-  };
+  moduleSchema.parse(moduleIdRaw);
+  return null;
 }
 
 export async function getModuleSkillMd(moduleIdRaw: string) {
   const moduleId = moduleSchema.parse(moduleIdRaw);
-  const override = getModuleSkillOverride(moduleId);
-  if (override) {
-    return override;
-  }
   return readModuleSkillFile(moduleId);
 }
 
 export async function saveModuleSkillMd(moduleIdRaw: string, skillMd: string) {
   const moduleId = moduleSchema.parse(moduleIdRaw);
-  const record: ModuleSkillOverrideRecord = {
-    skillMd,
-    updatedAt: new Date().toISOString(),
-  };
-  skillOverrides.set(moduleId, record);
-  return { ok: true, moduleId, source: "override" as const, updatedAt: record.updatedAt };
+  const filePath = resolveSkillPath(moduleId);
+  await mkdir(dirname(filePath), { recursive: true });
+  await writeFile(filePath, skillMd, "utf8");
+  return { ok: true, moduleId, source: "file" as const, updatedAt: new Date().toISOString() };
 }

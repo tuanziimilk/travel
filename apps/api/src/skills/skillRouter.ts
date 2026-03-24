@@ -1,9 +1,9 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type { Capability, ModuleId, ScType } from "@about-demo/trpc";
 import { resolveSkillRoot } from "./skillPath";
-import { getModuleSkillMd, getModuleSkillOverride, readModuleSkillFile, saveModuleSkillMd } from "./skillStore";
+import { getModuleSkillMd, readModuleSkillFile, saveModuleSkillMd } from "./skillStore";
 
 const BOARD_NAME_FIELD = "板块名称";
 
@@ -178,6 +178,25 @@ function hasGenerationSkillFile(scType: ScType, subclass?: string) {
   return existsSync(join(root, "SKILL.md"));
 }
 
+function resolveRouteOverridePath(capability: Capability, scType: ScType, subclass?: string) {
+  const normalizedSubclass = normalizeSubclass(subclass) || "__default__";
+  const slug = normalizedSubclass.replaceAll("/", "-").replace(/\s+/g, "-");
+  return resolve(process.cwd(), ".runtime", "skill-overrides", capability, scType, slug, "SKILL.md");
+}
+
+function readRouteOverride(capability: Capability, scType: ScType, subclass?: string): SkillOverrideRecord | null {
+  const filePath = resolveRouteOverridePath(capability, scType, subclass);
+  if (!existsSync(filePath)) return null;
+  const stats = statSync(filePath);
+  return {
+    capability,
+    scType,
+    subclass: normalizeSubclass(subclass),
+    skillMd: readFileSync(filePath, "utf8"),
+    updatedAt: stats.mtime.toISOString(),
+  };
+}
+
 async function readGenerationSkillFile(scType: ScType, subclass?: string) {
   const root = resolveGenerationSkillRoot(scType, subclass);
   if (!root) return null;
@@ -193,13 +212,8 @@ async function readGenerationSkillFile(scType: ScType, subclass?: string) {
 
 function getStoredOverride(capability: Capability, scType: ScType, subclass?: string) {
   const normalizedSubclass = normalizeSubclass(subclass);
-  if (capability === "quality" && !normalizedSubclass) {
-    const moduleId = resolveQualityModuleId(scType);
-    if (!moduleId) return null;
-    return getModuleSkillOverride(moduleId);
-  }
-
-  return skillOverrides.get(makeRouteId(capability, scType, normalizedSubclass)) || null;
+  if (capability === "quality" && !normalizedSubclass) return null;
+  return readRouteOverride(capability, scType, normalizedSubclass);
 }
 
 export function normalizeFaqSubclassFromFactType(value?: string) {
@@ -268,7 +282,7 @@ export async function getSkillRouteDocument(input: {
       source: moduleSkill.source,
       isLive: true,
       canEditLive: true,
-      updatedAt: "updatedAt" in moduleSkill ? moduleSkill.updatedAt : undefined,
+      updatedAt: undefined,
       message: "当前展示的是线上实际生效的质检 SKILL.md 内容。",
     };
   }
@@ -305,7 +319,7 @@ export async function getSkillRouteDocument(input: {
   };
 }
 
-export async function saveSkillRouteOverride(input: {
+async function saveSkillRouteOverrideLegacy(input: {
   capability: Capability;
   scType: ScType;
   subclass?: string;
@@ -336,6 +350,34 @@ export async function saveSkillRouteOverride(input: {
   };
   skillOverrides.set(routeId, record);
   return { ok: true, routeId, updatedAt: record.updatedAt };
+}
+
+export async function saveSkillRouteOverride(input: {
+  capability: Capability;
+  scType: ScType;
+  subclass?: string;
+  skillMd: string;
+  overwrite?: boolean;
+}) {
+  const normalizedSubclass = normalizeSubclass(input.subclass);
+
+  if (input.capability === "quality" && !normalizedSubclass) {
+    const moduleId = resolveQualityModuleId(input.scType);
+    if (!moduleId) {
+      throw new Error(`Unsupported quality route scType: ${input.scType}`);
+    }
+    return saveModuleSkillMd(moduleId, input.skillMd);
+  }
+
+  const routeId = makeRouteId(input.capability, input.scType, normalizedSubclass);
+  const filePath = resolveRouteOverridePath(input.capability, input.scType, normalizedSubclass);
+  if (!input.overwrite && existsSync(filePath)) {
+    throw new Error("Skill route override already exists, please enable overwrite and save again.");
+  }
+
+  mkdirSync(dirname(filePath), { recursive: true });
+  writeFileSync(filePath, input.skillMd, "utf8");
+  return { ok: true, routeId, updatedAt: new Date().toISOString() };
 }
 
 export function resolveSkillRoute(input: {
@@ -385,19 +427,6 @@ export async function getActiveQualitySkill(input: { scType: ScType }) {
     scType: input.scType,
     subclass: "",
   });
-
-  const override = getModuleSkillOverride(moduleId);
-  if (override) {
-    return {
-      route,
-      document: {
-        moduleId,
-        skillMd: override.skillMd,
-        source: override.source,
-        updatedAt: override.updatedAt,
-      },
-    };
-  }
 
   const document = await readModuleSkillFile(moduleId);
   return { route, document };
