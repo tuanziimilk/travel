@@ -11,6 +11,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/dbMigrateSafe.ts",
     "backfill:china-timezone": "tsx scripts/backfillChinaTimezone.ts",
+    "repair:content-generation-job-timezone": "tsx scripts/repairContentGenerationJobTimezone.ts",
     "bootstrap:skill-history": "tsx scripts/bootstrapSkillHistory.ts"
   },
   "dependencies": {
