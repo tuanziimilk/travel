@@ -15,6 +15,7 @@ import {
   failGenerationJob,
   getGenerationJobForRetry,
   markGenerationJobRunning,
+  updateGenerationJobProgress,
 } from "./faqOutputJobStore";
 
 const BOARD_NAME_FIELD = "板块名称" as const;
@@ -459,6 +460,35 @@ async function executeFaqOutputGeneration(
 
   const concurrency = Math.max(1, Math.min(4, env.ingestRowConcurrency, executableRows.length));
   const skillCache = new Map<string, Awaited<ReturnType<typeof loadGenerationSkill>>>();
+  const progressState = {
+    successRows: 0,
+    failedRows: 0,
+    promptTokensSum: 0,
+    completionTokensSum: 0,
+    totalTokensSum: 0,
+    estimatedCostUsdSum: 0,
+  };
+  let progressWrite = Promise.resolve();
+
+  const flushProgress = () => {
+    const snapshot = {
+      jobId,
+      totalRows: rows.length,
+      executableRows: executableRows.length,
+      successRows: progressState.successRows,
+      failedRows: progressState.failedRows,
+      skippedRows: rows.length - executableRows.length,
+      promptTokensSum: progressState.promptTokensSum,
+      completionTokensSum: progressState.completionTokensSum,
+      totalTokensSum: progressState.totalTokensSum,
+      estimatedCostUsdSum: Math.round(progressState.estimatedCostUsdSum * 1_000_000) / 1_000_000,
+      aiModel: env.aiModel,
+    };
+    progressWrite = progressWrite.then(() => updateGenerationJobProgress(snapshot));
+    return progressWrite;
+  };
+
+  await flushProgress();
 
   const results = await runWithConcurrency(executableRows, concurrency, async (item) => {
     const startedAt = Date.now();
@@ -479,7 +509,7 @@ async function executeFaqOutputGeneration(
 
       const finalized = finalizeGenerationItem(executed.result, item.row, item.subclass);
 
-      return {
+      const result = {
         rowIndex: item.rowIndex,
         status: "success" as const,
         subclass: item.subclass,
@@ -505,10 +535,17 @@ async function executeFaqOutputGeneration(
           aiModel: env.aiModel,
         },
       };
+      progressState.successRows += 1;
+      progressState.promptTokensSum += result.runtime.promptTokens;
+      progressState.completionTokensSum += result.runtime.completionTokens;
+      progressState.totalTokensSum += result.runtime.totalTokens;
+      progressState.estimatedCostUsdSum += result.runtime.estimatedCostUsd;
+      void flushProgress();
+      return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (message.includes("AI 执行校验失败")) {
-        return {
+        const result = {
           rowIndex: item.rowIndex,
           status: "success" as const,
           subclass: item.subclass,
@@ -524,8 +561,11 @@ async function executeFaqOutputGeneration(
             aiModel: `${env.aiModel}:fallback`,
           },
         };
+        progressState.successRows += 1;
+        void flushProgress();
+        return result;
       }
-      return {
+      const result = {
         rowIndex: item.rowIndex,
         status: "error" as const,
         subclass: item.subclass,
@@ -533,8 +573,13 @@ async function executeFaqOutputGeneration(
         routeKey: skill?.routeKey || item.route.skillKey,
         error: message,
       };
+      progressState.failedRows += 1;
+      void flushProgress();
+      return result;
     }
   });
+
+  await progressWrite;
 
   const successRows = results.filter((item): item is Extract<GenerationRowResult, { status: "success" }> => item.status === "success");
   const failedRows = results.filter((item): item is Extract<GenerationRowResult, { status: "error" }> => item.status === "error");

@@ -2509,6 +2509,15 @@ th {
   background: var(--blue);
 }
 
+.faq-output-progress-panel {
+  margin-top: 12px;
+}
+
+.faq-queue-inline-progress {
+  margin-top: 6px;
+  height: 10px;
+}
+
 .result-ai .progress-fill {
   background: var(--pink);
 }

@@ -330,6 +330,36 @@ export async function completeGenerationJob(input: {
     .where(eq(contentGenerationJobs.id, input.jobId));
 }
 
+export async function updateGenerationJobProgress(input: {
+  jobId: string;
+  totalRows: number;
+  executableRows: number;
+  successRows: number;
+  failedRows: number;
+  skippedRows: number;
+  promptTokensSum: number;
+  completionTokensSum: number;
+  totalTokensSum: number;
+  estimatedCostUsdSum: number;
+  aiModel?: string;
+}) {
+  await db
+    .update(contentGenerationJobs)
+    .set({
+      totalRows: input.totalRows,
+      executableRows: input.executableRows,
+      successRows: input.successRows,
+      failedRows: input.failedRows,
+      skippedRows: input.skippedRows,
+      promptTokensSum: input.promptTokensSum,
+      completionTokensSum: input.completionTokensSum,
+      totalTokensSum: input.totalTokensSum,
+      estimatedCostUsdSum: String(input.estimatedCostUsdSum),
+      aiModel: input.aiModel || "",
+    })
+    .where(eq(contentGenerationJobs.id, input.jobId));
+}
+
 export async function failGenerationJob(jobId: string, message: string) {
   await db
     .update(contentGenerationJobs)

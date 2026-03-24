@@ -147,7 +147,19 @@ function getSummaryText(item: {
   failedRows: number;
   skippedRows: number;
 }) {
-  return `${item.executableRows}/${item.totalRows} 可执行，成功 ${item.successRows}，失败 ${item.failedRows}，跳过 ${item.skippedRows}`;
+  const processedRows = item.successRows + item.failedRows;
+  const percent = item.executableRows > 0 ? Math.round((processedRows / item.executableRows) * 100) : 0;
+  return `${processedRows}/${item.executableRows} 已处理（${percent}%），总计 ${item.totalRows}，跳过 ${item.skippedRows}`;
+}
+
+function getExecutionProgress(item: {
+  executableRows: number;
+  successRows: number;
+  failedRows: number;
+}) {
+  const processedRows = item.successRows + item.failedRows;
+  const percent = item.executableRows > 0 ? Math.min(100, Math.round((processedRows / item.executableRows) * 100)) : 0;
+  return { processedRows, percent };
 }
 
 function safeValue(value: string | null | undefined) {
@@ -221,6 +233,11 @@ export function FaqOutputPage() {
     const total = queueQuery.data?.total ?? 0;
     return Math.max(1, Math.ceil(total / queuePageSize));
   }, [queueQuery.data?.total]);
+
+  const currentProgress = useMemo(() => {
+    if (!statusQuery.data) return null;
+    return getExecutionProgress(statusQuery.data);
+  }, [statusQuery.data]);
 
   useEffect(() => {
     let cancelled = false;
@@ -430,6 +447,24 @@ export function FaqOutputPage() {
         {error ? <p className="error-text">{error}</p> : null}
         {resultNotice ? <p className="output-success-text">{resultNotice}</p> : null}
 
+        {statusQuery.data ? (
+          <div className="progress-group faq-output-progress-panel">
+            <div className="progress-label">
+              <span>
+                当前任务：{queueStatusText[statusQuery.data.status] ?? statusQuery.data.status} / {currentProgress?.processedRows ?? 0}/
+                {statusQuery.data.executableRows} 已处理
+              </span>
+              <strong>{currentProgress?.percent ?? 0}%</strong>
+            </div>
+            <div className="progress-track">
+              <div className="progress-fill" style={{ width: `${currentProgress?.percent ?? 0}%` }} />
+            </div>
+            <p className="muted" style={{ marginTop: 8 }}>
+              成功 {statusQuery.data.successRows}，失败 {statusQuery.data.failedRows}，跳过 {statusQuery.data.skippedRows}，总行数 {statusQuery.data.totalRows}
+            </p>
+          </div>
+        ) : null}
+
         <div className="upload-actions faq-output-primary-action">
           <button
             className="btn-primary"
@@ -541,6 +576,7 @@ export function FaqOutputPage() {
             <tbody>
               {(queueQuery.data?.rows ?? []).map((item) => {
                 const hasResult = Boolean(item.resultFileName);
+                const itemProgress = getExecutionProgress(item);
                 return (
                   <tr key={item.id}>
                     <td title={item.id}>{formatJobId(item.id)}</td>
@@ -552,7 +588,14 @@ export function FaqOutputPage() {
                     </td>
                     <td title={item.uploader}>{item.uploader}</td>
                     <td title={safeValue(item.note)}>{safeValue(item.note)}</td>
-                    <td title={item.errorReason || getSummaryText(item)}>{getSummaryText(item)}</td>
+                    <td title={item.errorReason || getSummaryText(item)}>
+                      <div>{getSummaryText(item)}</div>
+                      {(item.status === "running" || item.status === "pending") && item.executableRows > 0 ? (
+                        <div className="progress-track faq-queue-inline-progress">
+                          <div className="progress-fill" style={{ width: `${itemProgress.percent}%` }} />
+                        </div>
+                      ) : null}
+                    </td>
                     <td title={String(item.totalTokensSum)}>{item.totalTokensSum}</td>
                     <td title={formatUsd(item.estimatedCostUsdSum)}>{formatUsd(item.estimatedCostUsdSum)}</td>
                     <td title={formatDuration(item.startedAt || item.createdAt, item.finishedAt)}>
