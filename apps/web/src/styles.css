@@ -3846,9 +3846,10 @@ pre {
 
 .history-legend-label span {
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
 }
 
 .history-bar-list {
@@ -3858,7 +3859,7 @@ pre {
 
 .history-bar-row {
   display: grid;
-  grid-template-columns: minmax(0, 180px) minmax(0, 1fr) 48px;
+  grid-template-columns: minmax(0, 260px) minmax(0, 1fr) 48px;
   gap: 10px;
   align-items: center;
 }
@@ -3872,9 +3873,10 @@ pre {
 .history-bar-copy strong,
 .history-bar-copy span {
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
 }
 
 .history-bar-copy strong {
