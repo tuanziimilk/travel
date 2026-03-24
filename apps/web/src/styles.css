@@ -1212,6 +1212,7 @@ button {
 }
 
 .job-status-pill.status-running,
+.job-status-pill.status-queued,
 .job-status-pill.status-pending {
   background: var(--blue);
   color: var(--white);
@@ -3441,6 +3442,7 @@ pre {
 }
 
 .status-light.status-pending .status-light-dot,
+.status-light.status-queued .status-light-dot,
 .status-light.status-running .status-light-dot {
   background: #0e6bff;
   box-shadow: 0 0 0 4px rgba(14, 107, 255, 0.14);

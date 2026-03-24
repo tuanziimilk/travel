@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import * as XLSX from "xlsx";
 import { db } from "../db/client";
 import { contentGenerationJobs } from "../db/schema";
@@ -249,7 +249,7 @@ export async function createGenerationJob(input: {
     note: input.note,
     inputFileName: input.inputFileName,
     inputFileBase64: input.inputFileBase64,
-    status: "running",
+    status: "queued",
     startedAt: new Date(),
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -257,6 +257,31 @@ export async function createGenerationJob(input: {
   });
 
   return { jobId: id };
+}
+
+export async function markGenerationJobQueued(jobId: string) {
+  await db
+    .update(contentGenerationJobs)
+    .set({
+      status: "queued",
+      errorReason: null,
+      totalRows: 0,
+      executableRows: 0,
+      successRows: 0,
+      failedRows: 0,
+      skippedRows: 0,
+      promptTokensSum: 0,
+      completionTokensSum: 0,
+      totalTokensSum: 0,
+      estimatedCostUsdSum: "0",
+      aiModel: "",
+      resultFileName: "",
+      resultFileBase64: null,
+      routeSummaryJson: null,
+      rowResultsJson: null,
+      finishedAt: null,
+    })
+    .where(eq(contentGenerationJobs.id, jobId));
 }
 
 export async function markGenerationJobRunning(jobId: string) {
@@ -283,6 +308,31 @@ export async function markGenerationJobRunning(jobId: string) {
       finishedAt: null,
     })
     .where(eq(contentGenerationJobs.id, jobId));
+}
+
+export async function listQueuedGenerationJobs(scType = "faq") {
+  return db
+    .select()
+    .from(contentGenerationJobs)
+    .where(and(eq(contentGenerationJobs.scType, scType), eq(contentGenerationJobs.status, "queued")))
+    .orderBy(contentGenerationJobs.createdAt);
+}
+
+export async function recoverInterruptedGenerationJobs(scType = "faq") {
+  await db
+    .update(contentGenerationJobs)
+    .set({
+      status: "queued",
+      errorReason: null,
+      finishedAt: null,
+    })
+    .where(
+      and(
+        eq(contentGenerationJobs.scType, scType),
+        eq(contentGenerationJobs.status, "running"),
+        isNull(contentGenerationJobs.finishedAt),
+      ),
+    );
 }
 
 export async function completeGenerationJob(input: {

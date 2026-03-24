@@ -14,7 +14,10 @@ import {
   createGenerationJob,
   failGenerationJob,
   getGenerationJobForRetry,
+  listQueuedGenerationJobs,
+  markGenerationJobQueued,
   markGenerationJobRunning,
+  recoverInterruptedGenerationJobs,
   updateGenerationJobProgress,
 } from "./faqOutputJobStore";
 
@@ -406,6 +409,73 @@ async function runWithConcurrency<TInput, TResult>(
   return results;
 }
 
+type QueuedGenerationJobInput = {
+  scType: ScType;
+  uploader: Uploader;
+  note?: string;
+  fileName: string;
+  fileBase64: string;
+};
+
+const activeGenerationJobs = new Set<string>();
+const generationJobInputs = new Map<string, QueuedGenerationJobInput>();
+let generationSchedulerBootstrapped = false;
+let generationSchedulerRun = Promise.resolve();
+
+function triggerGenerationScheduler() {
+  generationSchedulerRun = generationSchedulerRun
+    .then(() => processGenerationQueue())
+    .catch((error) => {
+      console.error("generation queue scheduler failed", error);
+    });
+  return generationSchedulerRun;
+}
+
+async function bootstrapGenerationQueue() {
+  if (generationSchedulerBootstrapped) return;
+  generationSchedulerBootstrapped = true;
+  await recoverInterruptedGenerationJobs("faq");
+}
+
+async function processGenerationQueue() {
+  await bootstrapGenerationQueue();
+
+  while (activeGenerationJobs.size < env.faqOutputJobConcurrency) {
+    const queuedJobs = await listQueuedGenerationJobs("faq");
+    const nextJob = queuedJobs.find((item) => !activeGenerationJobs.has(item.id));
+    if (!nextJob) return;
+
+    const queuedInput =
+      generationJobInputs.get(nextJob.id) ||
+      (nextJob.inputFileBase64
+        ? {
+            scType: nextJob.scType as ScType,
+            uploader: nextJob.uploader as Uploader,
+            note: nextJob.note,
+            fileName: nextJob.inputFileName,
+            fileBase64: nextJob.inputFileBase64,
+          }
+        : null);
+    if (!queuedInput?.fileBase64) return;
+
+    activeGenerationJobs.add(nextJob.id);
+    void runQueuedGenerationJob(nextJob.id, queuedInput);
+  }
+}
+
+async function runQueuedGenerationJob(jobId: string, input: QueuedGenerationJobInput) {
+  try {
+    await markGenerationJobRunning(jobId);
+    await executeFaqOutputGeneration(jobId, input);
+  } catch (error) {
+    await failGenerationJob(jobId, error instanceof Error ? error.message : String(error));
+  } finally {
+    activeGenerationJobs.delete(jobId);
+    generationJobInputs.delete(jobId);
+    void triggerGenerationScheduler();
+  }
+}
+
 async function executeFaqOutputGeneration(
   jobId: string,
   input: {
@@ -666,9 +736,8 @@ export async function startFaqOutputGeneration(input: {
     inputFileBase64: input.fileBase64,
   });
 
-  void executeFaqOutputGeneration(jobId, input).catch(async (error) => {
-    await failGenerationJob(jobId, error instanceof Error ? error.message : String(error));
-  });
+  generationJobInputs.set(jobId, input);
+  void triggerGenerationScheduler();
 
   return { jobId };
 }
@@ -677,17 +746,19 @@ export async function retryFaqOutputGeneration(jobId: string) {
   const job = await getGenerationJobForRetry(jobId);
   if (!job.inputFileBase64) throw new Error("该任务缺少原始输入文件，无法重试。");
 
-  await markGenerationJobRunning(jobId);
-
-  void executeFaqOutputGeneration(jobId, {
+  const retryInput = {
     scType: job.scType as ScType,
     uploader: job.uploader as Uploader,
     note: job.note,
     fileName: job.inputFileName,
     fileBase64: job.inputFileBase64,
-  }).catch(async (error) => {
-    await failGenerationJob(jobId, error instanceof Error ? error.message : String(error));
-  });
+  };
+
+  await markGenerationJobQueued(jobId);
+  generationJobInputs.set(jobId, retryInput);
+  void triggerGenerationScheduler();
 
   return { jobId };
 }
+
+void triggerGenerationScheduler();

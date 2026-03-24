@@ -39,6 +39,7 @@ const faqOutputTemplateCsv = [
 ].join("\n");
 
 const queueStatusText: Record<string, string> = {
+  queued: "排队中",
   pending: "排队中",
   running: "执行中",
   done: "已完成",
@@ -384,7 +385,7 @@ export function FaqOutputPage() {
         fileBase64,
       });
       setCurrentJobId(data.jobId);
-      setResultNotice(`任务已创建，正在后台执行，任务 ID：${data.jobId}`);
+      setResultNotice(`任务已创建，已进入队列，任务 ID：${data.jobId}`);
       setQueuePage(1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "FAQ 输出生成失败");
@@ -627,7 +628,7 @@ export function FaqOutputPage() {
                     <td title={safeValue(item.note)}>{safeValue(item.note)}</td>
                     <td title={item.errorReason || getCompactSummaryText(item)}>
                       <div>{getCompactSummaryText(item)}</div>
-                      {(item.status === "running" || item.status === "pending") && item.executableRows > 0 ? (
+                      {(item.status === "running" || item.status === "pending" || item.status === "queued") && item.executableRows > 0 ? (
                         <div className="progress-track faq-queue-inline-progress">
                           <div className="progress-fill" style={{ width: `${itemProgress.percent}%` }} />
                         </div>

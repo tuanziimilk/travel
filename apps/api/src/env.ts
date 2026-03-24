@@ -103,6 +103,7 @@ export const env = {
   ingestFinalRetryPasses: Math.max(0, Number(process.env.INGEST_FINAL_RETRY_PASSES || 1)),
   ingestFinalRetryConcurrency: Math.max(1, Number(process.env.INGEST_FINAL_RETRY_CONCURRENCY || 4)),
   ingestJobStallMs: Math.max(60_000, Number(process.env.INGEST_JOB_STALL_MS || 1_200_000)),
+  faqOutputJobConcurrency: Math.max(1, Number(process.env.FAQ_OUTPUT_JOB_CONCURRENCY || 2)),
   aiHttpMaxRetries: Math.max(0, Number(process.env.AI_HTTP_MAX_RETRIES || 2)),
   aiHttpRetryBaseMs: Math.max(100, Number(process.env.AI_HTTP_RETRY_BASE_MS || 500)),
   aiHttpRetryMaxMs: Math.max(500, Number(process.env.AI_HTTP_RETRY_MAX_MS || 5000)),
