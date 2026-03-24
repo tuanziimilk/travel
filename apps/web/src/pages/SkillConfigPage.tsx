@@ -1,4 +1,4 @@
-import * as Select from "@radix-ui/react-select";
+﻿import * as Select from "@radix-ui/react-select";
 import { useEffect, useMemo, useState } from "react";
 import { capabilityOptions, uploaderOptions, type Capability, type ModuleId, type ScType } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
@@ -280,7 +280,6 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
       ? "影响范围：当前 FAQ 输出路由的覆盖内容与历史版本。"
       : "影响范围：仅当前路由配置。";
 
-  const latestHistory = historyQuery.data?.[0];
   const currentContent = routeDocumentQuery.data?.skillMd?.trim() || "";
   const draftContent = editor.trim();
   const isUnchanged = Boolean(currentContent && draftContent === currentContent);
@@ -465,11 +464,33 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
               <strong>当前 skill key：{selectedRoute?.defaultSkillKey || "-"}</strong>
               <span>文档来源：{currentSourceLabel}</span>
               <p>{routeDocumentQuery.data?.message || "当前路由下还没有可直接查看的生效 SKILL.md 内容。"}</p>
-              {latestHistory ? (
-                <p className="skill-history-latest">
-                  最近修改：V{latestHistory.versionNo} / {latestHistory.editor} / {formatChinaDateTime(latestHistory.createdAt)}
-                </p>
-              ) : null}
+            </div>
+
+            <div className="field">
+              <label className="skill-block-label">上传 SKILL.md</label>
+              <label className="skill-upload-dropzone">
+                <span className="skill-upload-action">选择文件</span>
+                <span className="skill-upload-name">{uploadedSkillFileName || "未选择任何文件"}</span>
+                <input className="skill-upload-input" type="file" accept=".md,.txt" onChange={(event) => void handleSkillFile(event.target.files?.[0] || null)} />
+              </label>
+            </div>
+
+            {!isLiveQualityRoute ? (
+              <label className="skill-overwrite-row skill-overwrite-row-panel">
+                <input type="checkbox" checked={overwrite} onChange={(event) => setOverwrite(event.target.checked)} />
+                <span>覆盖当前路由 skill</span>
+              </label>
+            ) : null}
+
+            <div className="field">
+              <label className="skill-block-label">{isLiveQualityRoute ? "线上生效中的 Skill 内容" : "Skill 内容"}</label>
+              <textarea
+                className="skill-editor-textarea"
+                value={editor}
+                onChange={(event) => setEditor(event.target.value)}
+                placeholder="可直接粘贴 SKILL.md，或通过上方上传文件导入。"
+              />
+              {isUnchanged ? <p className="muted">当前草稿与线上生效内容一致；如继续保存，仍会生成一条历史版本。</p> : null}
             </div>
 
             <div className="skill-edit-meta-grid">
@@ -504,33 +525,6 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
               </div>
             </div>
 
-            <div className="field">
-              <label className="skill-block-label">上传 SKILL.md</label>
-              <label className="skill-upload-dropzone">
-                <span className="skill-upload-action">选择文件</span>
-                <span className="skill-upload-name">{uploadedSkillFileName || "未选择任何文件"}</span>
-                <input className="skill-upload-input" type="file" accept=".md,.txt" onChange={(event) => void handleSkillFile(event.target.files?.[0] || null)} />
-              </label>
-            </div>
-
-            {!isLiveQualityRoute ? (
-              <label className="skill-overwrite-row skill-overwrite-row-panel">
-                <input type="checkbox" checked={overwrite} onChange={(event) => setOverwrite(event.target.checked)} />
-                <span>覆盖当前路由 skill</span>
-              </label>
-            ) : null}
-
-            <div className="field">
-              <label className="skill-block-label">{isLiveQualityRoute ? "线上生效中的 Skill 内容" : "Skill 内容"}</label>
-              <textarea
-                className="skill-editor-textarea"
-                value={editor}
-                onChange={(event) => setEditor(event.target.value)}
-                placeholder="可直接粘贴 SKILL.md，或通过上方上传文件导入。"
-              />
-              {isUnchanged ? <p className="muted">当前草稿与线上生效内容一致；如继续保存，仍会生成一条历史版本。</p> : null}
-            </div>
-
             <div className="upload-actions skill-detail-actions">
               <button className="btn-ghost" type="button" onClick={() => void refreshSkillState()}>
                 刷新
@@ -540,60 +534,45 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
               </button>
             </div>
 
-            {selectedRoute?.notes ? <p className="muted">备注：{selectedRoute.notes}</p> : null}
             {saveRouteMutation.error ? <p className="error-text">{saveRouteMutation.error.message}</p> : null}
             {saveModuleMutation.error ? <p className="error-text">{saveModuleMutation.error.message}</p> : null}
             {rollbackMutation.error ? <p className="error-text">{rollbackMutation.error.message}</p> : null}
-            {saveRouteMutation.isSuccess || saveModuleMutation.isSuccess ? <p className="output-success-text">保存成功</p> : null}
-            {rollbackMutation.isSuccess ? <p className="output-success-text">回退成功</p> : null}
 
             <div className="skill-history-panel">
               <div className="skill-history-head">
                 <h4>历史版本</h4>
-                <span>{historyQuery.data?.length || 0} 条</span>
+                <span className="skill-history-count">共 {historyQuery.data?.length || 0} 条</span>
               </div>
-              <div className="table-scroll">
-                <table className="skill-history-table">
-                  <thead>
-                    <tr>
-                      <th>版本</th>
-                      <th>时间</th>
-                      <th>修改人</th>
-                      <th>动作</th>
-                      <th>备注</th>
-                      <th>操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(historyQuery.data || []).map((item) => (
-                      <tr key={item.id}>
-                        <td>V{item.versionNo}</td>
-                        <td>{formatChinaDateTime(item.createdAt)}</td>
-                        <td>{item.editor}</td>
-                        <td>{actionTypeLabelMap[item.actionType] || item.actionType}</td>
-                        <td title={item.changeNote}>{item.changeNote}</td>
-                        <td className="skill-history-actions">
-                          <button className="btn-ghost" type="button" onClick={() => setActiveHistoryVersionId(item.id)}>
+              <div className="skill-version-list">
+                {(historyQuery.data || []).map((item, index) => {
+                  const rollbackDisabled = !editorName.trim() || !changeNote.trim() || rollbackMutation.isPending;
+                  return (
+                    <div className="skill-version-card" key={item.id}>
+                      <div className="skill-version-header-row">
+                        <div className="skill-version-top-row">
+                          <span className={`skill-history-version-pill${index > 0 ? " is-muted" : ""}`}>V{item.versionNo}</span>
+                          <span className="skill-version-author">{item.editor}</span>
+                        </div>
+                        <div className="skill-version-actions">
+                          <button className="btn-micro" type="button" onClick={() => setActiveHistoryVersionId(item.id)}>
                             查看
                           </button>
                           <button
-                            className="btn-ghost"
+                            className="btn-micro"
                             type="button"
-                            disabled={!editorName.trim() || !changeNote.trim() || rollbackMutation.isPending}
+                            disabled={rollbackDisabled}
                             onClick={() => void onRollback(item.id, item.versionNo)}
                           >
                             回退
                           </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {!historyQuery.isLoading && !historyQuery.data?.length ? (
-                      <tr>
-                        <td colSpan={6}>当前 skill 暂无历史版本。</td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
+                        </div>
+                      </div>
+                      <div className="skill-version-time">{formatChinaDateTime(item.createdAt)}</div>
+                      {item.changeNote ? <div className="skill-version-remark" title={item.changeNote}>{item.changeNote}</div> : null}
+                    </div>
+                  );
+                })}
+                {!historyQuery.isLoading && !historyQuery.data?.length ? <div className="skill-history-empty">当前 skill 暂无历史版本。</div> : null}
               </div>
             </div>
           </div>
@@ -611,24 +590,22 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
             </div>
 
             <div className="skill-history-compare-grid">
-              <div className="skill-history-compare-col">
-                <div className="skill-history-compare-head">历史版本</div>
-                <div className="skill-history-version-meta">
-                  <span>版本：V{historyDetailQuery.data?.versionNo || "-"}</span>
-                  <span>修改人：{historyDetailQuery.data?.editor || "-"}</span>
-                  <span>时间：{formatChinaDateTime(historyDetailQuery.data?.createdAt)}</span>
-                  <span>备注：{historyDetailQuery.data?.changeNote || "-"}</span>
-                </div>
-                <textarea className="skill-history-textarea" readOnly value={historyDetailQuery.data?.skillMd || ""} />
+              <div className="skill-history-compare-head skill-history-compare-head-history">历史版本</div>
+              <div className="skill-history-compare-head skill-history-compare-head-current">当前生效内容</div>
+
+              <div className="skill-history-version-meta skill-history-version-meta-history">
+                <span>版本：V{historyDetailQuery.data?.versionNo || "-"}</span>
+                <span>修改人：{historyDetailQuery.data?.editor || "-"}</span>
+                <span>时间：{formatChinaDateTime(historyDetailQuery.data?.createdAt)}</span>
+                <span>备注：{historyDetailQuery.data?.changeNote || "-"}</span>
               </div>
-              <div className="skill-history-compare-col">
-                <div className="skill-history-compare-head">当前生效内容</div>
-                <div className="skill-history-version-meta">
-                  <span>来源：{currentSourceLabel}</span>
-                  <span>当前路由：{selectedRoute?.defaultSkillKey || "-"}</span>
-                </div>
-                <textarea className="skill-history-textarea" readOnly value={routeDocumentQuery.data?.skillMd || ""} />
+              <div className="skill-history-version-meta skill-history-version-meta-current">
+                <span>来源：{currentSourceLabel}</span>
+                <span>当前路由：{selectedRoute?.defaultSkillKey || "-"}</span>
               </div>
+
+              <textarea className="skill-history-textarea" readOnly value={historyDetailQuery.data?.skillMd || ""} />
+              <textarea className="skill-history-textarea" readOnly value={routeDocumentQuery.data?.skillMd || ""} />
             </div>
           </div>
         </div>
