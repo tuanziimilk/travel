@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { Capability, ModuleId, ScType } from "@about-demo/trpc";
-import { formatChinaDateTimeLabel } from "../utils/time";
+import { formatChinaDateTimeLabel, formatChinaIsoOffset } from "../utils/time";
 import { resolveSkillRoot } from "./skillPath";
 import { getModuleSkillMd, readModuleSkillFile, saveModuleSkillMd } from "./skillStore";
 import { listVersionedSkillHistory, rollbackSkillVersion, saveVersionedSkill } from "./skillVersionService";
@@ -438,7 +438,7 @@ export async function listSkillHistory(input: { capability: Capability; scType: 
     editor: row.editor,
     changeNote: row.changeNote,
     sourceSnapshot: row.sourceSnapshot,
-    createdAt: row.createdAt,
+    createdAt: formatChinaIsoOffset(row.createdAt),
     summary: row.skillMd.split(/\r?\n/).find((line) => line.trim())?.slice(0, 120) || "",
   }));
 }
@@ -447,7 +447,10 @@ export async function getSkillHistoryDetail(input: { versionId: string }) {
   const { getSkillVersionDetail } = await import("./skillVersionStore");
   const row = await getSkillVersionDetail(input.versionId);
   if (!row) throw new Error("未找到指定历史版本");
-  return row;
+  return {
+    ...row,
+    createdAt: formatChinaIsoOffset(row.createdAt),
+  };
 }
 
 export async function rollbackSkillHistory(input: {

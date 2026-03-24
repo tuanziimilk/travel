@@ -27,6 +27,12 @@ export function formatChinaDateTime(value?: string | Date | null) {
   return `${pick("year")}-${pick("month")}-${pick("day")} ${pick("hour")}:${pick("minute")}:${pick("second")}`;
 }
 
+export function formatChinaIsoOffset(value?: string | Date | null) {
+  const formatted = formatChinaDateTime(value);
+  if (!formatted) return "";
+  return `${formatted.replace(" ", "T")}${CHINA_UTC_OFFSET}`;
+}
+
 export function formatChinaDateTimeLabel(value?: string | Date | null) {
   const formatted = formatChinaDateTime(value);
   return formatted ? `${formatted} (UTC+8)` : "";

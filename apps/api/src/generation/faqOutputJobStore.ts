@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import * as XLSX from "xlsx";
 import { db } from "../db/client";
 import { contentGenerationJobs } from "../db/schema";
-import { formatChinaDateTime } from "../utils/time";
+import { formatChinaDateTime, formatChinaIsoOffset } from "../utils/time";
 
 type RouteSummaryRow = {
   factType: string;
@@ -453,9 +453,9 @@ export async function listGenerationJobs(page: number, pageSize: number, scType 
       aiModel: row.aiModel,
       errorReason: row.errorReason || "",
       resultFileName: row.resultFileName,
-      createdAt: row.createdAt,
-      startedAt: row.startedAt,
-      finishedAt: row.finishedAt,
+      createdAt: formatChinaIsoOffset(row.createdAt),
+      startedAt: formatChinaIsoOffset(row.startedAt),
+      finishedAt: formatChinaIsoOffset(row.finishedAt),
       routeSummary: (row.routeSummaryJson as RouteSummaryRow[] | null) || [],
     })),
   };
@@ -508,9 +508,9 @@ export async function getGenerationJobStatus(jobId: string) {
     estimatedCostUsdSum: Number(row.estimatedCostUsdSum || 0),
     aiModel: row.aiModel,
     errorReason: row.errorReason || "",
-    createdAt: row.createdAt,
-    startedAt: row.startedAt,
-    finishedAt: row.finishedAt,
+    createdAt: formatChinaIsoOffset(row.createdAt),
+    startedAt: formatChinaIsoOffset(row.startedAt),
+    finishedAt: formatChinaIsoOffset(row.finishedAt),
     routeSummary: (row.routeSummaryJson as RouteSummaryRow[] | null) || [],
   };
 }
@@ -606,7 +606,12 @@ export async function listGenerationHistoryRows(input: HistoryFilters) {
 
   return {
     total: filteredRows.length,
-    rows: sliced,
+    rows: sliced.map((row) => ({
+      ...row,
+      createdAt: formatChinaIsoOffset(row.createdAt),
+      startedAt: formatChinaIsoOffset(row.startedAt),
+      finishedAt: formatChinaIsoOffset(row.finishedAt),
+    })),
   };
 }
 
