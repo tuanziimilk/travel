@@ -3775,14 +3775,14 @@ pre {
 
 .history-donut-layout {
   display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
+  grid-template-columns: 152px minmax(0, 1fr);
   gap: 16px;
   align-items: center;
 }
 
 .history-donut {
-  width: 180px;
-  height: 180px;
+  width: 152px;
+  height: 152px;
   border-radius: 999px;
   border: 3px solid var(--black);
   display: grid;
@@ -3792,8 +3792,8 @@ pre {
 }
 
 .history-donut-inner {
-  width: 104px;
-  height: 104px;
+  width: 88px;
+  height: 88px;
   border-radius: 999px;
   border: 3px solid var(--black);
   background: #fff;
@@ -3804,12 +3804,12 @@ pre {
 }
 
 .history-donut-inner strong {
-  font-size: 24px;
+  font-size: 22px;
   line-height: 1;
 }
 
 .history-donut-inner span {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 900;
   color: #666;
 }
@@ -3822,10 +3822,10 @@ pre {
 
 .history-legend-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 52px 56px;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) 40px 44px;
+  gap: 8px;
   align-items: center;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
   padding: 4px 0;
 }
@@ -3846,10 +3846,9 @@ pre {
 
 .history-legend-label span {
   min-width: 0;
-  white-space: normal;
-  overflow: visible;
-  text-overflow: clip;
-  word-break: break-word;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .history-bar-list {
