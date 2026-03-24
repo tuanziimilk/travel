@@ -162,6 +162,17 @@ function getExecutionProgress(item: {
   return { processedRows, percent };
 }
 
+function getCompactSummaryText(item: {
+  executableRows: number;
+  totalRows: number;
+  successRows: number;
+  failedRows: number;
+  skippedRows: number;
+}) {
+  const { processedRows, percent } = getExecutionProgress(item);
+  return `${processedRows}/${item.executableRows} (${percent}%), total ${item.totalRows}, skipped ${item.skippedRows}`;
+}
+
 function safeValue(value: string | null | undefined) {
   return value && value.trim() ? value : "-";
 }
@@ -588,8 +599,8 @@ export function FaqOutputPage() {
                     </td>
                     <td title={item.uploader}>{item.uploader}</td>
                     <td title={safeValue(item.note)}>{safeValue(item.note)}</td>
-                    <td title={item.errorReason || getSummaryText(item)}>
-                      <div>{getSummaryText(item)}</div>
+                    <td title={item.errorReason || getCompactSummaryText(item)}>
+                      <div>{getCompactSummaryText(item)}</div>
                       {(item.status === "running" || item.status === "pending") && item.executableRows > 0 ? (
                         <div className="progress-track faq-queue-inline-progress">
                           <div className="progress-fill" style={{ width: `${itemProgress.percent}%` }} />
