@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { moduleSchema, type ModuleId } from "@about-demo/trpc";
 import { env } from "../env";
 import { resolveSkillRoot } from "./skillPath";
@@ -8,6 +8,10 @@ function resolveSkillPath(moduleId: ModuleId) {
   if (moduleId === "about") return join(resolveSkillRoot(env.aboutSkillPath), "SKILL.md");
   if (moduleId === "faq") return join(resolveSkillRoot(env.faqSkillPath), "SKILL.md");
   return join(resolveSkillRoot(env.aboutSkillPath), "SKILL.md");
+}
+
+function getParentDir(filePath: string) {
+  return filePath.replace(/[\\/][^\\/]+$/, "");
 }
 
 export async function readModuleSkillFile(moduleId: ModuleId) {
@@ -38,7 +42,7 @@ export async function getModuleSkillMd(moduleIdRaw: string) {
 export async function saveModuleSkillMd(moduleIdRaw: string, skillMd: string) {
   const moduleId = moduleSchema.parse(moduleIdRaw);
   const filePath = resolveSkillPath(moduleId);
-  await mkdir(dirname(filePath), { recursive: true });
+  await mkdir(getParentDir(filePath), { recursive: true });
   await writeFile(filePath, skillMd, "utf8");
   return { ok: true, moduleId, source: "file" as const, updatedAt: new Date().toISOString() };
 }

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import type { Capability, ModuleId, ScType } from "@about-demo/trpc";
 import { resolveSkillRoot } from "./skillPath";
 import { getModuleSkillMd, readModuleSkillFile, saveModuleSkillMd } from "./skillStore";
@@ -182,6 +182,10 @@ function resolveRouteOverridePath(capability: Capability, scType: ScType, subcla
   const normalizedSubclass = normalizeSubclass(subclass) || "__default__";
   const slug = normalizedSubclass.replaceAll("/", "-").replace(/\s+/g, "-");
   return resolve(process.cwd(), ".runtime", "skill-overrides", capability, scType, slug, "SKILL.md");
+}
+
+function getParentDir(filePath: string) {
+  return filePath.replace(/[\\/][^\\/]+$/, "");
 }
 
 function readRouteOverride(capability: Capability, scType: ScType, subclass?: string): SkillOverrideRecord | null {
@@ -375,7 +379,7 @@ export async function saveSkillRouteOverride(input: {
     throw new Error("Skill route override already exists, please enable overwrite and save again.");
   }
 
-  mkdirSync(dirname(filePath), { recursive: true });
+  mkdirSync(getParentDir(filePath), { recursive: true });
   writeFileSync(filePath, input.skillMd, "utf8");
   return { ok: true, routeId, updatedAt: new Date().toISOString() };
 }
