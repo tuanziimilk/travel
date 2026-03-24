@@ -63,6 +63,11 @@ export const outputModeOptions = ["full", "compact"] as const;
 export const outputModeSchema = z.enum(outputModeOptions);
 export type OutputMode = z.infer<typeof outputModeSchema>;
 
+export const qualityBatchUploadMaxFileBytes = 12 * 1024 * 1024;
+export const qualityBatchUploadMaxRows = 2000;
+export const faqOutputUploadMaxFileBytes = 12 * 1024 * 1024;
+export const faqOutputUploadMaxRows = 3000;
+
 export const aiModelOptions = [
   "gpt-5.2",
   "gpt-5.1",

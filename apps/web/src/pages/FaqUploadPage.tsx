@@ -1,6 +1,6 @@
 import * as Select from "@radix-ui/react-select";
 import { useMemo, useState } from "react";
-import { uploaderOptions } from "@about-demo/trpc";
+import { qualityBatchUploadMaxFileBytes, qualityBatchUploadMaxRows, uploaderOptions } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
 
 const faqUploadDemoCsv = [
@@ -46,12 +46,15 @@ function formatJobId(jobId?: string | null) {
   return `${value.slice(0, 8)}***${value.slice(-6)}`;
 }
 
+const uploadLimitMb = Math.round(qualityBatchUploadMaxFileBytes / 1024 / 1024);
+
 export function FaqUploadPage() {
   const utils = trpc.useUtils();
   const [uploader, setUploader] = useState<(typeof uploaderOptions)[number]>("Ella");
   const [note, setNote] = useState("");
   const [outputMode, setOutputMode] = useState<"full" | "compact">("full");
   const [file, setFile] = useState<File | null>(null);
+  const [fileGuardError, setFileGuardError] = useState("");
   const [batchId, setBatchId] = useState("");
   const [jobId, setJobId] = useState("");
   const [queuePage, setQueuePage] = useState(1);
@@ -112,6 +115,10 @@ export function FaqUploadPage() {
 
   async function runUpload() {
     if (!file) return;
+    if (file.size > qualityBatchUploadMaxFileBytes) {
+      setFileGuardError(`上传文件不能超过 ${uploadLimitMb}MB。`);
+      return;
+    }
     const created = await createBatch.mutateAsync({ moduleId: "faq", uploader, note, source: "upload", outputMode });
     setBatchId(created.batchId);
     const fileBase64 = await toBase64(file);
@@ -160,6 +167,21 @@ export function FaqUploadPage() {
     URL.revokeObjectURL(url);
   }
 
+  function handleFileChange(nextFile: File | null) {
+    if (!nextFile) {
+      setFile(null);
+      setFileGuardError("");
+      return;
+    }
+    if (nextFile.size > qualityBatchUploadMaxFileBytes) {
+      setFile(null);
+      setFileGuardError(`上传文件不能超过 ${uploadLimitMb}MB。`);
+      return;
+    }
+    setFile(nextFile);
+    setFileGuardError("");
+  }
+
   return (
     <div className="faq-panel">
       <div className="section-header">
@@ -196,7 +218,11 @@ export function FaqUploadPage() {
 
           <div className="field">
             <label>上传文件（.csv / .xlsx）</label>
-            <input type="file" accept=".csv,.xlsx" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+            <input type="file" accept=".csv,.xlsx" onChange={(event) => handleFileChange(event.target.files?.[0] || null)} />
+            <div className="upload-limit-banner" role="note">
+              <span className="upload-limit-banner-kicker">上传上限</span>
+              <p>建议不超过 {uploadLimitMb}MB / 约 {qualityBatchUploadMaxRows} 条，超过将直接拦截。</p>
+            </div>
           </div>
 
           <div className="field field-emphasis">
@@ -232,11 +258,17 @@ export function FaqUploadPage() {
               className="btn-primary faq-action-btn"
               type="button"
               onClick={runUpload}
-              disabled={!file || createBatch.isPending || startIngest.isPending}
+              disabled={!file || Boolean(fileGuardError) || createBatch.isPending || startIngest.isPending}
             >
               {createBatch.isPending || startIngest.isPending ? "处理中..." : "开始上传并评分"}
             </button>
           </div>
+
+          {fileGuardError && (
+            <div className="field">
+              <p className="error-text" style={{ margin: 0 }}>{fileGuardError}</p>
+            </div>
+          )}
 
           {startIngest.error && (
             <div className="field">
@@ -292,65 +324,65 @@ export function FaqUploadPage() {
 
       <div className="card faq-card" style={{ marginTop: 16 }}>
         <h3>FAQ 历史任务队列</h3>
-        <table className="history-table queue-table faq-queue-table">
-          <thead>
-            <tr>
-              <th>任务 ID</th>
-              <th>状态</th>
-              <th>商家数</th>
-              <th>FAQ 进度</th>
-              <th>ETA</th>
-              <th>耗时</th>
-              <th>Token</th>
-              <th className="queue-col-reason">失败原因</th>
-              <th>费用</th>
-              <th>开始时间</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(queueQuery.data?.rows ?? []).map((item) => (
-              <tr key={item.id}>
-                <td title={item.id}>{formatJobId(item.id)}</td>
-                <td>{queueStatusText[item.status] ?? item.status}</td>
-                <td>{item.merchantTotal || 0}</td>
-                <td>
-                  {item.doneRows}/{item.totalRows}
-                  {item.totalRows > 0 ? `（${Math.round((item.doneRows / item.totalRows) * 100)}%）` : ""}
-                  {item.failedRows > 0 ? `，失败 ${item.failedRows}` : ""}
-                </td>
-                <td>{formatEta(item.etaSeconds)}</td>
-                <td>{formatDuration(item.elapsedMs)}</td>
-                <td>{item.totalTokensSum}</td>
-                <td
-                  className="queue-reason-cell"
-                  title={item.errorReason || (item.failedRows > 0 ? "存在失败 FAQ，请下载结果查看失败原因列" : "")}
-                >
-                  {item.errorReason || (item.failedRows > 0 ? "存在失败 FAQ，请查看导出文件" : "-")}
-                </td>
-                <td>{formatUsd(item.estimatedCostUsdSum)}</td>
-                <td>{new Date(item.startedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}</td>
-                <td className="queue-action-cell">
-                  {item.status === "running" || item.status === "pending" ? (
-                    <button className="btn-ghost faq-queue-action-btn" type="button" onClick={() => void cancelJob(item.id)}>
-                      取消
-                    </button>
-                  ) : item.status === "done" || item.status === "failed" || item.status === "cancelled" ? (
-                    <button className="btn-ghost faq-queue-action-btn" type="button" onClick={() => void downloadBatchXlsx(item.batchId)}>
-                      下载
-                    </button>
-                  ) : (
-                    <span className="muted">-</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {(queueQuery.data?.rows?.length ?? 0) === 0 && (
+        <table className="history-table queue-table faq-queue-table faq-upload-queue-table">
+            <thead>
               <tr>
-                <td colSpan={11}>暂无任务</td>
+                <th>任务 ID</th>
+                <th>状态</th>
+                <th>商家数</th>
+                <th>FAQ 进度</th>
+                <th>ETA</th>
+                <th>耗时</th>
+                <th>Token</th>
+                <th className="queue-col-reason">失败原因</th>
+                <th>费用</th>
+                <th>开始时间</th>
+                <th>操作</th>
               </tr>
-            )}
-          </tbody>
+            </thead>
+            <tbody>
+              {(queueQuery.data?.rows ?? []).map((item) => (
+                <tr key={item.id}>
+                  <td title={item.id}>{formatJobId(item.id)}</td>
+                  <td>{queueStatusText[item.status] ?? item.status}</td>
+                  <td>{item.merchantTotal || 0}</td>
+                  <td>
+                    {item.doneRows}/{item.totalRows}
+                    {item.totalRows > 0 ? `（${Math.round((item.doneRows / item.totalRows) * 100)}%）` : ""}
+                    {item.failedRows > 0 ? `，失败 ${item.failedRows}` : ""}
+                  </td>
+                  <td>{formatEta(item.etaSeconds)}</td>
+                  <td>{formatDuration(item.elapsedMs)}</td>
+                  <td>{item.totalTokensSum}</td>
+                  <td
+                    className="queue-reason-cell"
+                    title={item.errorReason || (item.failedRows > 0 ? "存在失败 FAQ，请下载结果查看失败原因列" : "")}
+                  >
+                    {item.errorReason || (item.failedRows > 0 ? "存在失败 FAQ，请查看导出文件" : "-")}
+                  </td>
+                  <td>{formatUsd(item.estimatedCostUsdSum)}</td>
+                  <td>{new Date(item.startedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}</td>
+                  <td className="queue-action-cell">
+                    {item.status === "running" || item.status === "pending" ? (
+                      <button className="btn-ghost faq-queue-action-btn" type="button" onClick={() => void cancelJob(item.id)}>
+                        取消
+                      </button>
+                    ) : item.status === "done" || item.status === "failed" || item.status === "cancelled" ? (
+                      <button className="btn-ghost faq-queue-action-btn" type="button" onClick={() => void downloadBatchXlsx(item.batchId)}>
+                        下载
+                      </button>
+                    ) : (
+                      <span className="muted">-</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {(queueQuery.data?.rows?.length ?? 0) === 0 && (
+                <tr>
+                  <td colSpan={11}>暂无任务</td>
+                </tr>
+              )}
+            </tbody>
         </table>
 
         <div className="upload-actions" style={{ marginTop: 16, justifyContent: "space-between" }}>

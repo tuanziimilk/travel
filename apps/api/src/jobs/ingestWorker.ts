@@ -2,7 +2,14 @@ import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import { ManualScoreInput, type OutputMode, ScoreOutput, uploaderSchema } from "@about-demo/trpc";
+import {
+  ManualScoreInput,
+  qualityBatchUploadMaxFileBytes,
+  qualityBatchUploadMaxRows,
+  type OutputMode,
+  ScoreOutput,
+  uploaderSchema,
+} from "@about-demo/trpc";
 import { db } from "../db/client";
 import { aboutScoreRows, ingestJobs, uploadBatches } from "../db/schema";
 import { makeId } from "../utils/id";
@@ -405,7 +412,14 @@ export async function startIngestJob(batchId: string, fileName: string, fileBase
   const batchRows = await db.select().from(uploadBatches).where(eq(uploadBatches.id, batchId));
   const moduleId = (batchRows[0]?.moduleId || "about") as "about" | "faq";
   const outputMode = (batchRows[0]?.outputMode || "full") as OutputMode;
+  const fileBytes = Buffer.from(fileBase64, "base64").length;
+  if (fileBytes > qualityBatchUploadMaxFileBytes) {
+    throw new Error(`上传文件过大，请控制在 ${Math.round(qualityBatchUploadMaxFileBytes / 1024 / 1024)}MB 以内后再试`);
+  }
   const rows = moduleId === "faq" ? parseFaqUploadFile(fileName, fileBase64) : parseUploadFile(fileName, fileBase64);
+  if (rows.length > qualityBatchUploadMaxRows) {
+    throw new Error(`单次最多上传 ${qualityBatchUploadMaxRows} 条任务，请拆分后再试`);
+  }
   const merchantTotal =
     moduleId === "faq"
       ? new Set(rows.map((row) => String(row.TermID || "").trim() || String(row.Domain || "").trim())).size

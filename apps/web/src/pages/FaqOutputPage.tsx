@@ -1,7 +1,7 @@
 import * as Select from "@radix-ui/react-select";
 import * as XLSX from "xlsx";
 import { useEffect, useMemo, useState } from "react";
-import { uploaderOptions } from "@about-demo/trpc";
+import { faqOutputUploadMaxFileBytes, faqOutputUploadMaxRows, uploaderOptions } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
 
 type ParsedFaqOutputRow = {
@@ -28,6 +28,8 @@ type RoutePreviewRow = {
   notes: string;
   status: string;
 };
+
+const faqOutputUploadLimitMb = Math.round(faqOutputUploadMaxFileBytes / 1024 / 1024);
 
 const faqOutputTemplateCsv = [
   "term_id,country,domain,term_name,fact_type,supported,status,discount_type,discount_value,currency,discount_details,url",
@@ -380,8 +382,13 @@ export function FaqOutputPage() {
         </div>
 
         <div className="output-upload-bar">
-          <div className="field" style={{ margin: 0 }}>
-            <label>上传 FAQ 输出源表</label>
+          <div className="field faq-output-upload-field" style={{ margin: 0 }}>
+            <div className="faq-output-upload-head">
+              <label>上传 FAQ 输出源表</label>
+              <button className="btn-ghost output-template-btn faq-poster-btn-small" type="button" onClick={downloadTemplate}>
+                下载模板
+              </button>
+            </div>
             <label className="output-dropzone faq-output-dropzone" htmlFor={uploadInputId} title={fileName || "点击或拖拽文件到此处上传"}>
               <span className="output-dropzone-copy">
                 <strong>{fileName || "点击或拖拽文件到此处上传"}</strong>
@@ -395,10 +402,11 @@ export function FaqOutputPage() {
               accept=".csv,.xlsx"
               onChange={(event) => void handleFileChange(event.target.files?.[0] || null)}
             />
+            <div className="upload-limit-banner" role="note">
+              <span className="upload-limit-banner-kicker">上传上限</span>
+              <p>建议不超过 {faqOutputUploadLimitMb}MB / 约 {faqOutputUploadMaxRows} 条，超过将直接拦截。</p>
+            </div>
           </div>
-          <button className="btn-ghost output-template-btn faq-poster-btn-small" type="button" onClick={downloadTemplate}>
-            下载模板
-          </button>
         </div>
 
         <div className="output-status-row faq-output-status-row">

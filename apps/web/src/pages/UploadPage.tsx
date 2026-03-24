@@ -1,6 +1,6 @@
 import * as Select from "@radix-ui/react-select";
 import { useMemo, useState } from "react";
-import { uploaderOptions } from "@about-demo/trpc";
+import { qualityBatchUploadMaxFileBytes, qualityBatchUploadMaxRows, uploaderOptions } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
 
 const uploadDemoCsv = [
@@ -41,12 +41,15 @@ function formatJobId(jobId?: string | null) {
   return `${value.slice(0, 4)}***${value.slice(-4)}`;
 }
 
+const uploadLimitMb = Math.round(qualityBatchUploadMaxFileBytes / 1024 / 1024);
+
 export function UploadPage() {
   const utils = trpc.useUtils();
   const [uploader, setUploader] = useState<(typeof uploaderOptions)[number]>("Ella");
   const [note, setNote] = useState("");
   const [outputMode, setOutputMode] = useState<"full" | "compact">("full");
   const [file, setFile] = useState<File | null>(null);
+  const [fileGuardError, setFileGuardError] = useState("");
   const [batchId, setBatchId] = useState("");
   const [jobId, setJobId] = useState("");
   const [queuePage, setQueuePage] = useState(1);
@@ -107,6 +110,10 @@ export function UploadPage() {
 
   async function runUpload() {
     if (!file) return;
+    if (file.size > qualityBatchUploadMaxFileBytes) {
+      setFileGuardError(`上传文件不能超过 ${uploadLimitMb}MB。`);
+      return;
+    }
     const created = await createBatch.mutateAsync({ uploader, note, source: "upload", outputMode });
     setBatchId(created.batchId);
     const fileBase64 = await toBase64(file);
@@ -157,6 +164,21 @@ export function UploadPage() {
     URL.revokeObjectURL(url);
   }
 
+  function handleFileChange(nextFile: File | null) {
+    if (!nextFile) {
+      setFile(null);
+      setFileGuardError("");
+      return;
+    }
+    if (nextFile.size > qualityBatchUploadMaxFileBytes) {
+      setFile(null);
+      setFileGuardError(`上传文件不能超过 ${uploadLimitMb}MB。`);
+      return;
+    }
+    setFile(nextFile);
+    setFileGuardError("");
+  }
+
   return (
     <div className="card">
       <h2>批量上传评分</h2>
@@ -190,7 +212,11 @@ export function UploadPage() {
 
         <div className="field">
           <label>上传文件（.csv / .xlsx）</label>
-          <input type="file" accept=".csv,.xlsx" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+          <input type="file" accept=".csv,.xlsx" onChange={(event) => handleFileChange(event.target.files?.[0] || null)} />
+          <div className="upload-limit-banner" role="note">
+            <span className="upload-limit-banner-kicker">上传上限</span>
+            <p>建议不超过 {uploadLimitMb}MB / 约 {qualityBatchUploadMaxRows} 条，超过将直接拦截。</p>
+          </div>
         </div>
 
         <div className="field field-emphasis">
@@ -226,11 +252,17 @@ export function UploadPage() {
             className="btn-primary"
             type="button"
             onClick={runUpload}
-            disabled={!file || createBatch.isPending || startIngest.isPending}
+            disabled={!file || Boolean(fileGuardError) || createBatch.isPending || startIngest.isPending}
           >
             {createBatch.isPending || startIngest.isPending ? "处理中..." : "开始上传并评分"}
           </button>
         </div>
+
+        {fileGuardError && (
+          <div className="field">
+            <p className="error-text" style={{ margin: 0 }}>{fileGuardError}</p>
+          </div>
+        )}
 
         {startIngest.error && (
           <div className="field">
