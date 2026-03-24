@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { moduleSchema, type ModuleId } from "@about-demo/trpc";
 import { env } from "../env";
+import { formatChinaDateTimeLabel } from "../utils/time";
 import { resolveSkillRoot } from "./skillPath";
 
 function resolveSkillPath(moduleId: ModuleId) {
@@ -44,5 +45,5 @@ export async function saveModuleSkillMd(moduleIdRaw: string, skillMd: string) {
   const filePath = resolveSkillPath(moduleId);
   await mkdir(getParentDir(filePath), { recursive: true });
   await writeFile(filePath, skillMd, "utf8");
-  return { ok: true, moduleId, source: "file" as const, updatedAt: new Date().toISOString() };
+  return { ok: true, moduleId, source: "file" as const, updatedAt: formatChinaDateTimeLabel(new Date()) };
 }

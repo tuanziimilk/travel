@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { countryOptions, uploaderOptions } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
 import { PopDatePicker } from "../components/PopDatePicker";
+import { formatChinaDateTime } from "../utils/time";
 
 function pickWinner(avgOnline: number, avgAi: number, avgOp: number, hasOpData: boolean) {
   const candidates: Array<{ version: "online" | "ai" | "op"; score: number }> = [
@@ -21,9 +22,7 @@ function winnerLabel(version: "online" | "ai" | "op") {
 }
 
 function formatRawDateTime(dateLike: string | Date) {
-  const raw = typeof dateLike === "string" ? dateLike : dateLike.toISOString();
-  const normalized = raw.replace("T", " ").replace("Z", "");
-  return normalized.length >= 19 ? normalized.slice(0, 19) : normalized;
+  return formatChinaDateTime(dateLike);
 }
 
 const NOTE_PREVIEW_LIMIT = 6;

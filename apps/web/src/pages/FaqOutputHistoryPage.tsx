@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { uploaderOptions } from "@about-demo/trpc";
 import { PopDatePicker } from "../components/PopDatePicker";
 import { trpc } from "../lib/trpc";
+import { formatChinaDateTime } from "../utils/time";
 
 type HistorySummaryResponse = {
   summary: {
@@ -74,8 +75,7 @@ const faqSubclassOptions = [
 ] as const;
 
 function formatDateTime(value?: string | Date | null) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
+  return formatChinaDateTime(value);
 }
 
 function downloadBase64File(fileName: string, base64: string, mimeType = "application/octet-stream") {

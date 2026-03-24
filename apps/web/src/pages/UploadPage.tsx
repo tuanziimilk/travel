@@ -2,6 +2,7 @@ import * as Select from "@radix-ui/react-select";
 import { useMemo, useState } from "react";
 import { qualityBatchUploadMaxFileBytes, qualityBatchUploadMaxRows, uploaderOptions } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
+import { formatChinaDateTime } from "../utils/time";
 
 const uploadDemoCsv = [
   "TermID,TermName,Domain,Country,About_online,About_ai,About_op",
@@ -349,8 +350,8 @@ export function UploadPage() {
                   {item.errorReason || (item.failedRows > 0 ? "存在失败行，请查看导出文件" : "-")}
                 </td>
                 <td title={formatUsd(item.estimatedCostUsdSum)}>{formatUsd(item.estimatedCostUsdSum)}</td>
-                <td title={new Date(item.startedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}>
-                  {new Date(item.startedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}
+                <td title={formatChinaDateTime(item.startedAt)}>
+                  {formatChinaDateTime(item.startedAt)}
                 </td>
                 <td className="queue-action-cell">
                   {item.status === "running" || item.status === "pending" ? (

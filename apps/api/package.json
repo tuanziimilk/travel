@@ -9,7 +9,8 @@
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx scripts/dbMigrateSafe.ts"
+    "db:migrate": "tsx scripts/dbMigrateSafe.ts",
+    "backfill:china-timezone": "tsx scripts/backfillChinaTimezone.ts"
   },
   "dependencies": {
     "@about-demo/trpc": "1.0.0",

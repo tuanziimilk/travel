@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import * as XLSX from "xlsx";
 import { db } from "../db/client";
 import { contentGenerationJobs } from "../db/schema";
+import { formatChinaDateTime } from "../utils/time";
 
 type RouteSummaryRow = {
   factType: string;
@@ -203,8 +204,8 @@ function buildHistoryExportRows(rows: StoredFaqOutputRow[]) {
     jobId: row.jobId,
     uploader: row.uploader,
     note: row.note,
-    createdAt: row.createdAt.toISOString(),
-    finishedAt: row.finishedAt?.toISOString() || "",
+    createdAt: formatChinaDateTime(row.createdAt),
+    finishedAt: formatChinaDateTime(row.finishedAt),
     ContentType: row.ContentType,
     Country: row.Country,
     TermID: row.TermID,

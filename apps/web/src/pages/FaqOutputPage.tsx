@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { DragEvent } from "react";
 import { faqOutputUploadMaxFileBytes, faqOutputUploadMaxRows, uploaderOptions } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
+import { formatChinaDateTime } from "../utils/time";
 
 type ParsedFaqOutputRow = {
   term_id: string;
@@ -62,8 +63,7 @@ function formatJobId(value: string) {
 }
 
 function formatDateTime(value?: string | Date | null) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
+  return formatChinaDateTime(value);
 }
 
 function formatDuration(start?: string | Date | null, end?: string | Date | null) {

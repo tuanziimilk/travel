@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { Capability, ModuleId, ScType } from "@about-demo/trpc";
+import { formatChinaDateTimeLabel } from "../utils/time";
 import { resolveSkillRoot } from "./skillPath";
 import { getModuleSkillMd, readModuleSkillFile, saveModuleSkillMd } from "./skillStore";
 
@@ -201,7 +202,7 @@ function readRouteOverride(capability: Capability, scType: ScType, subclass?: st
     scType,
     subclass: normalizeSubclass(subclass),
     skillMd: readFileSync(filePath, "utf8"),
-    updatedAt: stats.mtime.toISOString(),
+    updatedAt: formatChinaDateTimeLabel(stats.mtime),
   };
 }
 
@@ -354,7 +355,7 @@ async function saveSkillRouteOverrideLegacy(input: {
     scType: input.scType,
     subclass: normalizedSubclass,
     skillMd: input.skillMd,
-    updatedAt: new Date().toISOString(),
+    updatedAt: formatChinaDateTimeLabel(new Date()),
   };
   skillOverrides.set(routeId, record);
   return { ok: true, routeId, updatedAt: record.updatedAt };
@@ -385,7 +386,7 @@ export async function saveSkillRouteOverride(input: {
 
   mkdirSync(getParentDir(filePath), { recursive: true });
   writeFileSync(filePath, input.skillMd, "utf8");
-  return { ok: true, routeId, updatedAt: new Date().toISOString() };
+  return { ok: true, routeId, updatedAt: formatChinaDateTimeLabel(new Date()) };
 }
 
 export function resolveSkillRoute(input: {

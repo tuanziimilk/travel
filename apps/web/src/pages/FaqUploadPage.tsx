@@ -2,6 +2,7 @@ import * as Select from "@radix-ui/react-select";
 import { useMemo, useState } from "react";
 import { qualityBatchUploadMaxFileBytes, qualityBatchUploadMaxRows, uploaderOptions } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
+import { formatChinaDateTime } from "../utils/time";
 
 const faqUploadDemoCsv = [
   "TermID,TermName,Domain,Country,subclass,Q_online,A_online,Q_ai,A_ai,Q_op,A_op",
@@ -361,7 +362,7 @@ export function FaqUploadPage() {
                     {item.errorReason || (item.failedRows > 0 ? "存在失败 FAQ，请查看导出文件" : "-")}
                   </td>
                   <td>{formatUsd(item.estimatedCostUsdSum)}</td>
-                  <td>{new Date(item.startedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}</td>
+                  <td>{formatChinaDateTime(item.startedAt)}</td>
                   <td className="queue-action-cell">
                     {item.status === "running" || item.status === "pending" ? (
                       <button className="btn-ghost faq-queue-action-btn" type="button" onClick={() => void cancelJob(item.id)}>
