@@ -1,4 +1,4 @@
-ï»¿# Output Format
+# Output Format
 Use this file as the canonical FAQ export contract for the current project.
 
 ## Required Output Columns
@@ -11,7 +11,7 @@ The workbook must contain these columns in this exact order:
 5. `Domain`
 6. `Source`
 7. `Subclass`
-8. `æ¿å—åç§°`
+8. `°å¿éÃû³Æ`
 9. `Titile1`
 10. `Brief Introduction`
 11. `Href Kw`
@@ -20,13 +20,13 @@ The workbook must contain these columns in this exact order:
 ## Fixed Values
 - `ContentType` = `faq`
 - `Source` = `AI`
-- `Subclass` = `newsletter/first order/sign up`
-- `æ¿å—åç§°` = `faq`
+- `Subclass` = `newsletter/first order/sign up/`
+- `°å¿éÃû³Æ` = `faq`
 - `Href Kw` = blank
 - `Href Url` = blank
 
 ## Rules
-- Keep only facts that belong to the current subclass: `newsletter/first order/sign up`
+- Keep only facts that belong to the current subclass: `newsletter/first order/sign up/`
 - Keep the final column names, order, and casing exactly as listed above
 - `Titile1` must be the FAQ question for the current subclass
 - `Brief Introduction` must stay factual and should not add unsupported content

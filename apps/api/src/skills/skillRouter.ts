@@ -9,7 +9,7 @@ const BOARD_NAME_FIELD = "板块名称";
 
 export const faqOutputSubclasses = [
   "shipping",
-  "newsletter/first order/sign up",
+  "newsletter/first order/sign up/",
   "student",
   "military",
   "senior",
@@ -79,9 +79,9 @@ export type SkillRouteDocument = {
 
 const faqFactTypeAliases: Record<string, string> = {
   shipping_policy: "shipping",
-  newsletter_discount: "newsletter/first order/sign up",
-  first_order_discount: "newsletter/first order/sign up",
-  sign_up_discount: "newsletter/first order/sign up",
+  newsletter_discount: "newsletter/first order/sign up/",
+  first_order_discount: "newsletter/first order/sign up/",
+  sign_up_discount: "newsletter/first order/sign up/",
   student_discount: "student",
   military_discount: "military",
   senior_discount: "senior",
@@ -105,11 +105,15 @@ const faqFactTypeAliases: Record<string, string> = {
   return_policy: "return",
 };
 
+export function toFaqOutputSkillSlug(subclass: string) {
+  return normalizeSubclass(subclass).replaceAll("/", "-").replace(/\s+/g, "-").replace(/^-+|-+$/g, "");
+}
+
 const generationRouteRules: SkillRouteRule[] = faqOutputSubclasses.map((subclass) => ({
   capability: "generation",
   scType: "faq",
   subclass,
-  skillKey: `faq-output-${subclass.replaceAll("/", "-").replace(/\s+/g, "-")}`,
+  skillKey: `faq-output-${toFaqOutputSkillSlug(subclass)}`,
   skillLabel: `FAQ 输出 / ${subclass}`,
   status: "placeholder",
   notes: `等待挂载 FAQ 输出 skill: ${subclass}`,
@@ -168,7 +172,7 @@ function resolveGenerationSkillRoot(scType: ScType, subclass?: string) {
   if (scType !== "faq") return null;
   const normalizedSubclass = normalizeSubclass(subclass);
   if (!normalizedSubclass) return null;
-  const slug = normalizedSubclass.replaceAll("/", "-").replace(/\s+/g, "-");
+  const slug = toFaqOutputSkillSlug(normalizedSubclass);
   return resolveSkillRoot(`skills/faq-output-${slug}`);
 }
 
@@ -180,7 +184,7 @@ function hasGenerationSkillFile(scType: ScType, subclass?: string) {
 
 function resolveRouteOverridePath(capability: Capability, scType: ScType, subclass?: string) {
   const normalizedSubclass = normalizeSubclass(subclass) || "__default__";
-  const slug = normalizedSubclass.replaceAll("/", "-").replace(/\s+/g, "-");
+  const slug = normalizedSubclass === "__default__" ? normalizedSubclass : toFaqOutputSkillSlug(normalizedSubclass);
   return resolve(process.cwd(), ".runtime", "skill-overrides", capability, scType, slug, "SKILL.md");
 }
 

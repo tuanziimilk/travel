@@ -40,7 +40,7 @@ const subclassFilterFallback = "__fallback__";
 
 const faqSubclassOptions = [
   "shipping",
-  "newsletter/first order/sign up",
+  "newsletter/first order/sign up/",
   "student",
   "military",
   "senior",

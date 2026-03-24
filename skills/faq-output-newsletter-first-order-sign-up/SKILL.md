@@ -294,7 +294,7 @@ For content rows:
 - `TermName`: merchant name only
 - `Domain`: use provided domain
 - `Source`: default `AI` unless the user provides another value
-- `Subclass`: use the current subclass route, which for this skill is `newsletter/first order/sign up`
+- `Subclass`: use the current subclass route, which for this skill is `newsletter/first order/sign up/`
 - `板块名称`: default `faq`
 - `Titile1`: `Does [Brand] offer a first order discount?`
 - `Brief Introduction`: write 1-2 short sentences using the supported facts

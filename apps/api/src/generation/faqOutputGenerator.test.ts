@@ -4,12 +4,12 @@ import { describe, expect, it } from "vitest";
 import { buildFallbackQuestion, finalizeGenerationItem, normalizeCountryCode, validateGenerationCandidate } from "./faqOutputGenerator";
 import { skillRegistry } from "../skills/skillRegistry";
 import { resolveSkillRoot } from "../skills/skillPath";
-import { faqOutputSubclasses, normalizeFaqSubclassFromFactType, resolveSkillRoute } from "../skills/skillRouter";
+import { faqOutputSubclasses, normalizeFaqSubclassFromFactType, resolveSkillRoute, toFaqOutputSkillSlug } from "../skills/skillRouter";
 
 const boardField = "板块名称";
 
 function toSkillDir(subclass: string) {
-  return resolveSkillRoot(`skills/faq-output-${subclass.replaceAll("/", "-").replace(/\s+/g, "-")}`);
+  return resolveSkillRoot(`skills/faq-output-${toFaqOutputSkillSlug(subclass)}`);
 }
 
 describe("faq output routing", () => {
@@ -33,7 +33,7 @@ describe("faq output routing", () => {
         subclass,
       });
       expect(route.status, subclass).toBe("active");
-      expect(route.skillKey, subclass).toContain(`faq-output-${subclass.replaceAll("/", "-").replace(/\s+/g, "-")}`);
+      expect(route.skillKey, subclass).toContain(`faq-output-${toFaqOutputSkillSlug(subclass)}`);
     }
   });
 });

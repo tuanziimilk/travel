@@ -8,7 +8,7 @@ import { env } from "../env";
 import { aiExecutor } from "../skills/aiExecutor";
 import { resolveSkillRoot } from "../skills/skillPath";
 import { skillRegistry } from "../skills/skillRegistry";
-import { getSkillRouteOverride, normalizeFaqSubclassFromFactType, resolveSkillRoute } from "../skills/skillRouter";
+import { getSkillRouteOverride, normalizeFaqSubclassFromFactType, resolveSkillRoute, toFaqOutputSkillSlug } from "../skills/skillRouter";
 import {
   completeGenerationJob,
   createGenerationJob,
@@ -368,7 +368,7 @@ function buildFallbackOutput(row: FaqOutputInputRow, subclass: string): FaqOutpu
 }
 
 async function loadGenerationSkill(subclass: string) {
-  const routeKey = `faq-output-${subclass.replaceAll("/", "-").replace(/\s+/g, "-")}`;
+  const routeKey = `faq-output-${toFaqOutputSkillSlug(subclass)}`;
   const override = getSkillRouteOverride({
     capability: "generation",
     scType: "faq",
@@ -677,7 +677,7 @@ async function executeFaqOutputGeneration(
   const estimatedCostUsd = Math.round(successRows.reduce((sum, item) => sum + item.runtime.estimatedCostUsd, 0) * 1_000_000) / 1_000_000;
   const distinctSubclasses = Array.from(new Set(successRows.map((item) => item.subclass)));
   const jobSubclass = distinctSubclasses.length === 1 ? distinctSubclasses[0] : "mixed";
-  const resultFileName = `faq-output-${jobSubclass.replaceAll("/", "-").replace(/\s+/g, "-")}-${Date.now()}.xlsx`;
+  const resultFileName = `faq-output-${toFaqOutputSkillSlug(jobSubclass)}-${Date.now()}.xlsx`;
   const errorReason = failedRows.length ? `存在 ${failedRows.length} 行生成失败，请查看失败明细。` : "";
 
   await completeGenerationJob({
