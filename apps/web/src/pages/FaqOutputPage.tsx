@@ -170,7 +170,7 @@ function getCompactSummaryText(item: {
   skippedRows: number;
 }) {
   const { processedRows, percent } = getExecutionProgress(item);
-  return `${processedRows}/${item.executableRows} (${percent}%), total ${item.totalRows}, skipped ${item.skippedRows}`;
+  return `${processedRows}/${item.executableRows} (${percent}%)，跳过 ${item.skippedRows}`;
 }
 
 function safeValue(value: string | null | undefined) {

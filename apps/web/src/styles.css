@@ -4909,17 +4909,17 @@ pre {
 
 .faq-queue-table th:nth-child(8),
 .faq-queue-table td:nth-child(8) {
-  width: 6%;
+  width: 5%;
 }
 
 .faq-queue-table th:nth-child(9),
 .faq-queue-table td:nth-child(9) {
-  width: 11%;
+  width: 14%;
 }
 
 .faq-queue-table th:nth-child(10),
 .faq-queue-table td:nth-child(10) {
-  width: 8%;
+  width: 7%;
   text-align: left;
 }
 
