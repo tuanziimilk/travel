@@ -60,27 +60,43 @@ export async function getLatestSkillVersion(stream: SkillVersionStream) {
   return (rows[0] as SkillVersionRecord | undefined) || null;
 }
 
+export async function getBootstrapSkillVersion(stream: SkillVersionStream) {
+  const rows = await db
+    .select()
+    .from(skillVersionHistory)
+    .where(and(baseWhere(stream), eq(skillVersionHistory.actionType, "bootstrap")))
+    .orderBy(skillVersionHistory.versionNo)
+    .limit(1);
+  return (rows[0] as SkillVersionRecord | undefined) || null;
+}
+
 export async function createSkillVersion(input: SkillVersionStream & {
   actionType: SkillActionType;
   editor: string;
   changeNote: string;
   skillMd: string;
   sourceSnapshot: string;
+  versionNo?: number;
 }) {
   const subclass = normalizeSubclass(input.subclass);
-  const nextRows = await db
-    .select({ versionNo: max(skillVersionHistory.versionNo) })
-    .from(skillVersionHistory)
-    .where(
-      and(
-        eq(skillVersionHistory.capability, input.capability),
-        eq(skillVersionHistory.scType, input.scType),
-        eq(skillVersionHistory.subclass, subclass),
-        eq(skillVersionHistory.targetType, input.targetType),
-      ),
-    );
-
-  const versionNo = Number(nextRows[0]?.versionNo || 0) + 1;
+  const versionNo =
+    typeof input.versionNo === "number"
+      ? input.versionNo
+      : Number(
+          (
+            await db
+              .select({ versionNo: max(skillVersionHistory.versionNo) })
+              .from(skillVersionHistory)
+              .where(
+                and(
+                  eq(skillVersionHistory.capability, input.capability),
+                  eq(skillVersionHistory.scType, input.scType),
+                  eq(skillVersionHistory.subclass, subclass),
+                  eq(skillVersionHistory.targetType, input.targetType),
+                ),
+              )
+          )[0]?.versionNo || 0,
+        ) + 1;
   const record = {
     id: makeId(),
     capability: input.capability,

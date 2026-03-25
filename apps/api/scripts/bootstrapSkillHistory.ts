@@ -6,6 +6,7 @@ async function main() {
   const seeds = [
     { capability: "quality" as const, scType: "about" as const, subclass: "", targetType: "module_live" as const },
     { capability: "quality" as const, scType: "faq" as const, subclass: "", targetType: "module_live" as const },
+    { capability: "generation" as const, scType: "faq" as const, subclass: "", targetType: "route_override" as const },
     ...faqOutputSubclasses.map((subclass) => ({
       capability: "generation" as const,
       scType: "faq" as const,

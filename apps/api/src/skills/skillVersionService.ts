@@ -2,9 +2,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Capability, ModuleId, ScType } from "@about-demo/trpc";
+import { resolveSkillRoot } from "./skillPath";
 import { readModuleSkillFile, resolveSkillPath } from "./skillStore";
 import {
   createSkillVersion,
+  getBootstrapSkillVersion,
   getLatestSkillVersion,
   getSkillVersionDetail,
   listSkillVersionHistory,
@@ -33,6 +35,16 @@ function resolveRouteOverridePath(capability: Capability, scType: ScType, subcla
   return resolve(process.cwd(), ".runtime", "skill-overrides", capability, scType, slug, "SKILL.md");
 }
 
+function resolveGenerationDefaultSkillPath(scType: ScType, subclass?: string) {
+  if (scType !== "faq") return null;
+  const normalizedSubclass = normalizeSubclass(subclass);
+  if (!normalizedSubclass) return null;
+  const slug = normalizedSubclass.replaceAll("/", "-").replace(/\s+/g, "-").replace(/^-+|-+$/g, "");
+  if (!slug) return null;
+  const root = resolveSkillRoot(`skills/faq-output-${slug}`);
+  return resolve(root, "SKILL.md");
+}
+
 async function readCurrentLiveSkill(stream: SkillVersionStream) {
   if (stream.targetType === "module_live") {
     const moduleId = resolveModuleId(stream.scType);
@@ -54,6 +66,22 @@ async function readCurrentLiveSkill(stream: SkillVersionStream) {
   };
 }
 
+async function readBootstrapBaselineSkill(stream: SkillVersionStream) {
+  if (stream.targetType === "module_live") {
+    return readCurrentLiveSkill(stream);
+  }
+
+  const defaultSkillPath = resolveGenerationDefaultSkillPath(stream.scType, stream.subclass);
+  if (defaultSkillPath && existsSync(defaultSkillPath)) {
+    return {
+      skillMd: await readFile(defaultSkillPath, "utf8"),
+      sourceSnapshot: "file",
+    };
+  }
+
+  return readCurrentLiveSkill(stream);
+}
+
 function writeCurrentLiveSkill(stream: SkillVersionStream, skillMd: string) {
   if (stream.targetType === "module_live") {
     const moduleId = resolveModuleId(stream.scType);
@@ -70,17 +98,18 @@ function writeCurrentLiveSkill(stream: SkillVersionStream, skillMd: string) {
 }
 
 export async function ensureSkillVersionBootstrap(stream: SkillVersionStream) {
-  const latest = await getLatestSkillVersion(stream);
-  if (latest) return latest;
+  const bootstrap = await getBootstrapSkillVersion(stream);
+  if (bootstrap) return bootstrap;
 
-  const current = await readCurrentLiveSkill(stream);
+  const current = await readBootstrapBaselineSkill(stream);
   if (!current?.skillMd?.trim()) return null;
 
   return createSkillVersion({
     ...stream,
+    versionNo: 0,
     actionType: "bootstrap",
     editor: "system",
-    changeNote: "初始化导入当前生效版本",
+    changeNote: "初始化导入默认基线版本",
     skillMd: current.skillMd,
     sourceSnapshot: current.sourceSnapshot,
   });

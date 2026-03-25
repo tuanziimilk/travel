@@ -82,10 +82,17 @@ rsync -avz --progress \
   --exclude 'node_modules' \
   --exclude '.git' \
   --exclude 'apps/api/dist' \
+  --exclude 'apps/api/.runtime/' \
   --exclude 'apps/web/dist' \
   --exclude '.env' \
   --exclude '.env.*' \
+  --exclude 'logs/' \
   --exclude '*.log' \
+  --exclude 'tmp/' \
+  --exclude 'storage/' \
+  --exclude 'uploads/' \
+  --exclude '*.db' \
+  --exclude '*.sqlite' \
   --exclude 'apps/api/tmp-*' \
   --exclude 'nginx/' \
   ${SSH_KEY:+-e "ssh -i ${SSH_KEY}"} \
