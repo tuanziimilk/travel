@@ -4870,61 +4870,155 @@ pre {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-rows: auto auto minmax(0, 1fr);
-  gap: 16px;
+  gap: 12px;
   align-items: stretch;
 }
 
 .skill-history-compare-head {
-  min-height: 48px;
-  padding: 10px 12px;
-  border: 3px solid var(--black);
-  background: var(--yellow);
-  box-shadow: 4px 4px 0 var(--black);
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid #d0d7de;
   font-weight: 900;
   display: flex;
   align-items: center;
+  letter-spacing: 0.2px;
 }
 
 .skill-history-compare-head-history {
-  background: #d9d9d9;
+  background: #f2f2ef;
 }
 
 .skill-history-compare-head-current {
-  background: #bfead8;
+  background: #e5f6ed;
 }
 
 .skill-history-version-meta {
   display: grid;
-  gap: 8px;
-  min-height: 118px;
-  padding: 12px 14px;
-  border: 3px solid var(--black);
+  gap: 6px;
+  min-height: 108px;
+  padding: 11px 13px;
+  border: 1px solid #d0d7de;
   background: #ffffff;
   font-size: 12px;
   font-weight: 800;
-  line-height: 1.45;
+  line-height: 1.4;
   align-content: start;
 }
 
 .skill-history-version-meta-history {
-  background: #f3f3f3;
+  background: #fcfcfa;
 }
 
 .skill-history-version-meta-current {
-  background: #eefaf4;
+  background: #fcfcfa;
 }
 
-.skill-history-textarea {
+.skill-history-code-panel {
   min-height: 440px;
   height: min(52vh, 560px);
-  width: 100%;
-  border: 3px solid var(--black);
-  background: #fffdf3;
-  padding: 12px;
-  font-size: 12px;
-  line-height: 1.5;
-  resize: none;
   overflow: auto;
+  border: 1px solid #d0d7de;
+  background: linear-gradient(180deg, #fffef9 0%, #fffefb 100%);
+  scrollbar-gutter: stable;
+  padding: 10px 0;
+}
+
+.skill-history-code-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: start;
+  min-height: 24px;
+  margin: 0 10px;
+  border-left: 2px solid transparent;
+  border-radius: 6px;
+}
+
+.skill-history-code-row.is-active {
+  background: rgba(0, 79, 254, 0.08);
+  border-left-color: var(--blue);
+  box-shadow: inset 0 0 0 1px rgba(0, 79, 254, 0.12);
+}
+
+.skill-history-code-row-unchanged {
+  background: transparent;
+}
+
+.skill-history-code-row-changed {
+  background: linear-gradient(90deg, rgba(255, 215, 0, 0.12) 0%, rgba(255, 215, 0, 0.04) 100%);
+}
+
+.skill-history-code-row-removed {
+  background: linear-gradient(90deg, rgba(255, 99, 71, 0.09) 0%, rgba(255, 99, 71, 0.02) 100%);
+}
+
+.skill-history-code-row-added {
+  background: linear-gradient(90deg, rgba(34, 197, 94, 0.1) 0%, rgba(34, 197, 94, 0.025) 100%);
+}
+
+.skill-history-code-badge,
+.skill-history-code-gutter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: 4px 2px;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.3px;
+}
+
+.skill-history-code-badge {
+  color: #9a6700;
+  opacity: 0.8;
+}
+
+.skill-history-code-gutter {
+  color: transparent;
+}
+
+.skill-history-code-line {
+  margin: 0;
+  padding: 4px 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  border-radius: 0;
+}
+
+.skill-history-diff-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid #d0d7de;
+  background: #f4f3ec;
+}
+
+.skill-history-diff-nav {
+  display: flex;
+  gap: 8px;
+}
+
+.skill-history-diff-nav .btn-ghost,
+.skill-history-diff-nav .btn-primary {
+  min-width: 92px;
+  min-height: 38px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.skill-history-diff-status {
+  font-size: 12px;
+  font-weight: 900;
+  color: #173f9e;
 }
 
 .skill-history-latest {
@@ -4939,6 +5033,16 @@ pre {
   .skill-edit-meta-grid,
   .skill-detail-actions {
     grid-template-columns: 1fr;
+  }
+
+  .skill-history-diff-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .skill-history-diff-nav {
+    width: 100%;
+    justify-content: space-between;
   }
 }
 

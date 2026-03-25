@@ -1,5 +1,5 @@
 ﻿import * as Select from "@radix-ui/react-select";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { capabilityOptions, uploaderOptions, type Capability, type ModuleId, type ScType } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
 import { formatChinaDateTime } from "../utils/time";
@@ -83,6 +83,109 @@ function toRouteId(item: { capability: Capability; scType: ScType; subclass: str
   return `${item.capability}::${item.scType}::${item.subclass}`;
 }
 
+function formatHistoryChangeNote(changeNote?: string, actionType?: string) {
+  const note = String(changeNote || "").trim();
+  if (!note) return "";
+  if (actionType === "bootstrap" && /^\?+$/.test(note)) {
+    return "来源文件基线版本";
+  }
+  return note;
+}
+
+type DiffLine = {
+  type: "added" | "removed" | "unchanged";
+  value: string;
+};
+
+type DiffPair = {
+  left: string;
+  right: string;
+  type: "changed" | "removed" | "added" | "unchanged";
+};
+
+function buildLineDiff(previousText: string, currentText: string): DiffLine[] {
+  const previousLines = previousText.split(/\r?\n/);
+  const currentLines = currentText.split(/\r?\n/);
+  const dp: number[][] = Array.from({ length: previousLines.length + 1 }, () =>
+    Array.from({ length: currentLines.length + 1 }, () => 0),
+  );
+
+  for (let i = previousLines.length - 1; i >= 0; i -= 1) {
+    for (let j = currentLines.length - 1; j >= 0; j -= 1) {
+      if (previousLines[i] === currentLines[j]) {
+        dp[i][j] = dp[i + 1][j + 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+      }
+    }
+  }
+
+  const diff: DiffLine[] = [];
+  let i = 0;
+  let j = 0;
+
+  while (i < previousLines.length && j < currentLines.length) {
+    if (previousLines[i] === currentLines[j]) {
+      diff.push({ type: "unchanged", value: previousLines[i] });
+      i += 1;
+      j += 1;
+      continue;
+    }
+
+    if (dp[i + 1][j] >= dp[i][j + 1]) {
+      diff.push({ type: "removed", value: previousLines[i] });
+      i += 1;
+    } else {
+      diff.push({ type: "added", value: currentLines[j] });
+      j += 1;
+    }
+  }
+
+  while (i < previousLines.length) {
+    diff.push({ type: "removed", value: previousLines[i] });
+    i += 1;
+  }
+
+  while (j < currentLines.length) {
+    diff.push({ type: "added", value: currentLines[j] });
+    j += 1;
+  }
+
+  return diff;
+}
+
+function buildDiffPairs(lines: DiffLine[]): DiffPair[] {
+  const pairs: DiffPair[] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index];
+    if (line.type === "unchanged") {
+      pairs.push({ left: line.value, right: line.value, type: "unchanged" });
+      index += 1;
+      continue;
+    }
+
+    const nextLine = lines[index + 1];
+    if (line.type === "removed" && nextLine?.type === "added") {
+      pairs.push({ left: line.value, right: nextLine.value, type: "changed" });
+      index += 2;
+      continue;
+    }
+
+    if (line.type === "removed") {
+      pairs.push({ left: line.value, right: "", type: "removed" });
+      index += 1;
+      continue;
+    }
+
+    pairs.push({ left: "", right: line.value, type: "added" });
+    index += 1;
+  }
+
+  return pairs;
+}
+
 export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
   const [capability, setCapability] = useState<Capability>("generation");
   const [scType, setScType] = useState<SkillScTypeFilter>("all");
@@ -95,6 +198,10 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
   const [overwrite, setOverwrite] = useState(true);
   const [uploadedSkillFileName, setUploadedSkillFileName] = useState("");
   const [activeHistoryVersionId, setActiveHistoryVersionId] = useState("");
+  const [activeDiffCursor, setActiveDiffCursor] = useState(0);
+  const diffRowRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const leftCodePanelRef = useRef<HTMLDivElement | null>(null);
+  const rightCodePanelRef = useRef<HTMLDivElement | null>(null);
 
   const normalizedSubclassFilter =
     subclassFilter === subclassFilterAll ? "" : subclassFilter === subclassFilterFallback ? "" : subclassFilter;
@@ -217,6 +324,13 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
     setActiveHistoryVersionId("");
   }, [routeDocumentQuery.data?.skillMd, selectedRouteId]);
 
+  useEffect(() => {
+    setActiveDiffCursor(0);
+    diffRowRefs.current = [];
+    if (leftCodePanelRef.current) leftCodePanelRef.current.scrollTop = 0;
+    if (rightCodePanelRef.current) rightCodePanelRef.current.scrollTop = 0;
+  }, [activeHistoryVersionId]);
+
   async function handleSkillFile(file: File | null) {
     if (!file) return;
     const text = await file.text();
@@ -291,6 +405,49 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
     saveRouteMutation.isPending ||
     saveModuleMutation.isPending ||
     rollbackMutation.isPending;
+  const historyDetailVersionNo = historyDetailQuery.data?.versionNo ?? 0;
+  const historyDetailSkillMd = historyDetailQuery.data?.skillMd || "";
+  const currentLiveSkillMd = routeDocumentQuery.data?.skillMd || "";
+  const currentLiveVersion = historyQuery.data?.[0];
+  const currentLiveVersionNo = currentLiveVersion?.versionNo ?? 0;
+  const currentLiveVersionEditor = currentLiveVersion?.editor || "system";
+  const currentLiveVersionTime = currentLiveVersion?.createdAt;
+  const currentLiveVersionNote =
+    formatHistoryChangeNote(currentLiveVersion?.changeNote, currentLiveVersion?.actionType) || "来源文件基线版本";
+  const historyDiffLines = useMemo(
+    () => buildLineDiff(historyDetailSkillMd, currentLiveSkillMd),
+    [historyDetailSkillMd, currentLiveSkillMd],
+  );
+  const historyDiffPairs = useMemo(() => buildDiffPairs(historyDiffLines), [historyDiffLines]);
+  const changedDiffRowIndexes = useMemo(
+    () =>
+      historyDiffPairs.reduce<number[]>((result, item, index) => {
+        if (item.type !== "unchanged") result.push(index);
+        return result;
+      }, []),
+    [historyDiffPairs],
+  );
+  const activeDiffRowIndex = changedDiffRowIndexes[activeDiffCursor] ?? -1;
+
+  useEffect(() => {
+    if (activeDiffRowIndex < 0) return;
+    const targetNode = diffRowRefs.current[activeDiffRowIndex];
+    const leftPanel = leftCodePanelRef.current;
+    const rightPanel = rightCodePanelRef.current;
+    if (!targetNode || !leftPanel || !rightPanel) return;
+    const targetScrollTop = Math.max(0, targetNode.offsetTop - leftPanel.clientHeight / 2 + targetNode.clientHeight / 2);
+    leftPanel.scrollTop = targetScrollTop;
+    rightPanel.scrollTop = targetScrollTop;
+  }, [activeDiffRowIndex]);
+
+  function moveDiffCursor(direction: "prev" | "next") {
+    if (!changedDiffRowIndexes.length) return;
+    setActiveDiffCursor((current) =>
+      direction === "prev"
+        ? (current - 1 + changedDiffRowIndexes.length) % changedDiffRowIndexes.length
+        : (current + 1) % changedDiffRowIndexes.length,
+    );
+  }
 
   return (
     <div className="grid">
@@ -546,6 +703,7 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
               <div className="skill-version-list">
                 {(historyQuery.data || []).map((item, index) => {
                   const rollbackDisabled = !editorName.trim() || !changeNote.trim() || rollbackMutation.isPending;
+                  const displayChangeNote = formatHistoryChangeNote(item.changeNote, item.actionType);
                   return (
                     <div className="skill-version-card" key={item.id}>
                       <div className="skill-version-header-row">
@@ -568,7 +726,7 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
                         </div>
                       </div>
                       <div className="skill-version-time">{formatChinaDateTime(item.createdAt)}</div>
-                      {item.changeNote ? <div className="skill-version-remark" title={item.changeNote}>{item.changeNote}</div> : null}
+                      {displayChangeNote ? <div className="skill-version-remark" title={displayChangeNote}>{displayChangeNote}</div> : null}
                     </div>
                   );
                 })}
@@ -594,18 +752,62 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
               <div className="skill-history-compare-head skill-history-compare-head-current">当前生效内容</div>
 
               <div className="skill-history-version-meta skill-history-version-meta-history">
-                <span>版本：V{historyDetailQuery.data?.versionNo || "-"}</span>
+                <span>版本：V{historyDetailVersionNo}</span>
                 <span>修改人：{historyDetailQuery.data?.editor || "-"}</span>
                 <span>时间：{formatChinaDateTime(historyDetailQuery.data?.createdAt)}</span>
-                <span>备注：{historyDetailQuery.data?.changeNote || "-"}</span>
+                <span>备注：{formatHistoryChangeNote(historyDetailQuery.data?.changeNote, historyDetailQuery.data?.actionType) || "-"}</span>
               </div>
               <div className="skill-history-version-meta skill-history-version-meta-current">
-                <span>来源：{currentSourceLabel}</span>
-                <span>当前路由：{selectedRoute?.defaultSkillKey || "-"}</span>
+                <span>版本：V{currentLiveVersionNo}</span>
+                <span>修改人：{currentLiveVersionEditor}</span>
+                <span>时间：{formatChinaDateTime(currentLiveVersionTime)}</span>
+                <span>备注：{currentLiveVersionNote}</span>
               </div>
 
-              <textarea className="skill-history-textarea" readOnly value={historyDetailQuery.data?.skillMd || ""} />
-              <textarea className="skill-history-textarea" readOnly value={routeDocumentQuery.data?.skillMd || ""} />
+              <div className="skill-history-code-panel" ref={leftCodePanelRef}>
+                {historyDiffPairs.map((pair, index) => {
+                  const isChanged = pair.type !== "unchanged";
+                  const isActive = index === activeDiffRowIndex;
+                  return (
+                    <div
+                      className={`skill-history-code-row skill-history-code-row-${pair.type}${isActive ? " is-active" : ""}`}
+                      key={`left-${index}-${pair.left}`}
+                      ref={(node) => {
+                        diffRowRefs.current[index] = node;
+                      }}
+                    >
+                      {isChanged ? <span className="skill-history-code-badge">DIFF</span> : <span className="skill-history-code-gutter" />}
+                      <pre className="skill-history-code-line">{pair.left || " "}</pre>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="skill-history-code-panel" ref={rightCodePanelRef}>
+                {historyDiffPairs.map((pair, index) => {
+                  const isChanged = pair.type !== "unchanged";
+                  const isActive = index === activeDiffRowIndex;
+                  return (
+                    <div className={`skill-history-code-row skill-history-code-row-${pair.type}${isActive ? " is-active" : ""}`} key={`right-${index}-${pair.right}`}>
+                      {isChanged ? <span className="skill-history-code-badge">DIFF</span> : <span className="skill-history-code-gutter" />}
+                      <pre className="skill-history-code-line">{pair.right || " "}</pre>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="skill-history-diff-toolbar">
+              <div className="skill-history-diff-nav">
+                <button className="btn-ghost" type="button" disabled={!changedDiffRowIndexes.length} onClick={() => moveDiffCursor("prev")}>
+                  上一个差异
+                </button>
+                <button className="btn-primary" type="button" disabled={!changedDiffRowIndexes.length} onClick={() => moveDiffCursor("next")}>
+                  下一个差异
+                </button>
+              </div>
+              <div className="skill-history-diff-status">
+                {changedDiffRowIndexes.length ? `${activeDiffCursor + 1}/${changedDiffRowIndexes.length} 处差异` : "当前版本与所选历史版本没有差异"}
+              </div>
             </div>
           </div>
         </div>
