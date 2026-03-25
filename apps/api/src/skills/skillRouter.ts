@@ -6,6 +6,7 @@ import { formatChinaDateTimeLabel, formatChinaIsoOffset } from "../utils/time";
 import { resolveSkillRoot } from "./skillPath";
 import { getModuleSkillMd, readModuleSkillFile, saveModuleSkillMd } from "./skillStore";
 import { listVersionedSkillHistory, rollbackSkillVersion, saveVersionedSkill } from "./skillVersionService";
+import { listSkillVersionHistory } from "./skillVersionStore";
 
 const BOARD_NAME_FIELD = "板块名称";
 
@@ -77,6 +78,12 @@ export type SkillRouteDocument = {
   canEditLive: boolean;
   message: string;
   updatedAt?: string;
+  matchedVersionId?: string;
+  matchedVersionNo?: number;
+  matchedVersionEditor?: string;
+  matchedVersionCreatedAt?: string;
+  matchedVersionChangeNote?: string;
+  matchedVersionActionType?: string;
 };
 
 function resolveHistoryTargetType(capability: Capability, subclass?: string) {
@@ -188,10 +195,20 @@ function hasGenerationSkillFile(scType: ScType, subclass?: string) {
   return existsSync(join(root, "SKILL.md"));
 }
 
-function resolveRouteOverridePath(capability: Capability, scType: ScType, subclass?: string) {
+function buildRouteOverridePaths(capability: Capability, scType: ScType, subclass?: string) {
   const normalizedSubclass = normalizeSubclass(subclass) || "__default__";
   const slug = normalizedSubclass === "__default__" ? normalizedSubclass : toFaqOutputSkillSlug(normalizedSubclass);
-  return resolve(process.cwd(), ".runtime", "skill-overrides", capability, scType, slug, "SKILL.md");
+  return [
+    resolve(process.cwd(), ".runtime", "skill-overrides", capability, scType, slug, "SKILL.md"),
+    resolve(process.cwd(), "apps", "api", ".runtime", "skill-overrides", capability, scType, slug, "SKILL.md"),
+  ];
+}
+
+function resolveRouteOverridePath(capability: Capability, scType: ScType, subclass?: string) {
+  const [primaryPath, legacyPath] = buildRouteOverridePaths(capability, scType, subclass);
+  if (existsSync(primaryPath)) return primaryPath;
+  if (existsSync(legacyPath) || existsSync(resolve(process.cwd(), "apps", "api", ".runtime"))) return legacyPath;
+  return primaryPath;
 }
 
 function getParentDir(filePath: string) {
@@ -208,6 +225,30 @@ function readRouteOverride(capability: Capability, scType: ScType, subclass?: st
     subclass: normalizeSubclass(subclass),
     skillMd: readFileSync(filePath, "utf8"),
     updatedAt: formatChinaDateTimeLabel(stats.mtime),
+  };
+}
+
+async function getMatchedLiveVersionMeta(input: {
+  capability: Capability;
+  scType: ScType;
+  subclass?: string;
+  skillMd: string;
+}) {
+  const rows = await listSkillVersionHistory({
+    capability: input.capability,
+    scType: input.scType,
+    subclass: normalizeSubclass(input.subclass),
+    targetType: resolveHistoryTargetType(input.capability, input.subclass),
+  });
+  const matched = rows.find((row) => row.skillMd === input.skillMd) || null;
+  if (!matched) return {};
+  return {
+    matchedVersionId: matched.id,
+    matchedVersionNo: matched.versionNo,
+    matchedVersionEditor: matched.editor,
+    matchedVersionCreatedAt: formatChinaIsoOffset(matched.createdAt),
+    matchedVersionChangeNote: matched.changeNote,
+    matchedVersionActionType: matched.actionType,
   };
 }
 
@@ -291,35 +332,56 @@ export async function getSkillRouteDocument(input: {
     }
 
     const moduleSkill = await getModuleSkillMd(moduleId);
+    const matchedVersionMeta = await getMatchedLiveVersionMeta({
+      capability: input.capability,
+      scType: input.scType,
+      subclass: input.subclass,
+      skillMd: moduleSkill.skillMd,
+    });
     return {
       skillMd: moduleSkill.skillMd,
       source: moduleSkill.source,
       isLive: true,
       canEditLive: true,
       updatedAt: undefined,
+      ...matchedVersionMeta,
       message: "当前展示的是线上实际生效的质检 SKILL.md 内容。",
     };
   }
 
   const override = getSkillRouteOverride(input);
   if (override) {
+    const matchedVersionMeta = await getMatchedLiveVersionMeta({
+      capability: input.capability,
+      scType: input.scType,
+      subclass: input.subclass,
+      skillMd: override.skillMd,
+    });
     return {
       skillMd: override.skillMd,
       source: "route_override",
       isLive: false,
       canEditLive: false,
       updatedAt: override.updatedAt,
+      ...matchedVersionMeta,
       message: "当前展示的是路由覆盖内容；输出链路将优先读取这里的覆盖内容。",
     };
   }
 
   const fileDocument = await readGenerationSkillFile(input.scType, input.subclass);
   if (fileDocument) {
+    const matchedVersionMeta = await getMatchedLiveVersionMeta({
+      capability: input.capability,
+      scType: input.scType,
+      subclass: input.subclass,
+      skillMd: fileDocument.skillMd,
+    });
     return {
       skillMd: fileDocument.skillMd,
       source: fileDocument.source,
       isLive: false,
       canEditLive: false,
+      ...matchedVersionMeta,
       message: "当前展示的是仓库内的本地输出 skill 文件。",
     };
   }

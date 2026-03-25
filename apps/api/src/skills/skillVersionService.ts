@@ -29,10 +29,20 @@ function resolveModuleId(scType: ScType): ModuleId | null {
   return null;
 }
 
-function resolveRouteOverridePath(capability: Capability, scType: ScType, subclass?: string) {
+function buildRouteOverridePaths(capability: Capability, scType: ScType, subclass?: string) {
   const normalizedSubclass = normalizeSubclass(subclass) || "__default__";
   const slug = normalizedSubclass.replaceAll("/", "-").replace(/\s+/g, "-").replace(/^-+|-+$/g, "") || "__default__";
-  return resolve(process.cwd(), ".runtime", "skill-overrides", capability, scType, slug, "SKILL.md");
+  return [
+    resolve(process.cwd(), ".runtime", "skill-overrides", capability, scType, slug, "SKILL.md"),
+    resolve(process.cwd(), "apps", "api", ".runtime", "skill-overrides", capability, scType, slug, "SKILL.md"),
+  ];
+}
+
+function resolveRouteOverridePath(capability: Capability, scType: ScType, subclass?: string) {
+  const [primaryPath, legacyPath] = buildRouteOverridePaths(capability, scType, subclass);
+  if (existsSync(primaryPath)) return primaryPath;
+  if (existsSync(legacyPath) || existsSync(resolve(process.cwd(), "apps", "api", ".runtime"))) return legacyPath;
+  return primaryPath;
 }
 
 function resolveGenerationDefaultSkillPath(scType: ScType, subclass?: string) {

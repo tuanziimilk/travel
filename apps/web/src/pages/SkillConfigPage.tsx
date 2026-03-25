@@ -408,12 +408,12 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
   const historyDetailVersionNo = historyDetailQuery.data?.versionNo ?? 0;
   const historyDetailSkillMd = historyDetailQuery.data?.skillMd || "";
   const currentLiveSkillMd = routeDocumentQuery.data?.skillMd || "";
-  const currentLiveVersion = historyQuery.data?.[0];
-  const currentLiveVersionNo = currentLiveVersion?.versionNo ?? 0;
-  const currentLiveVersionEditor = currentLiveVersion?.editor || "system";
-  const currentLiveVersionTime = currentLiveVersion?.createdAt;
+  const currentLiveVersionNo = routeDocumentQuery.data?.matchedVersionNo;
+  const currentLiveVersionEditor = routeDocumentQuery.data?.matchedVersionEditor || "-";
+  const currentLiveVersionTime = routeDocumentQuery.data?.matchedVersionCreatedAt;
   const currentLiveVersionNote =
-    formatHistoryChangeNote(currentLiveVersion?.changeNote, currentLiveVersion?.actionType) || "来源文件基线版本";
+    formatHistoryChangeNote(routeDocumentQuery.data?.matchedVersionChangeNote, routeDocumentQuery.data?.matchedVersionActionType) ||
+    (currentLiveVersionNo === undefined ? "当前生效内容未匹配历史版本" : "来源文件基线版本");
   const historyDiffLines = useMemo(
     () => buildLineDiff(historyDetailSkillMd, currentLiveSkillMd),
     [historyDetailSkillMd, currentLiveSkillMd],
@@ -758,7 +758,7 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
                 <span>备注：{formatHistoryChangeNote(historyDetailQuery.data?.changeNote, historyDetailQuery.data?.actionType) || "-"}</span>
               </div>
               <div className="skill-history-version-meta skill-history-version-meta-current">
-                <span>版本：V{currentLiveVersionNo}</span>
+                <span>版本：{currentLiveVersionNo === undefined ? "-" : `V${currentLiveVersionNo}`}</span>
                 <span>修改人：{currentLiveVersionEditor}</span>
                 <span>时间：{formatChinaDateTime(currentLiveVersionTime)}</span>
                 <span>备注：{currentLiveVersionNote}</span>
