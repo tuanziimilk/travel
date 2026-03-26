@@ -14,6 +14,7 @@ import { db } from "../db/client";
 import { aboutScoreRows, ingestJobs, uploadBatches } from "../db/schema";
 import { makeId } from "../utils/id";
 import { scoreAboutByAiWithMeta, type ScoreIssueFlags } from "../scoring/aboutAiScorer";
+import { buildConsistentComparisonKeyDeltas } from "../scoring/validators/scoreValidator";
 import { env } from "../env";
 import { sha256 } from "../utils/hash";
 import { collectPassMetrics } from "./passMetrics";
@@ -1081,7 +1082,7 @@ async function markStalledJobsAsFailed() {
 export async function getBatchResult(batchId: string) {
   await ensureAboutScoreRowsColumns();
   const rawRows = await db.select().from(aboutScoreRows).where(eq(aboutScoreRows.batchId, batchId));
-  const rows = dedupeStoredRowsKeepLatest(rawRows);
+  const rows = dedupeStoredRowsKeepLatest(rawRows).map((row) => sanitizeStoredRow(row));
   const validRows = rows.filter((row) => !row.errorReason);
   const failedRows = rows.filter((row) => row.errorReason);
   const passMetrics = collectPassMetrics(validRows);
@@ -1153,8 +1154,47 @@ export async function getBatchModuleId(batchId: string) {
   return (rows[0]?.moduleId || "about") as "about" | "faq";
 }
 
+function rebuildStoredRowKeyDeltas(row: Record<string, unknown>) {
+  const toResult = (version: "online" | "ai" | "op") => {
+    const prefix = `score${version[0].toUpperCase()}${version.slice(1)}`;
+    const total = Number(row[`${prefix}Total`] || 0);
+    if (!Number.isFinite(total)) return null;
+
+    const a = Number(row[`${prefix}A`] || 0);
+    const b = Number(row[`${prefix}B`] || 0);
+    const c = Number(row[`${prefix}C`] || 0);
+    const d = Number(row[`${prefix}D`] || 0);
+    if (![a, b, c, d].every((value) => Number.isFinite(value))) return null;
+
+    return {
+      version,
+      score_total: total,
+      score_breakdown: { A: a, B: b, C: c, D: d },
+      strengths: [],
+      weaknesses: [],
+      suggestions: [],
+      pass_for_publish: false,
+    };
+  };
+
+  const results = (["online", "ai", "op"] as const)
+    .map((version) => toResult(version))
+    .filter(Boolean) as ScoreOutput["results"];
+
+  if (!results.length) return [];
+  return buildConsistentComparisonKeyDeltas(results);
+}
+
+function sanitizeStoredRow<T extends Record<string, unknown>>(row: T) {
+  return {
+    ...row,
+    keyDeltas: rebuildStoredRowKeyDeltas(row),
+  };
+}
+
 export function buildExportRows(rows: Array<Record<string, unknown>>) {
-  return rows.map((row) => {
+  return rows.map((rawRow) => {
+    const row = sanitizeStoredRow(rawRow);
     const failed = Boolean(row.errorReason);
     const failureCategory = failed ? classifyFailureReason(row.errorReason) : "";
     const aiScore = Number(row.scoreAiTotal || 0);
@@ -1661,7 +1701,7 @@ export async function getBatchDetail(batchId: string, page: number, pageSize: nu
   await ensureAboutScoreRowsColumns();
   const offset = (page - 1) * pageSize;
   const rawRows = await db.select().from(aboutScoreRows).where(eq(aboutScoreRows.batchId, batchId));
-  const rows = dedupeStoredRowsKeepLatest(rawRows);
+  const rows = dedupeStoredRowsKeepLatest(rawRows).map((row) => sanitizeStoredRow(row));
   return {
     total: rows.length,
     page,

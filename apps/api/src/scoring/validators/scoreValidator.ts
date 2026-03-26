@@ -77,6 +77,71 @@ export function sortVersionsForTie(results: ScoreOutput["results"]) {
     .map((item) => item.version);
 }
 
+function versionLabel(version: "online" | "ai" | "op") {
+  if (version === "online") return "线上版本";
+  if (version === "ai") return "AI版本";
+  return "OP版本";
+}
+
+const breakdownMeta: Array<{ key: keyof ScoreOutput["results"][number]["score_breakdown"]; label: string }> = [
+  { key: "A", label: "基础规范" },
+  { key: "B", label: "业务清晰度" },
+  { key: "C", label: "SEO覆盖" },
+  { key: "D", label: "语言与本土化" },
+];
+
+export function buildConsistentComparisonKeyDeltas(results: ScoreOutput["results"]) {
+  const ranking = sortVersionsForTie(results);
+  const byVersion = new Map(results.map((item) => [item.version, item]));
+  const ordered = ranking.map((version) => byVersion.get(version)).filter(Boolean) as ScoreOutput["results"];
+  if (!ordered.length) return [];
+  if (ordered.length === 1) return [`当前最优版本：${versionLabel(ordered[0].version)}`];
+
+  const best = ordered[0];
+  const runnerUp = ordered[1];
+  const deltas: string[] = [];
+  const seen = new Set<string>();
+  const push = (text: string) => {
+    const normalized = text.trim();
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    deltas.push(normalized);
+  };
+
+  push(
+    `${versionLabel(best.version)}总分更高（${best.score_total.toFixed(1)} vs ${runnerUp.score_total.toFixed(1)}），当前综合表现更优。`,
+  );
+
+  const rankedDimensions = breakdownMeta
+    .map((item) => {
+      const bestScore = Number(best.score_breakdown[item.key] || 0);
+      const runnerUpScore = Number(runnerUp.score_breakdown[item.key] || 0);
+      return {
+        ...item,
+        bestScore,
+        runnerUpScore,
+        diff: Math.round((bestScore - runnerUpScore) * 10) / 10,
+      };
+    })
+    .sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+
+  for (const item of rankedDimensions) {
+    if (Math.abs(item.diff) < 0.2) continue;
+    if (item.diff > 0) {
+      push(
+        `${versionLabel(best.version)}在${item.label}更强（${item.bestScore.toFixed(1)} vs ${item.runnerUpScore.toFixed(1)}）。`,
+      );
+    } else {
+      push(
+        `${versionLabel(runnerUp.version)}在${item.label}更强（${item.runnerUpScore.toFixed(1)} vs ${item.bestScore.toFixed(1)}）。`,
+      );
+    }
+    if (deltas.length >= 3) break;
+  }
+
+  return deltas.slice(0, 3);
+}
+
 export function validateScoreOutput(
   output: unknown,
   options: ValidateOptions,
@@ -194,6 +259,7 @@ export function validateScoreOutput(
   } else {
     doc.comparison.ranking = expectedRanking;
     doc.comparison.best_version = expectedRanking[0];
+    doc.comparison.key_deltas = buildConsistentComparisonKeyDeltas(doc.results);
   }
 
   if (opMissingWhenExpected) {

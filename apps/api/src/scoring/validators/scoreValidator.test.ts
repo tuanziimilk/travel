@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sortVersionsForTie, validateScoreOutput } from "./scoreValidator";
+import { buildConsistentComparisonKeyDeltas, sortVersionsForTie, validateScoreOutput } from "./scoreValidator";
 
 function validBase(expectOp = false) {
   return {
@@ -106,5 +106,46 @@ describe("score validator", () => {
     expect(res.ok).toBe(true);
     expect(res.parsed?.results.some((item) => item.version === "op")).toBe(false);
     expect(res.parsed?.notes).toContain("op version");
+  });
+
+  it("key_deltas should stay consistent with actual scores", () => {
+    const data: any = validBase(false);
+    data.results[0].score_total = 5.3;
+    data.results[0].score_breakdown = { A: 1.0, B: 2.5, C: 1.0, D: 0.8 };
+    data.results[1].score_total = 5.0;
+    data.results[1].score_breakdown = { A: 0.0, B: 3.0, C: 1.0, D: 1.0 };
+    data.comparison.key_deltas = ["AI版本明显更好", "AI版本更完整"];
+
+    const res = validateScoreOutput(data, { expectOp: false, termName: "" });
+    expect(res.ok).toBe(true);
+    expect(res.parsed?.comparison.best_version).toBe("online");
+    expect(res.parsed?.comparison.key_deltas[0]).toContain("线上版本总分更高");
+    expect(res.parsed?.comparison.key_deltas.join(" ")).toContain("AI版本在业务清晰度更强");
+    expect(res.parsed?.comparison.key_deltas.join(" ")).toContain("线上版本在基础规范更强");
+  });
+
+  it("buildConsistentComparisonKeyDeltas should reflect real ranking", () => {
+    const deltas = buildConsistentComparisonKeyDeltas([
+      {
+        version: "online",
+        score_total: 7.0,
+        score_breakdown: { A: 2.0, B: 2.5, C: 1.5, D: 1.0 },
+        strengths: [],
+        weaknesses: [],
+        suggestions: [],
+        pass_for_publish: false,
+      },
+      {
+        version: "ai",
+        score_total: 8.1,
+        score_breakdown: { A: 2.0, B: 3.4, C: 1.7, D: 1.0 },
+        strengths: [],
+        weaknesses: [],
+        suggestions: [],
+        pass_for_publish: true,
+      },
+    ] as any);
+
+    expect(deltas[0]).toContain("AI版本总分更高");
   });
 });
