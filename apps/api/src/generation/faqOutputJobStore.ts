@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 import { db } from "../db/client";
 import { contentGenerationJobs } from "../db/schema";
 import { formatChinaDateTime, formatChinaIsoOffset } from "../utils/time";
+import { listPersistedHistoryJobIds, listPersistedHistoryRows } from "./faqOutputRowStore";
 
 type RouteSummaryRow = {
   factType: string;
@@ -151,15 +152,29 @@ function parseStoredWorkbook(row: {
 }
 
 async function listDoneGenerationRows(scType = "faq") {
+  const persistedRows = await listPersistedHistoryRows(scType);
+  const persistedJobIds = new Set((await listPersistedHistoryJobIds(scType)).map((id) => id));
   const rows = await db
     .select()
     .from(contentGenerationJobs)
     .where(eq(contentGenerationJobs.scType, scType))
     .orderBy(desc(contentGenerationJobs.createdAt));
 
-  return rows
+  const workbookRows = rows
     .filter((row) => (row.status === "done" || row.status === "failed") && row.resultFileBase64)
+    .filter((row) => !persistedJobIds.has(row.id))
     .flatMap((row) => parseStoredWorkbook(row));
+
+  return [
+    ...persistedRows.map((row) => ({
+      ...row,
+      createdAt: row.createdAt,
+      startedAt: row.startedAt,
+      finishedAt: row.finishedAt,
+      板块名称: row.板块名称,
+    })),
+    ...workbookRows,
+  ];
 }
 
 function filterHistoryRows(rows: StoredFaqOutputRow[], input: HistoryFilters) {

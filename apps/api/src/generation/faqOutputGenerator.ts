@@ -20,6 +20,7 @@ import {
   recoverInterruptedGenerationJobs,
   updateGenerationJobProgress,
 } from "./faqOutputJobStore";
+import { listPersistedGenerationRows, listPersistedSuccessRowIndexes, persistGenerationRow } from "./faqOutputRowStore";
 
 const BOARD_NAME_FIELD = "板块名称" as const;
 
@@ -646,15 +647,18 @@ async function executeFaqOutputGeneration(
   const executableRows = routedRows.filter((item) => item.route.status === "active");
   if (!executableRows.length) throw new Error("上传文件中没有命中已接入的 FAQ 输出 skill 路由。");
 
+  const persistedRows = await listPersistedGenerationRows(jobId);
+  const persistedSuccessIndexes = await listPersistedSuccessRowIndexes(jobId);
+  const persistedSuccessRows = persistedRows.filter((item) => item.status === "success");
   const concurrency = Math.max(1, Math.min(env.faqOutputRowConcurrencyCap, env.ingestRowConcurrency, executableRows.length));
   const skillCache = new Map<string, Awaited<ReturnType<typeof loadGenerationSkill>>>();
   const progressState = {
-    successRows: 0,
+    successRows: persistedSuccessRows.length,
     failedRows: 0,
-    promptTokensSum: 0,
-    completionTokensSum: 0,
-    totalTokensSum: 0,
-    estimatedCostUsdSum: 0,
+    promptTokensSum: persistedSuccessRows.reduce((sum, item) => sum + item.promptTokens, 0),
+    completionTokensSum: persistedSuccessRows.reduce((sum, item) => sum + item.completionTokens, 0),
+    totalTokensSum: persistedSuccessRows.reduce((sum, item) => sum + item.totalTokens, 0),
+    estimatedCostUsdSum: persistedSuccessRows.reduce((sum, item) => sum + item.estimatedCostUsd, 0),
   };
   let progressWrite = Promise.resolve();
 
@@ -678,7 +682,9 @@ async function executeFaqOutputGeneration(
 
   await flushProgress();
 
-  const results = await runWithConcurrency(executableRows, concurrency, async (item) => {
+  const pendingRows = executableRows.filter((item) => !persistedSuccessIndexes.has(item.rowIndex));
+
+  await runWithConcurrency(pendingRows, concurrency, async (item) => {
     const startedAt = Date.now();
     let skill = skillCache.get(item.subclass);
     try {
@@ -697,102 +703,167 @@ async function executeFaqOutputGeneration(
 
       const finalized = finalizeGenerationItem(executed.result.faq_output, item.row, item.subclass);
       const fieldExtract = finalizeFieldExtract(executed.result.field_extract);
+      const extractionRow = buildExtractionRow(item.row, fieldExtract);
+      const estimatedCostUsd = estimateCostUsd(executed.usage.promptTokens, executed.usage.completionTokens);
 
-      const result = {
+      await persistGenerationRow({
+        jobId,
         rowIndex: item.rowIndex,
-        status: "success" as const,
-        subclass: item.subclass,
+        status: "success",
         factType: item.row.fact_type,
-        routeKey: skill?.routeKey || item.route.skillKey,
-        output: {
-          ...finalized,
-          Source: finalized.Source || "AI",
-          Subclass: item.subclass,
-          ContentType: "faq" as const,
-          [BOARD_NAME_FIELD]: "faq" as const,
-          Titile1: finalized.Titile1 || "",
-          "Brief Introduction": finalized["Brief Introduction"] || "",
-          "Href Kw": finalized["Href Kw"] || "",
-          "Href Url": finalized["Href Url"] || "",
-        },
-        fieldExtract,
-        extractionRow: buildExtractionRow(item.row, fieldExtract),
-        runtime: {
-          elapsedMs: Date.now() - startedAt,
-          promptTokens: executed.usage.promptTokens,
-          completionTokens: executed.usage.completionTokens,
-          totalTokens: executed.usage.totalTokens,
-          estimatedCostUsd: estimateCostUsd(executed.usage.promptTokens, executed.usage.completionTokens),
-          aiModel: env.aiModel,
-        },
-      };
+        subclass: item.subclass,
+        routeKey: skill.routeKey,
+        country: finalized.Country,
+        termId: finalized.TermID,
+        termName: finalized.TermName,
+        domain: finalized.Domain,
+        source: finalized.Source || "AI",
+        boardName: finalized[BOARD_NAME_FIELD],
+        title1: finalized.Titile1,
+        briefIntroduction: finalized["Brief Introduction"],
+        hrefKw: finalized["Href Kw"],
+        hrefUrl: finalized["Href Url"],
+        supported: extractionRow.supported,
+        inputStatus: extractionRow.status,
+        discountType: extractionRow.discount_type,
+        discountValue: extractionRow.discount_value,
+        currency: extractionRow.currency,
+        discountDetails: extractionRow.discount_details,
+        url: extractionRow.url,
+        promptTokens: executed.usage.promptTokens,
+        completionTokens: executed.usage.completionTokens,
+        totalTokens: executed.usage.totalTokens,
+        estimatedCostUsd,
+        elapsedMs: Date.now() - startedAt,
+        aiModel: env.aiModel,
+      });
+
       progressState.successRows += 1;
-      progressState.promptTokensSum += result.runtime.promptTokens;
-      progressState.completionTokensSum += result.runtime.completionTokens;
-      progressState.totalTokensSum += result.runtime.totalTokens;
-      progressState.estimatedCostUsdSum += result.runtime.estimatedCostUsd;
-      void flushProgress();
-      return result;
+      progressState.promptTokensSum += executed.usage.promptTokens;
+      progressState.completionTokensSum += executed.usage.completionTokens;
+      progressState.totalTokensSum += executed.usage.totalTokens;
+      progressState.estimatedCostUsdSum += estimatedCostUsd;
+      await flushProgress();
+      return;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (message.includes("AI 执行校验失败")) {
-        const result = {
+        const fallbackOutput = buildFallbackOutput(item.row, item.subclass);
+        const fallbackExtract = finalizeFieldExtract({
+          supported: item.row.supported || "unknown",
+          discount_type: item.row.discount_type || "",
+          discount_value: item.row.discount_value || "",
+          currency: item.row.currency || "",
+        });
+        const extractionRow = buildExtractionRow(item.row, fallbackExtract);
+
+        await persistGenerationRow({
+          jobId,
           rowIndex: item.rowIndex,
-          status: "success" as const,
-          subclass: item.subclass,
+          status: "success",
           factType: item.row.fact_type,
+          subclass: item.subclass,
           routeKey: `${skill?.routeKey || item.route.skillKey}:fallback`,
-          output: buildFallbackOutput(item.row, item.subclass),
-          fieldExtract: finalizeFieldExtract({
-            supported: item.row.supported || "unknown",
-            discount_type: item.row.discount_type || "",
-            discount_value: item.row.discount_value || "",
-            currency: item.row.currency || "",
-          }),
-          extractionRow: buildExtractionRow(item.row, {
-            supported: item.row.supported || "unknown",
-            discount_type: item.row.discount_type || "",
-            discount_value: item.row.discount_value || "",
-            currency: item.row.currency || "",
-          }),
-          runtime: {
-            elapsedMs: Date.now() - startedAt,
-            promptTokens: 0,
-            completionTokens: 0,
-            totalTokens: 0,
-            estimatedCostUsd: 0,
-            aiModel: `${env.aiModel}:fallback`,
-          },
-        };
+          country: fallbackOutput.Country,
+          termId: fallbackOutput.TermID,
+          termName: fallbackOutput.TermName,
+          domain: fallbackOutput.Domain,
+          source: fallbackOutput.Source,
+          boardName: fallbackOutput[BOARD_NAME_FIELD],
+          title1: fallbackOutput.Titile1,
+          briefIntroduction: fallbackOutput["Brief Introduction"],
+          hrefKw: fallbackOutput["Href Kw"],
+          hrefUrl: fallbackOutput["Href Url"],
+          supported: extractionRow.supported,
+          inputStatus: extractionRow.status,
+          discountType: extractionRow.discount_type,
+          discountValue: extractionRow.discount_value,
+          currency: extractionRow.currency,
+          discountDetails: extractionRow.discount_details,
+          url: extractionRow.url,
+          elapsedMs: Date.now() - startedAt,
+          aiModel: `${env.aiModel}:fallback`,
+        });
+
         progressState.successRows += 1;
-        void flushProgress();
-        return result;
+        await flushProgress();
+        return;
       }
-      const result = {
+
+      await persistGenerationRow({
+        jobId,
         rowIndex: item.rowIndex,
-        status: "error" as const,
-        subclass: item.subclass,
+        status: "error",
         factType: item.row.fact_type,
+        subclass: item.subclass,
         routeKey: skill?.routeKey || item.route.skillKey,
-        extractionRow: item.row,
-        error: message,
-      };
+        country: item.row.country,
+        termId: item.row.term_id,
+        termName: item.row.term_name,
+        domain: item.row.domain,
+        supported: item.row.supported,
+        inputStatus: item.row.status,
+        discountType: item.row.discount_type,
+        discountValue: item.row.discount_value,
+        currency: item.row.currency,
+        discountDetails: item.row.discount_details,
+        url: item.row.url,
+        errorReason: message,
+      });
+
       progressState.failedRows += 1;
-      void flushProgress();
-      return result;
+      await flushProgress();
     }
   });
 
   await progressWrite;
 
-  const successRows = results.filter((item): item is Extract<GenerationRowResult, { status: "success" }> => item.status === "success");
-  const failedRows = results.filter((item): item is Extract<GenerationRowResult, { status: "error" }> => item.status === "error");
+  const persistedAfterRun = await listPersistedGenerationRows(jobId);
+  const persistedByRowIndex = new Map(persistedAfterRun.map((item) => [item.rowIndex, item]));
+  const successRows = persistedAfterRun.filter((item) => item.status === "success");
+  const failedRows = persistedAfterRun.filter((item) => item.status === "error");
 
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(successRows.map((item) => item.output), { header: [...outputHeaders] }), "FAQ输出");
   XLSX.utils.book_append_sheet(
     workbook,
-    XLSX.utils.json_to_sheet(results.map((item) => item.extractionRow), { header: [...extractionSheetHeaders] }),
+    XLSX.utils.json_to_sheet(
+      successRows.map((item) => ({
+        ContentType: "faq",
+        Country: item.country,
+        TermID: item.termId,
+        TermName: item.termName,
+        Domain: item.domain,
+        Source: item.source || "AI",
+        Subclass: item.subclass,
+        [BOARD_NAME_FIELD]: item.boardName || "faq",
+        Titile1: item.title1,
+        "Brief Introduction": item.briefIntroduction,
+        "Href Kw": item.hrefKw,
+        "Href Url": item.hrefUrl,
+      })),
+      { header: [...outputHeaders] },
+    ),
+    "FAQ输出",
+  );
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.json_to_sheet(
+      rows.map((row, index) => {
+        const persisted = persistedByRowIndex.get(index + 1);
+        if (!persisted || persisted.status !== "success") return row;
+        return {
+          ...row,
+          supported: persisted.supported,
+          status: persisted.inputStatus,
+          discount_type: persisted.discountType,
+          discount_value: persisted.discountValue,
+          currency: persisted.currency,
+          discount_details: persisted.discountDetails || row.discount_details,
+          url: persisted.url || row.url,
+        };
+      }),
+      { header: [...extractionSheetHeaders] },
+    ),
     "字段提取",
   );
   XLSX.utils.book_append_sheet(
@@ -803,18 +874,18 @@ async function executeFaqOutputGeneration(
         factType: item.factType,
         subclass: item.subclass,
         routeKey: item.routeKey,
-        error: item.error,
+        error: item.errorReason,
       })),
     ),
     "失败明细",
   );
 
   const xlsxBase64 = XLSX.write(workbook, { type: "base64", bookType: "xlsx" });
-  const promptTokens = successRows.reduce((sum, item) => sum + item.runtime.promptTokens, 0);
-  const completionTokens = successRows.reduce((sum, item) => sum + item.runtime.completionTokens, 0);
-  const totalTokens = successRows.reduce((sum, item) => sum + item.runtime.totalTokens, 0);
-  const estimatedCostUsd = Math.round(successRows.reduce((sum, item) => sum + item.runtime.estimatedCostUsd, 0) * 1_000_000) / 1_000_000;
-  const distinctSubclasses = Array.from(new Set(successRows.map((item) => item.subclass)));
+  const promptTokens = successRows.reduce((sum, item) => sum + item.promptTokens, 0);
+  const completionTokens = successRows.reduce((sum, item) => sum + item.completionTokens, 0);
+  const totalTokens = successRows.reduce((sum, item) => sum + item.totalTokens, 0);
+  const estimatedCostUsd = Math.round(successRows.reduce((sum, item) => sum + item.estimatedCostUsd, 0) * 1_000_000) / 1_000_000;
+  const distinctSubclasses = Array.from(new Set((successRows.length ? successRows : executableRows).map((item) => item.subclass)));
   const jobSubclass = distinctSubclasses.length === 1 ? distinctSubclasses[0] : "mixed";
   const resultFileName = `faq-output-${toFaqOutputSkillSlug(jobSubclass)}-${Date.now()}.xlsx`;
   const errorReason = failedRows.length ? `存在 ${failedRows.length} 行生成失败，请查看失败明细。` : "";
@@ -836,23 +907,30 @@ async function executeFaqOutputGeneration(
     resultFileName,
     resultFileBase64: xlsxBase64,
     routeSummary,
-    rowResults: results.map((item) =>
+    rowResults: persistedAfterRun.map((item) =>
       item.status === "success"
         ? {
             rowIndex: item.rowIndex,
-            status: item.status,
+            status: "success" as const,
             subclass: item.subclass,
             factType: item.factType,
             routeKey: item.routeKey,
-            runtime: item.runtime,
+            runtime: {
+              elapsedMs: item.elapsedMs,
+              promptTokens: item.promptTokens,
+              completionTokens: item.completionTokens,
+              totalTokens: item.totalTokens,
+              estimatedCostUsd: item.estimatedCostUsd,
+              aiModel: item.aiModel,
+            },
           }
         : {
             rowIndex: item.rowIndex,
-            status: item.status,
+            status: "error" as const,
             subclass: item.subclass,
             factType: item.factType,
             routeKey: item.routeKey,
-            error: item.error,
+            error: item.errorReason,
           },
     ),
     errorReason,
@@ -901,3 +979,6 @@ export async function retryFaqOutputGeneration(jobId: string) {
 }
 
 void triggerGenerationScheduler();
+setInterval(() => {
+  void triggerGenerationScheduler();
+}, 5000);

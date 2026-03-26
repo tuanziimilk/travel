@@ -13,3 +13,4 @@ pool.on("connection", (connection) => {
 });
 
 export const db = drizzle(pool);
+export { pool };
