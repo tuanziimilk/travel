@@ -188,11 +188,6 @@ function buildPromptInputRow(row: FaqOutputInputRow, subclass: string) {
     domain: row.domain,
     term_name: row.term_name,
     fact_type: row.fact_type,
-    supported: row.supported,
-    status: row.status,
-    discount_type: row.discount_type,
-    discount_value: row.discount_value,
-    currency: row.currency,
     subclass,
     discount_details: row.discount_details,
     url: row.url,
@@ -294,13 +289,44 @@ function finalizeFieldExtract(extract: FaqFieldExtract): FaqFieldExtract {
   const supportedRaw = String(extract.supported || "")
     .trim()
     .toLowerCase();
+  const discountTypeRaw = String(extract.discount_type || "")
+    .trim()
+    .toLowerCase();
+  const normalizedDiscountType =
+    discountTypeRaw === "percent" || discountTypeRaw === "amount" || discountTypeRaw === "min_order" || discountTypeRaw === "other"
+      ? discountTypeRaw
+      : "";
+  const normalizedDiscountValue = String(extract.discount_value || "").trim().replace(/[%,$€£¥]/g, "");
+  const normalizedCurrency = String(extract.currency || "")
+    .trim()
+    .toUpperCase();
+
+  if (supportedRaw === "no") {
+    return {
+      supported: "no",
+      discount_type: "other",
+      discount_value: "",
+      currency: "",
+    };
+  }
+
+  if (normalizedDiscountType === "percent") {
+    return {
+      supported: supportedRaw === "yes" || supportedRaw === "unknown" ? supportedRaw : "unknown",
+      discount_type: "percent",
+      discount_value: normalizedDiscountValue,
+      currency: "",
+    };
+  }
+
   return {
     supported: supportedRaw === "yes" || supportedRaw === "no" || supportedRaw === "unknown" ? supportedRaw : "unknown",
-    discount_type: String(extract.discount_type || "").trim(),
-    discount_value: String(extract.discount_value || "").trim(),
-    currency: String(extract.currency || "")
-      .trim()
-      .toUpperCase(),
+    discount_type: normalizedDiscountType,
+    discount_value: normalizedDiscountValue,
+    currency:
+      normalizedDiscountType === "amount" || normalizedDiscountType === "min_order"
+        ? normalizedCurrency
+        : "",
   };
 }
 

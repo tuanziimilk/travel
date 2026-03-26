@@ -199,6 +199,78 @@ describe("faq output generation candidate validation", () => {
       expect(result.value?.field_extract.supported).toBe("unknown");
     }
   });
+
+  it("normalizes no-offer extraction to no + other + empty values", () => {
+    const candidate = JSON.stringify({
+      faq_output: {
+        ContentType: "faq",
+        Country: "US",
+        TermID: "123",
+        TermName: "Example Brand",
+        Domain: "example.com",
+        Source: "AI",
+        Subclass: "student",
+        [boardField]: "faq",
+        Titile1: "Does Example Brand offer a student discount?",
+        "Brief Introduction": "No. Example Brand does not currently offer a standard student discount.",
+        "Href Kw": "",
+        "Href Url": "",
+      },
+      field_extract: {
+        supported: "no",
+        discount_type: "percent",
+        discount_value: "15",
+        currency: "usd",
+      },
+    });
+
+    const result = validateGenerationCandidate(candidate, "student");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value?.field_extract).toEqual({
+        supported: "no",
+        discount_type: "other",
+        discount_value: "",
+        currency: "",
+      });
+    }
+  });
+
+  it("forces percent extraction to keep empty currency", () => {
+    const candidate = JSON.stringify({
+      faq_output: {
+        ContentType: "faq",
+        Country: "US",
+        TermID: "123",
+        TermName: "Example Brand",
+        Domain: "example.com",
+        Source: "AI",
+        Subclass: "student",
+        [boardField]: "faq",
+        Titile1: "Does Example Brand offer a student discount?",
+        "Brief Introduction": "Yes. Example Brand offers students 15% off.",
+        "Href Kw": "",
+        "Href Url": "",
+      },
+      field_extract: {
+        supported: "yes",
+        discount_type: "percent",
+        discount_value: "15%",
+        currency: "usd",
+      },
+    });
+
+    const result = validateGenerationCandidate(candidate, "student");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value?.field_extract).toEqual({
+        supported: "yes",
+        discount_type: "percent",
+        discount_value: "15",
+        currency: "",
+      });
+    }
+  });
 });
 
 describe("faq output fallback helpers", () => {
