@@ -119,7 +119,6 @@ rsync -a --delete \
   --exclude '*.db' \
   --exclude '*.sqlite' \
   --exclude 'apps/api/tmp-*' \
-  --exclude 'nginx/' \
   ${REMOTE_TMP_DIR}/ ${SERVER_DIR}/
 
 rm -rf ${REMOTE_TMP_DIR}
