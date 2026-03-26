@@ -178,3 +178,11 @@ description: 对优惠券网站商家 About 文本进行 10 分制质检评分�
 验收标准（建议）：
 - validator 基础校验必须通过（结构/分数范围/一致性）。
 - 严格门禁（`--strict`）用于发布前/质检留档前的最终确认（可按团队流程选择是否强制）。
+
+## Comparison Consistency Supplement
+- `comparison.best_version`, `comparison.ranking`, and `comparison.key_deltas` must stay fully consistent with the final `results[].score_total` and `results[].score_breakdown`.
+- `key_deltas` must explain why the winning version is best. Do not output a conclusion that praises a non-winning version as overall better.
+- If `best_version = online`, do not write statements like "AI版本更好 / 更优 / 整体更强". The same rule applies symmetrically to `ai` and `op`.
+- If a non-winning version is stronger only on one dimension, it may be mentioned only as a partial advantage, and the sentence must still make clear that the overall best version remains the winner.
+- `ranking[0]` must equal `best_version`. When scores tie, ranking must still follow the documented tie-break order.
+- Self-check before output: no contradiction is allowed between `key_deltas` and the final scores, ranking, or `best_version`.

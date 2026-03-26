@@ -189,3 +189,10 @@ description: 对优惠券分发站点商家页 FAQ 文本进行 10 分制质检�
    - `node scripts/score-validator.mjs --file output.json --termname "你的TermName" --strict`
 4) examples 维护校验：
    - `node scripts/score-validator.mjs --lint-examples --examples assets/examples.jsonl`
+## Comparison Consistency Supplement
+- `comparison.best_version`, `comparison.ranking`, and `comparison.key_deltas` must stay fully consistent with the final `results[].score_total` and `results[].score_breakdown`.
+- `key_deltas` must explain why the winning version is best. Do not output a conclusion that praises a non-winning version as overall better.
+- If `best_version = online`, do not write statements like "AI版本更好 / 更优 / 整体更强". The same rule applies symmetrically to `ai` and `op`.
+- If a non-winning version is stronger only on one dimension, it may be mentioned only as a partial advantage, and the sentence must still make clear that the overall best version remains the winner.
+- `ranking[0]` must equal `best_version`. When scores tie, ranking must still follow the documented tie-break order.
+- Self-check before output: no contradiction is allowed between `key_deltas` and the final scores, ranking, or `best_version`.
