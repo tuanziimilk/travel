@@ -41,18 +41,26 @@ describe("faq output routing", () => {
 describe("faq output generation candidate validation", () => {
   it("accepts a valid student JSON payload with Titile1", () => {
     const candidate = JSON.stringify({
-      ContentType: "faq",
-      Country: "US",
-      TermID: "123",
-      TermName: "Example Brand",
-      Domain: "example.com",
-      Source: "AI",
-      Subclass: "student",
-      [boardField]: "faq",
-      Titile1: "Does Example Brand offer a student discount?",
-      "Brief Introduction": "Yes. Example Brand offers students 10% off after verification.",
-      "Href Kw": "",
-      "Href Url": "",
+      faq_output: {
+        ContentType: "faq",
+        Country: "US",
+        TermID: "123",
+        TermName: "Example Brand",
+        Domain: "example.com",
+        Source: "AI",
+        Subclass: "student",
+        [boardField]: "faq",
+        Titile1: "Does Example Brand offer a student discount?",
+        "Brief Introduction": "Yes. Example Brand offers students 10% off after verification.",
+        "Href Kw": "",
+        "Href Url": "",
+      },
+      field_extract: {
+        supported: "yes",
+        discount_type: "percent",
+        discount_value: "10",
+        currency: "",
+      },
     });
 
     const result = validateGenerationCandidate(candidate, "student");
@@ -78,7 +86,8 @@ describe("faq output generation candidate validation", () => {
     const result = validateGenerationCandidate(candidate, "student");
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value?.Titile1).toContain("Demo Shop");
+      expect(result.value?.faq_output.Titile1).toContain("Demo Shop");
+      expect(result.value?.field_extract.supported).toBe("unknown");
     }
   });
 
@@ -102,7 +111,7 @@ describe("faq output generation candidate validation", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       const finalized = finalizeGenerationItem(
-        result.value!,
+        result.value!.faq_output,
         {
           term_id: "456",
           country: "UK",
@@ -166,6 +175,29 @@ describe("faq output generation candidate validation", () => {
 
     const result = validateGenerationCandidate(candidate, "student");
     expect(result.ok).toBe(false);
+  });
+
+  it("accepts legacy faq-only payloads and injects empty field_extract", () => {
+    const candidate = JSON.stringify({
+      ContentType: "faq",
+      Country: "US",
+      TermID: "123",
+      TermName: "Example Brand",
+      Domain: "example.com",
+      Source: "AI",
+      Subclass: "student",
+      [boardField]: "faq",
+      Titile1: "Does Example Brand offer a student discount?",
+      "Brief Introduction": "Yes. Example Brand offers students 10% off after verification.",
+      "Href Kw": "",
+      "Href Url": "",
+    });
+
+    const result = validateGenerationCandidate(candidate, "student");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value?.field_extract.supported).toBe("unknown");
+    }
   });
 });
 

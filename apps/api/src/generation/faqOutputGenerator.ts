@@ -53,8 +53,22 @@ const faqOutputItemSchema = z.object({
   "Href Url": z.string(),
 });
 
+const faqFieldExtractSchema = z.object({
+  supported: z.string().optional().default(""),
+  discount_type: z.string().optional().default(""),
+  discount_value: z.string().optional().default(""),
+  currency: z.string().optional().default(""),
+});
+
+const faqGenerationResponseSchema = z.object({
+  faq_output: faqOutputItemSchema,
+  field_extract: faqFieldExtractSchema,
+});
+
 type FaqOutputInputRow = z.infer<typeof faqOutputRowSchema>;
 type FaqOutputItem = z.infer<typeof faqOutputItemSchema>;
+type FaqFieldExtract = z.infer<typeof faqFieldExtractSchema>;
+type FaqGenerationResponse = z.infer<typeof faqGenerationResponseSchema>;
 
 type GenerationRowResult =
   | {
@@ -64,6 +78,8 @@ type GenerationRowResult =
       factType: string;
       routeKey: string;
       output: FaqOutputItem;
+      fieldExtract: FaqFieldExtract;
+      extractionRow: FaqOutputInputRow;
       runtime: {
         elapsedMs: number;
         promptTokens: number;
@@ -79,6 +95,7 @@ type GenerationRowResult =
       subclass: string;
       factType: string;
       routeKey: string;
+      extractionRow: FaqOutputInputRow;
       error: string;
     };
 
@@ -95,6 +112,21 @@ const outputHeaders = [
   "Brief Introduction",
   "Href Kw",
   "Href Url",
+] as const;
+
+const extractionSheetHeaders = [
+  "term_id",
+  "country",
+  "domain",
+  "term_name",
+  "fact_type",
+  "supported",
+  "status",
+  "discount_type",
+  "discount_value",
+  "currency",
+  "discount_details",
+  "url",
 ] as const;
 
 function normalizeHeader(value: string) {
@@ -156,6 +188,11 @@ function buildPromptInputRow(row: FaqOutputInputRow, subclass: string) {
     domain: row.domain,
     term_name: row.term_name,
     fact_type: row.fact_type,
+    supported: row.supported,
+    status: row.status,
+    discount_type: row.discount_type,
+    discount_value: row.discount_value,
+    currency: row.currency,
     subclass,
     discount_details: row.discount_details,
     url: row.url,
@@ -173,18 +210,26 @@ function buildGenerationPrompt(skillMd: string, outputFormatMd: string, row: Faq
     outputFormatMd,
     "Return exactly one JSON object with these fields:",
     JSON.stringify({
-      ContentType: "faq",
-      Country: "",
-      TermID: "",
-      TermName: "",
-      Domain: "",
-      Source: "AI",
-      Subclass: subclass,
-      [BOARD_NAME_FIELD]: "faq",
-      Titile1: "",
-      "Brief Introduction": "",
-      "Href Kw": "",
-      "Href Url": "",
+      faq_output: {
+        ContentType: "faq",
+        Country: "",
+        TermID: "",
+        TermName: "",
+        Domain: "",
+        Source: "AI",
+        Subclass: subclass,
+        [BOARD_NAME_FIELD]: "faq",
+        Titile1: "",
+        "Brief Introduction": "",
+        "Href Kw": "",
+        "Href Url": "",
+      },
+      field_extract: {
+        supported: "yes|no|unknown",
+        discount_type: "",
+        discount_value: "",
+        currency: "",
+      },
     }),
   ].join("\n\n");
 
@@ -194,6 +239,11 @@ function buildGenerationPrompt(skillMd: string, outputFormatMd: string, row: Faq
     "Use discount_details as the primary fact source when writing the answer.",
     "Do not rely on structured discount fields that may be stale or lossy.",
     "If the source indicates no standard offer, answer in a complete sentence and keep output compliant.",
+    "At the same time, re-extract supported, discount_type, discount_value, and currency with minimal text.",
+    "Extraction rules: supported must be yes, no, or unknown.",
+    "discount_value should be plain numeric text without percent sign or currency symbol when inferable.",
+    "currency should be an uppercase ISO code like USD, EUR, or GBP when inferable; otherwise empty string.",
+    "If a field cannot be inferred confidently, return empty string except supported which should be unknown.",
     JSON.stringify(buildPromptInputRow(row, subclass), null, 2),
   ].join("\n\n");
 
@@ -240,6 +290,31 @@ export function finalizeGenerationItem(item: FaqOutputItem, row: FaqOutputInputR
   };
 }
 
+function finalizeFieldExtract(extract: FaqFieldExtract): FaqFieldExtract {
+  const supportedRaw = String(extract.supported || "")
+    .trim()
+    .toLowerCase();
+  return {
+    supported: supportedRaw === "yes" || supportedRaw === "no" || supportedRaw === "unknown" ? supportedRaw : "unknown",
+    discount_type: String(extract.discount_type || "").trim(),
+    discount_value: String(extract.discount_value || "").trim(),
+    currency: String(extract.currency || "")
+      .trim()
+      .toUpperCase(),
+  };
+}
+
+function buildExtractionRow(row: FaqOutputInputRow, extract: FaqFieldExtract): FaqOutputInputRow {
+  const normalized = finalizeFieldExtract(extract);
+  return {
+    ...row,
+    supported: normalized.supported,
+    discount_type: normalized.discount_type,
+    discount_value: normalized.discount_value,
+    currency: normalized.currency,
+  };
+}
+
 export function validateGenerationCandidate(candidateRaw: string, subclass: string) {
   const normalized = String(candidateRaw || "").trim();
   const attempts = [normalized];
@@ -252,13 +327,31 @@ export function validateGenerationCandidate(candidateRaw: string, subclass: stri
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
         return { ok: false, errors: ["JSON payload must be an object"] };
       }
-      const candidate = withGenerationDefaults(parsed as Record<string, unknown>, subclass);
-      const validated = faqOutputItemSchema.safeParse(candidate);
+      const record = parsed as Record<string, unknown>;
+      const faqOutputValue =
+        record.faq_output && typeof record.faq_output === "object"
+          ? (record.faq_output as Record<string, unknown>)
+          : record;
+      const fieldExtractValue =
+        record.field_extract && typeof record.field_extract === "object"
+          ? record.field_extract
+          : { supported: "", discount_type: "", discount_value: "", currency: "" };
+      const validated = faqGenerationResponseSchema.safeParse({
+        faq_output: withGenerationDefaults(faqOutputValue, subclass),
+        field_extract: fieldExtractValue,
+      });
       if (!validated.success) return { ok: false, errors: validated.error.issues.map((issue) => issue.message) };
-      if (validated.data.Subclass.trim().toLowerCase() !== subclass.trim().toLowerCase()) {
-        return { ok: false, errors: [`Subclass mismatch: expected ${subclass}, got ${validated.data.Subclass}`] };
+      if (validated.data.faq_output.Subclass.trim().toLowerCase() !== subclass.trim().toLowerCase()) {
+        return { ok: false, errors: [`Subclass mismatch: expected ${subclass}, got ${validated.data.faq_output.Subclass}`] };
       }
-      return { ok: true, value: validated.data, errors: [] as string[] };
+      return {
+        ok: true,
+        value: {
+          faq_output: validated.data.faq_output,
+          field_extract: finalizeFieldExtract(validated.data.field_extract),
+        } satisfies FaqGenerationResponse,
+        errors: [] as string[],
+      };
     } catch {
       // continue
     }
@@ -274,7 +367,9 @@ function buildRepairMessages(candidate: string, errors: string[], subclass: stri
       "Return JSON only.",
       "Keep the same meaning, but make the object valid.",
       `Subclass must stay exactly "${subclass}".`,
-      "The object must contain non-empty Titile1 and Brief Introduction.",
+      "The object must contain faq_output and field_extract.",
+      "faq_output must contain non-empty Titile1 and Brief Introduction.",
+      "field_extract must contain supported, discount_type, discount_value, and currency.",
       "Optional link fields may be empty strings.",
     ].join("\n"),
     user: [
@@ -569,7 +664,7 @@ async function executeFaqOutputGeneration(
         skillCache.set(item.subclass, skill);
       }
       const prompt = buildGenerationPrompt(skill.skillMd, skill.outputFormatMd, item.row, item.subclass);
-      const executed = await aiExecutor.execute<FaqOutputItem>({
+      const executed = await aiExecutor.execute<FaqGenerationResponse>({
         maxRetries: env.aiExecutorMaxRetries,
         requestTimeoutMs: env.aiRequestTimeoutMsBatch,
         buildMessages: () => prompt,
@@ -577,7 +672,8 @@ async function executeFaqOutputGeneration(
         buildRepairMessages: (candidate, errors) => buildRepairMessages(candidate, errors, item.subclass),
       });
 
-      const finalized = finalizeGenerationItem(executed.result, item.row, item.subclass);
+      const finalized = finalizeGenerationItem(executed.result.faq_output, item.row, item.subclass);
+      const fieldExtract = finalizeFieldExtract(executed.result.field_extract);
 
       const result = {
         rowIndex: item.rowIndex,
@@ -596,6 +692,8 @@ async function executeFaqOutputGeneration(
           "Href Kw": finalized["Href Kw"] || "",
           "Href Url": finalized["Href Url"] || "",
         },
+        fieldExtract,
+        extractionRow: buildExtractionRow(item.row, fieldExtract),
         runtime: {
           elapsedMs: Date.now() - startedAt,
           promptTokens: executed.usage.promptTokens,
@@ -622,6 +720,18 @@ async function executeFaqOutputGeneration(
           factType: item.row.fact_type,
           routeKey: `${skill?.routeKey || item.route.skillKey}:fallback`,
           output: buildFallbackOutput(item.row, item.subclass),
+          fieldExtract: finalizeFieldExtract({
+            supported: item.row.supported || "unknown",
+            discount_type: item.row.discount_type || "",
+            discount_value: item.row.discount_value || "",
+            currency: item.row.currency || "",
+          }),
+          extractionRow: buildExtractionRow(item.row, {
+            supported: item.row.supported || "unknown",
+            discount_type: item.row.discount_type || "",
+            discount_value: item.row.discount_value || "",
+            currency: item.row.currency || "",
+          }),
           runtime: {
             elapsedMs: Date.now() - startedAt,
             promptTokens: 0,
@@ -641,6 +751,7 @@ async function executeFaqOutputGeneration(
         subclass: item.subclass,
         factType: item.row.fact_type,
         routeKey: skill?.routeKey || item.route.skillKey,
+        extractionRow: item.row,
         error: message,
       };
       progressState.failedRows += 1;
@@ -656,6 +767,11 @@ async function executeFaqOutputGeneration(
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(successRows.map((item) => item.output), { header: [...outputHeaders] }), "FAQ输出");
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.json_to_sheet(results.map((item) => item.extractionRow), { header: [...extractionSheetHeaders] }),
+    "字段提取",
+  );
   XLSX.utils.book_append_sheet(
     workbook,
     XLSX.utils.json_to_sheet(
