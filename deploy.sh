@@ -161,6 +161,13 @@ echo "======================================"
 
 echo ""
 docker compose ps
+
+echo ""
+echo "============ sync nginx config ============"
+install -D -m 644 ${SERVER_DIR}/nginx/sc-quality-scoring.conf /etc/nginx/conf.d/sc-quality-scoring.conf
+nginx -t
+systemctl reload nginx
+echo "nginx config reloaded"
 REMOTE
 
 log "Deploy finished"
