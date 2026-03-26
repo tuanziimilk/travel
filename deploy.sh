@@ -73,12 +73,37 @@ fi
 SSH_OPTS="-o StrictHostKeyChecking=no ${SSH_KEY:+-i ${SSH_KEY}}"
 ssh_run() { ssh ${SSH_OPTS} "${SERVER_USER}@${SERVER_HOST}" "$@"; }
 
-# ============================================================
-# Step 1: Sync source code to server
-# ============================================================
-log "Syncing code -> ${SERVER_USER}@${SERVER_HOST}:${SERVER_DIR}"
+COMMIT_SHA="$(git rev-parse HEAD)"
+COMMIT_SHORT="$(git rev-parse --short HEAD)"
+REMOTE_TMP_DIR="${SERVER_DIR}.deploy-tmp-${COMMIT_SHORT}-$$"
 
-rsync -avz --progress \
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  log "Working tree has uncommitted changes"
+  log "Deploying committed HEAD only: ${COMMIT_SHA}"
+else
+  log "Deploying clean HEAD: ${COMMIT_SHA}"
+fi
+
+# ============================================================
+# Step 1: Export committed source code to a remote temp directory
+# ============================================================
+log "Preparing remote temp dir -> ${SERVER_USER}@${SERVER_HOST}:${REMOTE_TMP_DIR}"
+ssh_run "rm -rf '${REMOTE_TMP_DIR}' && mkdir -p '${REMOTE_TMP_DIR}'"
+
+log "Uploading committed files from HEAD"
+git archive --format=tar "${COMMIT_SHA}" | ssh ${SSH_OPTS} "${SERVER_USER}@${SERVER_HOST}" "tar -xf - -C '${REMOTE_TMP_DIR}'"
+
+# ============================================================
+# Step 2: Sync committed snapshot into the real deploy directory
+# ============================================================
+log "Syncing committed snapshot -> ${SERVER_DIR}"
+
+ssh_run bash <<REMOTE
+set -euo pipefail
+
+mkdir -p ${SERVER_DIR}
+
+rsync -a --delete \
   --exclude 'node_modules' \
   --exclude '.git' \
   --exclude 'apps/api/dist' \
@@ -95,11 +120,13 @@ rsync -avz --progress \
   --exclude '*.sqlite' \
   --exclude 'apps/api/tmp-*' \
   --exclude 'nginx/' \
-  ${SSH_KEY:+-e "ssh -i ${SSH_KEY}"} \
-  ./ "${SERVER_USER}@${SERVER_HOST}:${SERVER_DIR}/"
+  ${REMOTE_TMP_DIR}/ ${SERVER_DIR}/
+
+rm -rf ${REMOTE_TMP_DIR}
+REMOTE
 
 # ============================================================
-# Step 2: Remote deploy
+# Step 3: Remote deploy
 # ============================================================
 log "Starting remote deploy..."
 
