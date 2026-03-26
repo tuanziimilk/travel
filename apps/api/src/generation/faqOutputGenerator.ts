@@ -528,7 +528,7 @@ async function executeFaqOutputGeneration(
   const executableRows = routedRows.filter((item) => item.route.status === "active");
   if (!executableRows.length) throw new Error("上传文件中没有命中已接入的 FAQ 输出 skill 路由。");
 
-  const concurrency = Math.max(1, Math.min(4, env.ingestRowConcurrency, executableRows.length));
+  const concurrency = Math.max(1, Math.min(env.faqOutputRowConcurrencyCap, env.ingestRowConcurrency, executableRows.length));
   const skillCache = new Map<string, Awaited<ReturnType<typeof loadGenerationSkill>>>();
   const progressState = {
     successRows: 0,
