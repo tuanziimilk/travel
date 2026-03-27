@@ -572,7 +572,7 @@ export async function completeGenerationJob(input: {
   estimatedCostUsdSum: number;
   aiModel: string;
   resultFileName: string;
-  resultFileBase64: string;
+  resultFileBase64?: string | null;
   routeSummary: RouteSummaryRow[];
   rowResults: RowRuntimeResult[];
   errorReason?: string;
@@ -593,7 +593,7 @@ export async function completeGenerationJob(input: {
       estimatedCostUsdSum: String(input.estimatedCostUsdSum),
       aiModel: input.aiModel,
       resultFileName: input.resultFileName,
-      resultFileBase64: input.resultFileBase64,
+      resultFileBase64: input.resultFileBase64 || null,
       routeSummaryJson: input.routeSummary,
       rowResultsJson: input.rowResults,
       errorReason: input.errorReason || null,

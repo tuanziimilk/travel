@@ -823,64 +823,6 @@ async function executeFaqOutputGeneration(
   const successRows = persistedAfterRun.filter((item) => item.status === "success");
   const failedRows = persistedAfterRun.filter((item) => item.status === "error");
 
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(
-    workbook,
-    XLSX.utils.json_to_sheet(
-      successRows.map((item) => ({
-        ContentType: "faq",
-        Country: item.country,
-        TermID: item.termId,
-        TermName: item.termName,
-        Domain: item.domain,
-        Source: item.source || "AI",
-        Subclass: item.subclass,
-        [BOARD_NAME_FIELD]: item.boardName || "faq",
-        Titile1: item.title1,
-        "Brief Introduction": item.briefIntroduction,
-        "Href Kw": item.hrefKw,
-        "Href Url": item.hrefUrl,
-      })),
-      { header: [...outputHeaders] },
-    ),
-    "FAQ输出",
-  );
-  XLSX.utils.book_append_sheet(
-    workbook,
-    XLSX.utils.json_to_sheet(
-      rows.map((row, index) => {
-        const persisted = persistedByRowIndex.get(index + 1);
-        if (!persisted || persisted.status !== "success") return row;
-        return {
-          ...row,
-          supported: persisted.supported,
-          status: persisted.inputStatus,
-          discount_type: persisted.discountType,
-          discount_value: persisted.discountValue,
-          currency: persisted.currency,
-          discount_details: persisted.discountDetails || row.discount_details,
-          url: persisted.url || row.url,
-        };
-      }),
-      { header: [...extractionSheetHeaders] },
-    ),
-    "字段提取",
-  );
-  XLSX.utils.book_append_sheet(
-    workbook,
-    XLSX.utils.json_to_sheet(
-      failedRows.map((item) => ({
-        rowIndex: item.rowIndex,
-        factType: item.factType,
-        subclass: item.subclass,
-        routeKey: item.routeKey,
-        error: item.errorReason,
-      })),
-    ),
-    "失败明细",
-  );
-
-  const xlsxBase64 = XLSX.write(workbook, { type: "base64", bookType: "xlsx" });
   const promptTokens = successRows.reduce((sum, item) => sum + item.promptTokens, 0);
   const completionTokens = successRows.reduce((sum, item) => sum + item.completionTokens, 0);
   const totalTokens = successRows.reduce((sum, item) => sum + item.totalTokens, 0);
@@ -905,7 +847,7 @@ async function executeFaqOutputGeneration(
     estimatedCostUsdSum: estimatedCostUsd,
     aiModel: env.aiModel,
     resultFileName,
-    resultFileBase64: xlsxBase64,
+    resultFileBase64: null,
     routeSummary,
     rowResults: persistedAfterRun.map((item) =>
       item.status === "success"
