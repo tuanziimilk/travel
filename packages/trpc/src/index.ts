@@ -67,6 +67,26 @@ export const qualityBatchUploadMaxFileBytes = 12 * 1024 * 1024;
 export const qualityBatchUploadMaxRows = 2000;
 export const faqOutputUploadMaxFileBytes = 12 * 1024 * 1024;
 export const faqOutputUploadMaxRows = 3000;
+export const translationUploadMaxFileBytes = 12 * 1024 * 1024;
+export const translationUploadMaxRows = 3000;
+export const translationTextMaxChars = 12000;
+export const translationDefaultTargetLanguage = "Simplified Chinese";
+export const translationDefaultAiModel = "gpt-4o-mini";
+export const translationRealtimeCellThreshold = 200;
+export const translationRealtimeTokenThreshold = 25_000;
+export const translationRealtimeChunkSize = 400;
+export const translationBatchInputCostPer1M = 0.075;
+export const translationBatchOutputCostPer1M = 0.3;
+
+export const translationTargetLanguagePresets = [
+  { value: translationDefaultTargetLanguage, label: "简体中文 / Simplified Chinese" },
+  { value: "English", label: "英语 / English" },
+  { value: "Chinese", label: "中文 / Chinese" },
+  { value: "German", label: "德语 / German" },
+  { value: "French", label: "法语 / French" },
+  { value: "Spanish", label: "西班牙语 / Spanish" },
+  { value: "Japanese", label: "日语 / Japanese" },
+] as const;
 
 export const aiModelOptions = [
   "gpt-5.2",
@@ -328,4 +348,39 @@ export const skillRouteResolveInputSchema = z.object({
 
 export const skillRouteDocumentInputSchema = skillRouteResolveInputSchema;
 
+export const translationTargetLanguageSchema = z.string().trim().min(2).max(32);
+
+export const translationPreviewColumnsInputSchema = z.object({
+  fileName: z.string().min(1),
+  fileBase64: z.string().min(1),
+});
+
+export const translationTextRunInputSchema = z.object({
+  text: z.string().trim().min(1).max(translationTextMaxChars),
+  targetLanguage: translationTargetLanguageSchema,
+});
+
+export const translationBatchRunInputSchema = z.object({
+  uploader: uploaderSchema,
+  note: z.string().optional().default(""),
+  fileName: z.string().min(1),
+  fileBase64: z.string().min(1),
+  targetLanguage: translationTargetLanguageSchema,
+  selectedColumns: z.array(z.string().trim().min(1)).min(1),
+});
+
+export const translationQueueInputSchema = z.object({
+  page: z.number().int().min(1).optional().default(1),
+  pageSize: z.number().int().min(1).max(50).optional().default(10),
+});
+
+export const translationStatusInputSchema = z.object({
+  jobId: z.string().min(1),
+});
+
+export const translationResultInputSchema = z.object({
+  jobId: z.string().min(1),
+});
+
 export type ManualScoreInput = z.infer<typeof manualScoreInputSchema>;
+export type TranslationTargetLanguage = z.infer<typeof translationTargetLanguageSchema>;

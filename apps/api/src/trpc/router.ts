@@ -28,6 +28,12 @@ import {
   skillRouteResolveInputSchema,
   skillRollbackInputSchema,
   skillRouteSaveInputSchema,
+  translationBatchRunInputSchema,
+  translationPreviewColumnsInputSchema,
+  translationQueueInputSchema,
+  translationResultInputSchema,
+  translationStatusInputSchema,
+  translationTextRunInputSchema,
   type ManualScoreInput,
   skillGetInputSchema,
   skillSaveInputSchema,
@@ -75,6 +81,8 @@ import {
   saveSkillRouteOverride,
 } from "../skills/skillRouter";
 import { saveVersionedSkill } from "../skills/skillVersionService";
+import { getTranslationJobResult, getTranslationJobStatus, listTranslationJobs } from "../translation/translationJobStore";
+import { previewTranslationColumns, startBatchTranslation, translateTextNow } from "../translation/translationWorker";
 
 const t = initTRPC.create();
 
@@ -353,6 +361,26 @@ export const appRouter = t.router({
       set: t.procedure.input(runtimeAiConfigSetInputSchema).mutation(({ input }) => {
         return setAiRuntimeModel(input.aiModel);
       }),
+    }),
+  }),
+  translation: t.router({
+    previewColumns: t.procedure.input(translationPreviewColumnsInputSchema).mutation(({ input }) => {
+      return previewTranslationColumns(input);
+    }),
+    runText: t.procedure.input(translationTextRunInputSchema).mutation(({ input }) => {
+      return translateTextNow(input);
+    }),
+    runBatch: t.procedure.input(translationBatchRunInputSchema).mutation(({ input }) => {
+      return startBatchTranslation(input);
+    }),
+    queue: t.procedure.input(translationQueueInputSchema).query(({ input }) => {
+      return listTranslationJobs(input.page, input.pageSize);
+    }),
+    status: t.procedure.input(translationStatusInputSchema).query(({ input }) => {
+      return getTranslationJobStatus(input.jobId);
+    }),
+    result: t.procedure.input(translationResultInputSchema).query(({ input }) => {
+      return getTranslationJobResult(input.jobId);
     }),
   }),
 });

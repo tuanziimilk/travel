@@ -276,6 +276,58 @@ async function applySkillVersionHistoryMigration(connection: mysql.Connection, m
   console.log("[db:migrate:safe] applied 0003_skill_version_history");
 }
 
+async function applyTranslationJobsMigration(connection: mysql.Connection, migration: JournalEntry) {
+  await connection.query(`
+    CREATE TABLE IF NOT EXISTS translation_jobs (
+      id varchar(36) NOT NULL PRIMARY KEY,
+      uploader varchar(32) NOT NULL,
+      note varchar(255) NOT NULL DEFAULT '',
+      provider varchar(32) NOT NULL DEFAULT 'openai',
+      execution_mode varchar(32) NOT NULL DEFAULT 'batch',
+      target_language varchar(32) NOT NULL,
+      status varchar(32) NOT NULL DEFAULT 'queued',
+      input_file_name varchar(255) NOT NULL DEFAULT '',
+      input_file_base64 longtext,
+      provider_batch_id varchar(128),
+      input_file_id varchar(128),
+      output_file_id varchar(128),
+      error_file_id varchar(128),
+      selected_columns_json json,
+      total_rows int NOT NULL DEFAULT 0,
+      processed_rows int NOT NULL DEFAULT 0,
+      success_rows int NOT NULL DEFAULT 0,
+      failed_rows int NOT NULL DEFAULT 0,
+      mixed_rows int NOT NULL DEFAULT 0,
+      predicted_total_tokens int NOT NULL DEFAULT 0,
+      predicted_cost_usd decimal(12,6) NOT NULL DEFAULT '0',
+      prompt_tokens_sum int NOT NULL DEFAULT 0,
+      completion_tokens_sum int NOT NULL DEFAULT 0,
+      total_tokens_sum int NOT NULL DEFAULT 0,
+      estimated_cost_usd_sum decimal(12,6) NOT NULL DEFAULT '0',
+      language_summary_json json,
+      error_reason varchar(512),
+      result_file_name varchar(255) NOT NULL DEFAULT '',
+      result_file_base64 longtext,
+      row_results_json json,
+      ai_model varchar(100) NOT NULL DEFAULT '',
+      started_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      finished_at timestamp NULL DEFAULT NULL,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+  await addColumnIfMissing(connection, "translation_jobs", "provider", `varchar(32) NOT NULL DEFAULT 'openai'`);
+  await addColumnIfMissing(connection, "translation_jobs", "execution_mode", `varchar(32) NOT NULL DEFAULT 'batch'`);
+  await addColumnIfMissing(connection, "translation_jobs", "provider_batch_id", `varchar(128)`);
+  await addColumnIfMissing(connection, "translation_jobs", "input_file_id", `varchar(128)`);
+  await addColumnIfMissing(connection, "translation_jobs", "output_file_id", `varchar(128)`);
+  await addColumnIfMissing(connection, "translation_jobs", "error_file_id", `varchar(128)`);
+  await addColumnIfMissing(connection, "translation_jobs", "predicted_total_tokens", `int NOT NULL DEFAULT 0`);
+  await addColumnIfMissing(connection, "translation_jobs", "predicted_cost_usd", `decimal(12,6) NOT NULL DEFAULT '0'`);
+  await recordMigration(connection, migration.tag, migration.when);
+  console.log("[db:migrate:safe] applied 0004_translation_jobs");
+}
+
 async function main() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
@@ -287,8 +339,9 @@ async function main() {
   const upgrade = entries.find((entry) => entry.tag === "0001_app_schema_upgrade");
   const longtextUpgrade = entries.find((entry) => entry.tag === "0002_content_generation_job_longtext");
   const skillVersionMigration = entries.find((entry) => entry.tag === "0003_skill_version_history");
+  const translationJobsMigration = entries.find((entry) => entry.tag === "0004_translation_jobs");
 
-  if (!baseline || !upgrade || !longtextUpgrade || !skillVersionMigration) {
+  if (!baseline || !upgrade || !longtextUpgrade || !skillVersionMigration || !translationJobsMigration) {
     throw new Error("required migration entries are missing from drizzle/meta/_journal.json");
   }
 
@@ -319,6 +372,11 @@ async function main() {
     if (!appliedTimes.has(skillVersionMigration.when)) {
       await applySkillVersionHistoryMigration(connection, skillVersionMigration);
       appliedTimes.add(skillVersionMigration.when);
+    }
+
+    if (!appliedTimes.has(translationJobsMigration.when)) {
+      await applyTranslationJobsMigration(connection, translationJobsMigration);
+      appliedTimes.add(translationJobsMigration.when);
     }
   } finally {
     await connection.end();

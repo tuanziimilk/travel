@@ -32,6 +32,7 @@ const parseNumericEnv = (value: string | undefined): number | null => {
 };
 
 const resolvedAiModel = process.env.AI_MODEL || "gpt-5-mini";
+const translationResolvedAiModel = process.env.TRANSLATION_AI_MODEL || "gpt-4o-mini";
 const inputCostOverride = parseNumericEnv(process.env.AI_INPUT_COST_PER_1M);
 const outputCostOverride = parseNumericEnv(process.env.AI_OUTPUT_COST_PER_1M);
 const aiCostAutoMatch = (process.env.AI_COST_AUTO_MATCH || "true").toLowerCase() !== "false";
@@ -79,6 +80,13 @@ export const env = {
   get aiModel() {
     return runtimeAiModel;
   },
+  translationAiModel: translationResolvedAiModel,
+  translationAiInputCostPer1M: 0.15,
+  translationAiOutputCostPer1M: 0.6,
+  translationBatchInputCostPer1M: 0.075,
+  translationBatchOutputCostPer1M: 0.3,
+  translationBatchCompletionWindow: process.env.TRANSLATION_BATCH_COMPLETION_WINDOW || "24h",
+  translationBatchPollMs: Math.max(2_000, Number(process.env.TRANSLATION_BATCH_POLL_MS || 15_000)),
   aiTemperature: Math.min(1, Math.max(0, Number(process.env.AI_TEMPERATURE || 0))),
   aiResponseFormatMode: (process.env.AI_RESPONSE_FORMAT_MODE || "json_object").toLowerCase(),
   aiPromptVersion: process.env.AI_PROMPT_VERSION || "about_quality_scoring_v1",

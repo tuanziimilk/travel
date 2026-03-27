@@ -146,6 +146,47 @@ export const contentGenerationJobs = mysqlTable("content_generation_jobs", {
     .$onUpdateFn(() => new Date()),
 });
 
+export const translationJobs = mysqlTable("translation_jobs", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  uploader: varchar("uploader", { length: 32 }).notNull(),
+  note: varchar("note", { length: 255 }).notNull().default(""),
+  provider: varchar("provider", { length: 32 }).notNull().default("openai"),
+  executionMode: varchar("execution_mode", { length: 32 }).notNull().default("batch"),
+  targetLanguage: varchar("target_language", { length: 32 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("queued"),
+  inputFileName: varchar("input_file_name", { length: 255 }).notNull().default(""),
+  inputFileBase64: longtext("input_file_base64"),
+  providerBatchId: varchar("provider_batch_id", { length: 128 }),
+  inputFileId: varchar("input_file_id", { length: 128 }),
+  outputFileId: varchar("output_file_id", { length: 128 }),
+  errorFileId: varchar("error_file_id", { length: 128 }),
+  selectedColumnsJson: json("selected_columns_json"),
+  totalRows: int("total_rows").notNull().default(0),
+  processedRows: int("processed_rows").notNull().default(0),
+  successRows: int("success_rows").notNull().default(0),
+  failedRows: int("failed_rows").notNull().default(0),
+  mixedRows: int("mixed_rows").notNull().default(0),
+  predictedTotalTokens: int("predicted_total_tokens").notNull().default(0),
+  predictedCostUsd: decimal("predicted_cost_usd", { precision: 12, scale: 6 }).notNull().default("0"),
+  promptTokensSum: int("prompt_tokens_sum").notNull().default(0),
+  completionTokensSum: int("completion_tokens_sum").notNull().default(0),
+  totalTokensSum: int("total_tokens_sum").notNull().default(0),
+  estimatedCostUsdSum: decimal("estimated_cost_usd_sum", { precision: 12, scale: 6 }).notNull().default("0"),
+  languageSummaryJson: json("language_summary_json"),
+  errorReason: varchar("error_reason", { length: 512 }),
+  resultFileName: varchar("result_file_name", { length: 255 }).notNull().default(""),
+  resultFileBase64: longtext("result_file_base64"),
+  rowResultsJson: json("row_results_json"),
+  aiModel: varchar("ai_model", { length: 100 }).notNull().default(""),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  finishedAt: timestamp("finished_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .notNull()
+    .$onUpdateFn(() => new Date()),
+});
+
 export const prelaunchSamplingBatches = mysqlTable("prelaunch_sampling_batches", {
   id: varchar("id", { length: 36 }).primaryKey(),
   sourceBatchId: varchar("source_batch_id", { length: 36 }),

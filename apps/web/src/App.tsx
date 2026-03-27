@@ -16,12 +16,15 @@ import { ManualPage } from "./pages/ManualPage";
 import { PostlaunchSamplingPage } from "./pages/PostlaunchSamplingPage";
 import { PrelaunchSamplingPage } from "./pages/PrelaunchSamplingPage";
 import { SkillConfigPage } from "./pages/SkillConfigPage";
+import { TranslationBatchPage } from "./pages/TranslationBatchPage";
+import { TranslationTextPage } from "./pages/TranslationTextPage";
 import { UploadPage } from "./pages/UploadPage";
 
-type WorkspaceId = "quality" | "output" | "sampling-pre" | "sampling-post" | "skills";
+type WorkspaceId = "quality" | "output" | "sampling-pre" | "sampling-post" | "skills" | "translation";
 type QualityPageId = "manual" | "upload" | "history" | "analytics";
 type OutputPageId = "faq" | "history";
-type AppPageId = QualityPageId | OutputPageId;
+type TranslationPageId = "batch" | "text";
+type AppPageId = QualityPageId | OutputPageId | TranslationPageId;
 
 function sectionForWorkspace(workspaceId: WorkspaceId) {
   if (workspaceId === "sampling-pre" || workspaceId === "sampling-post") return "sampling";
@@ -76,6 +79,11 @@ function parseLocation(path: string): {
     return { workspaceId, moduleId: "faq", pageId };
   }
 
+  if (workspaceId === "translation") {
+    const pageId = (parts[1] as TranslationPageId) || "batch";
+    return { workspaceId, moduleId: "faq", pageId };
+  }
+
   return { workspaceId, moduleId: "faq", pageId: "manual" };
 }
 
@@ -84,6 +92,7 @@ function workspaceLabel(workspaceId: WorkspaceId) {
   if (workspaceId === "output") return "内容输出";
   if (workspaceId === "sampling-pre") return "上线前抽检";
   if (workspaceId === "sampling-post") return "上线后抽检";
+  if (workspaceId === "translation") return "翻译工具";
   return "Skills 配置";
 }
 
@@ -144,6 +153,10 @@ export default function App() {
       if (pageId === "history") return <FaqOutputHistoryPage />;
       return <FaqOutputPage />;
     }
+    if (workspaceId === "translation") {
+      if (pageId === "text") return <TranslationTextPage />;
+      return <TranslationBatchPage />;
+    }
     if (workspaceId === "sampling-pre") return <PrelaunchSamplingPage />;
     if (workspaceId === "sampling-post") return <PostlaunchSamplingPage />;
     if (workspaceId === "skills") return <SkillConfigPage moduleId={moduleId} />;
@@ -195,6 +208,13 @@ export default function App() {
               <div className="sidebar-subnav">
                 <NavLink href="/sampling-pre" label="上线前抽检 / 抽检任务" activePrefix="/sampling-pre" />
                 <NavLink href="/sampling-post" label="上线后抽检 / TL 抽检" activePrefix="/sampling-post" />
+              </div>
+            </SidebarGroup>
+
+            <SidebarGroup value="translation" title="翻译工具">
+              <div className="sidebar-subnav">
+                <NavLink href="/translation/batch" label="批量翻译" activePrefix="/translation/batch" />
+                <NavLink href="/translation/text" label="文本翻译" activePrefix="/translation/text" />
               </div>
             </SidebarGroup>
 
