@@ -1,24 +1,25 @@
 import * as Accordion from "@radix-ui/react-accordion";
 import * as Select from "@radix-ui/react-select";
-import { useEffect, useState, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import type { AiModel, ModuleId } from "@about-demo/trpc";
+import { translationDefaultAiModel, type AiModel, type ModuleId } from "@about-demo/trpc";
 import { trpc } from "./lib/trpc";
-import { AnalyticsPage } from "./pages/AnalyticsPage";
-import { FaqAnalyticsPage } from "./pages/FaqAnalyticsPage";
-import { FaqHistoryPage } from "./pages/FaqHistoryPage";
-import { FaqManualPage } from "./pages/FaqManualPage";
-import { FaqOutputHistoryPage } from "./pages/FaqOutputHistoryPage";
-import { FaqOutputPage } from "./pages/FaqOutputPage";
-import { FaqUploadPage } from "./pages/FaqUploadPage";
-import { HistoryPage } from "./pages/HistoryPage";
-import { ManualPage } from "./pages/ManualPage";
-import { PostlaunchSamplingPage } from "./pages/PostlaunchSamplingPage";
-import { PrelaunchSamplingPage } from "./pages/PrelaunchSamplingPage";
-import { SkillConfigPage } from "./pages/SkillConfigPage";
-import { TranslationBatchPage } from "./pages/TranslationBatchPage";
-import { TranslationTextPage } from "./pages/TranslationTextPage";
-import { UploadPage } from "./pages/UploadPage";
+
+const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage").then((module) => ({ default: module.AnalyticsPage })));
+const FaqAnalyticsPage = lazy(() => import("./pages/FaqAnalyticsPage").then((module) => ({ default: module.FaqAnalyticsPage })));
+const FaqHistoryPage = lazy(() => import("./pages/FaqHistoryPage").then((module) => ({ default: module.FaqHistoryPage })));
+const FaqManualPage = lazy(() => import("./pages/FaqManualPage").then((module) => ({ default: module.FaqManualPage })));
+const FaqOutputHistoryPage = lazy(() => import("./pages/FaqOutputHistoryPage").then((module) => ({ default: module.FaqOutputHistoryPage })));
+const FaqOutputPage = lazy(() => import("./pages/FaqOutputPage").then((module) => ({ default: module.FaqOutputPage })));
+const FaqUploadPage = lazy(() => import("./pages/FaqUploadPage").then((module) => ({ default: module.FaqUploadPage })));
+const HistoryPage = lazy(() => import("./pages/HistoryPage").then((module) => ({ default: module.HistoryPage })));
+const ManualPage = lazy(() => import("./pages/ManualPage").then((module) => ({ default: module.ManualPage })));
+const PostlaunchSamplingPage = lazy(() => import("./pages/PostlaunchSamplingPage").then((module) => ({ default: module.PostlaunchSamplingPage })));
+const PrelaunchSamplingPage = lazy(() => import("./pages/PrelaunchSamplingPage").then((module) => ({ default: module.PrelaunchSamplingPage })));
+const SkillConfigPage = lazy(() => import("./pages/SkillConfigPage").then((module) => ({ default: module.SkillConfigPage })));
+const TranslationBatchPage = lazy(() => import("./pages/TranslationBatchPage").then((module) => ({ default: module.TranslationBatchPage })));
+const TranslationTextPage = lazy(() => import("./pages/TranslationTextPage").then((module) => ({ default: module.TranslationTextPage })));
+const UploadPage = lazy(() => import("./pages/UploadPage").then((module) => ({ default: module.UploadPage })));
 
 type WorkspaceId = "quality" | "output" | "sampling-pre" | "sampling-post" | "skills" | "translation";
 type QualityPageId = "manual" | "upload" | "history" | "analytics";
@@ -126,6 +127,15 @@ function SidebarGroup({
   );
 }
 
+function PageSkeleton() {
+  return (
+    <div className="card">
+      <h3>页面加载中</h3>
+      <p className="muted">正在加载当前工作区内容。</p>
+    </div>
+  );
+}
+
 export default function App() {
   const [location] = useLocation();
   const { workspaceId, moduleId, pageId } = parseLocation(location);
@@ -137,6 +147,9 @@ export default function App() {
       void utils.runtime.aiConfig.get.invalidate();
     },
   });
+  const isTranslationWorkspace = workspaceId === "translation";
+  const currentModelValue = isTranslationWorkspace ? translationDefaultAiModel : aiConfigQuery.data?.aiModel || "";
+  const modelOptions = isTranslationWorkspace ? [translationDefaultAiModel] : aiConfigQuery.data?.availableModels || [];
 
   const handleModelChange = (value: string) => {
     if (!value || aiConfigSetMutation.isPending) return;
@@ -235,9 +248,9 @@ export default function App() {
               <div className="model-switch" aria-label="runtime-ai-model">
                 <span className="model-switch-label">模型</span>
                 <Select.Root
-                  value={aiConfigQuery.data?.aiModel || ""}
+                  value={currentModelValue}
                   onValueChange={handleModelChange}
-                  disabled={aiConfigQuery.isLoading || aiConfigSetMutation.isPending}
+                  disabled={isTranslationWorkspace || aiConfigQuery.isLoading || aiConfigSetMutation.isPending}
                 >
                   <Select.Trigger className="select-trigger model-switch-trigger" aria-label="runtime-ai-model-select">
                     <Select.Value placeholder="选择模型" />
@@ -245,7 +258,7 @@ export default function App() {
                   <Select.Portal>
                     <Select.Content className="select-content model-switch-content" position="popper" sideOffset={8}>
                       <Select.Viewport className="select-viewport">
-                        {(aiConfigQuery.data?.availableModels || []).map((model) => (
+                        {modelOptions.map((model) => (
                           <Select.Item className="select-item model-switch-item" key={model} value={model}>
                             <Select.ItemText>{model}</Select.ItemText>
                           </Select.Item>
@@ -259,7 +272,9 @@ export default function App() {
             </div>
           </section>
 
-          <section className="main-panel">{renderPage()}</section>
+          <section className="main-panel">
+            <Suspense fallback={<PageSkeleton />}>{renderPage()}</Suspense>
+          </section>
         </div>
       </div>
     </div>

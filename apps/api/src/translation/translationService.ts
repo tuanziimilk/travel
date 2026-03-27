@@ -98,29 +98,57 @@ function estimateTokensFromText(text: string) {
   return Math.max(4, Math.ceil(normalized.length / 2.8));
 }
 
+function parseJsonAttempts(attempts: string[]) {
+  for (const attempt of attempts) {
+    if (!attempt) continue;
+    try {
+      return JSON.parse(attempt) as unknown;
+    } catch {
+      // ignore and keep trying looser candidates
+    }
+  }
+  throw new Error("模型返回的 JSON 无法解析。");
+}
+
 function normalizeArrayCandidate(raw: string) {
   const normalized = String(raw || "").trim();
   const attempts = [normalized];
   const fenceMatch = normalized.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
   if (fenceMatch?.[1]) attempts.push(fenceMatch[1].trim());
 
-  for (const attempt of attempts) {
-    try {
-      const parsed = JSON.parse(attempt) as unknown;
-      if (Array.isArray(parsed)) return parsed;
-      if (parsed && typeof parsed === "object" && Array.isArray((parsed as { items?: unknown[] }).items)) {
-        return (parsed as { items: unknown[] }).items;
-      }
-    } catch {
-      // ignore
-    }
+  const arrayMatch = normalized.match(/\[[\s\S]*\]/);
+  if (arrayMatch?.[0]) attempts.push(arrayMatch[0].trim());
+
+  const objectItemsMatch = normalized.match(/\{[\s\S]*"items"\s*:\s*\[[\s\S]*\][\s\S]*\}/);
+  if (objectItemsMatch?.[0]) attempts.push(objectItemsMatch[0].trim());
+
+  const parsed = parseJsonAttempts(attempts);
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && typeof parsed === "object" && Array.isArray((parsed as { items?: unknown[] }).items)) {
+    return (parsed as { items: unknown[] }).items;
   }
-  throw new Error("模型返回的 JSON 无法解析。");
+  throw new Error("模型返回的数组 JSON 无法解析。");
+}
+
+function normalizeObjectCandidate(raw: string) {
+  const normalized = String(raw || "").trim();
+  const attempts = [normalized];
+  const fenceMatch = normalized.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenceMatch?.[1]) attempts.push(fenceMatch[1].trim());
+
+  const firstBrace = normalized.indexOf("{");
+  const lastBrace = normalized.lastIndexOf("}");
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    attempts.push(normalized.slice(firstBrace, lastBrace + 1).trim());
+  }
+
+  return parseJsonAttempts(attempts);
 }
 
 function extractContent(json: OpenAiChatResponse) {
   const direct = json.choices?.[0]?.message?.content;
   if (typeof direct === "string" && direct.trim()) return direct;
+
   if (Array.isArray(direct)) {
     const joined = direct
       .map((item) => (typeof item?.text === "string" ? item.text : ""))
@@ -173,6 +201,7 @@ async function callOpenAiJson<T>(path: string, init: RequestInit, timeoutMs = en
   } finally {
     clearTimeout(timer);
   }
+
   const raw = await response.text();
   if (!response.ok) throw new Error(`OpenAI 请求失败: ${response.status} ${raw}`);
   return JSON.parse(raw) as T;
@@ -194,6 +223,7 @@ async function callOpenAiText(path: string, init: RequestInit, timeoutMs = env.a
   } finally {
     clearTimeout(timer);
   }
+
   const raw = await response.text();
   if (!response.ok) throw new Error(`OpenAI 请求失败: ${response.status} ${raw}`);
   return raw;
@@ -248,7 +278,10 @@ function buildTextPrompt(targetLanguage: string, text: string) {
         role: "system",
         content:
           "You are a multilingual translation engine for mixed-language business content. " +
-          "Detect languages and translate the full text. Return JSON only with translatedText, detectedLanguages, dominantLanguage, isMixed, confidence.",
+          "Translate the full text to the target language and detect the source languages. " +
+          'Return exactly one JSON object with keys "translatedText", "detectedLanguages", "dominantLanguage", "isMixed", "confidence". ' +
+          '"translatedText" must be a string, "detectedLanguages" must be an array of language names, "dominantLanguage" must be a string, "isMixed" must be a boolean, and "confidence" must be a number between 0 and 1. ' +
+          "Do not wrap the JSON in markdown and do not add any explanation.",
       },
       {
         role: "user",
@@ -259,19 +292,46 @@ function buildTextPrompt(targetLanguage: string, text: string) {
 }
 
 function parseTextResponse(content: string) {
-  const normalized = String(content || "").trim();
-  const attempts = [normalized];
-  const fenceMatch = normalized.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (fenceMatch?.[1]) attempts.push(fenceMatch[1].trim());
+  const parsedUnknown = normalizeObjectCandidate(content);
+  const parsedObject =
+    parsedUnknown && typeof parsedUnknown === "object" && !Array.isArray(parsedUnknown)
+      ? (parsedUnknown as Record<string, unknown>)
+      : null;
 
-  for (const attempt of attempts) {
-    try {
-      return translationTextResponseSchema.parse(JSON.parse(attempt));
-    } catch {
-      // ignore
-    }
+  if (!parsedObject) {
+    throw new Error("文本翻译结果解析失败。");
   }
-  throw new Error("文本翻译结果解析失败。");
+
+  const normalized = {
+    translatedText:
+      typeof parsedObject.translatedText === "string"
+        ? parsedObject.translatedText
+        : typeof parsedObject.t === "string"
+          ? parsedObject.t
+          : "",
+    detectedLanguages: Array.isArray(parsedObject.detectedLanguages)
+      ? parsedObject.detectedLanguages.filter((item): item is string => typeof item === "string")
+      : Array.isArray(parsedObject.languages)
+        ? parsedObject.languages.filter((item): item is string => typeof item === "string")
+        : [],
+    dominantLanguage:
+      typeof parsedObject.dominantLanguage === "string"
+        ? parsedObject.dominantLanguage
+        : typeof parsedObject.primaryLanguage === "string"
+          ? parsedObject.primaryLanguage
+          : "",
+    isMixed:
+      typeof parsedObject.isMixed === "boolean"
+        ? parsedObject.isMixed
+        : Array.isArray(parsedObject.detectedLanguages) && parsedObject.detectedLanguages.length > 1,
+    confidence: typeof parsedObject.confidence === "number" ? parsedObject.confidence : 0.7,
+  };
+
+  if (!normalized.translatedText.trim()) {
+    throw new Error("文本翻译结果解析失败。");
+  }
+
+  return translationTextResponseSchema.parse(normalized);
 }
 
 export interface TranslationProvider {
@@ -315,6 +375,7 @@ class OpenAiTranslationProvider implements TranslationProvider {
     const result = parseTextResponse(extractContent(response));
     const promptTokens = response.usage?.prompt_tokens ?? 0;
     const completionTokens = response.usage?.completion_tokens ?? 0;
+
     return {
       result,
       runtime: {
@@ -336,6 +397,7 @@ class OpenAiTranslationProvider implements TranslationProvider {
     const items = parseRealtimeBatchResponse(extractContent(response));
     const promptTokens = response.usage?.prompt_tokens ?? 0;
     const completionTokens = response.usage?.completion_tokens ?? 0;
+
     return {
       items,
       runtime: {
@@ -362,6 +424,7 @@ class OpenAiTranslationProvider implements TranslationProvider {
         }),
       )
       .join("\n");
+
     const file = await uploadBatchFile(jsonl);
     const batch = await callOpenAiJson<OpenAiBatchJob>(
       "/batches",
@@ -375,6 +438,7 @@ class OpenAiTranslationProvider implements TranslationProvider {
         }),
       },
     );
+
     return { providerBatchId: batch.id, inputFileId: file.id };
   }
 

@@ -47,6 +47,21 @@ function formatJobId(value: string) {
   return `${value.slice(0, 8)}...${value.slice(-4)}`;
 }
 
+function formatDuration(startedAt?: string | null, finishedAt?: string | null) {
+  if (!startedAt) return "-";
+  const start = new Date(startedAt);
+  const end = finishedAt ? new Date(finishedAt) : new Date();
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return "-";
+  const diffMs = Math.max(0, end.getTime() - start.getTime());
+  const totalSeconds = Math.floor(diffMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
 const queueStatusText: Record<string, string> = {
   queued: "排队中",
   preparing: "准备中",
@@ -71,7 +86,6 @@ export function TranslationBatchPage() {
   const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
   const [currentJobId, setCurrentJobId] = useState("");
   const [queuePage, setQueuePage] = useState(1);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const utils = trpc.useUtils();
@@ -283,7 +297,7 @@ export function TranslationBatchPage() {
             <span className="translation-step-index">3</span>
             <div>
               <h3>目标语言与任务信息</h3>
-              <p className="muted">首期固定翻译为简体中文；上传人和备注保留在高级设置中。</p>
+              <p className="muted">首期固定翻译为简体中文；上传人和任务备注默认全部可见。</p>
             </div>
           </div>
 
@@ -291,38 +305,32 @@ export function TranslationBatchPage() {
             <input value={translationDefaultTargetLanguage} readOnly />
           </div>
 
-          <button className="translation-advanced-toggle" type="button" onClick={() => setShowAdvanced((prev) => !prev)}>
-            {showAdvanced ? "收起高级设置" : "展开高级设置"}
-          </button>
-
-          {showAdvanced ? (
-            <div className="translation-advanced-grid">
-              <div className="field">
-                <label>上传人</label>
-                <Select.Root value={uploader} onValueChange={(value) => setUploader(value as (typeof uploaderOptions)[number])}>
-                  <Select.Trigger className="select-trigger" aria-label="translation-batch-uploader">
-                    <Select.Value />
-                  </Select.Trigger>
-                  <Select.Portal>
-                    <Select.Content className="select-content" position="popper" sideOffset={8}>
-                      <Select.Viewport className="select-viewport">
-                        {uploaderOptions.map((item) => (
-                          <Select.Item className="select-item" key={item} value={item}>
-                            <Select.ItemText>{item}</Select.ItemText>
-                          </Select.Item>
-                        ))}
-                      </Select.Viewport>
-                    </Select.Content>
-                  </Select.Portal>
-                </Select.Root>
-              </div>
-
-              <div className="field">
-                <label>任务备注</label>
-                <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="例如：4 月欧语市场活动翻译" />
-              </div>
+          <div className="translation-advanced-grid">
+            <div className="field">
+              <label>上传人</label>
+              <Select.Root value={uploader} onValueChange={(value) => setUploader(value as (typeof uploaderOptions)[number])}>
+                <Select.Trigger className="select-trigger" aria-label="translation-batch-uploader">
+                  <Select.Value />
+                </Select.Trigger>
+                <Select.Portal>
+                  <Select.Content className="select-content" position="popper" sideOffset={8}>
+                    <Select.Viewport className="select-viewport">
+                      {uploaderOptions.map((item) => (
+                        <Select.Item className="select-item" key={item} value={item}>
+                          <Select.ItemText>{item}</Select.ItemText>
+                        </Select.Item>
+                      ))}
+                    </Select.Viewport>
+                  </Select.Content>
+                </Select.Portal>
+              </Select.Root>
             </div>
-          ) : null}
+
+            <div className="field">
+              <label>任务备注</label>
+              <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="例如：4 月欧语市场活动翻译" />
+            </div>
+          </div>
         </div>
 
         <div className="translation-step-card">
@@ -435,6 +443,8 @@ export function TranslationBatchPage() {
                 <th>执行模式</th>
                 <th>处理摘要</th>
                 <th>开始时间</th>
+                <th>耗时</th>
+                <th>成本</th>
                 <th>下载</th>
               </tr>
             </thead>
@@ -452,6 +462,10 @@ export function TranslationBatchPage() {
                     {item.processedRows}/{item.totalRows}，成功 {item.successRows}，失败 {item.failedRows}，混合 {item.mixedRows}
                   </td>
                   <td>{formatChinaDateTime(item.startedAt || item.createdAt)}</td>
+                  <td>{formatDuration(item.startedAt || item.createdAt, item.finishedAt)}</td>
+                  <td title={`预计 ${formatUsd(item.predictedCostUsd)} / 实际 ${formatUsd(item.estimatedCostUsdSum)}`}>
+                    {formatUsd(item.estimatedCostUsdSum || item.predictedCostUsd)}
+                  </td>
                   <td className="queue-action-cell">
                     <button
                       className="btn-ghost faq-queue-action-btn"
@@ -466,7 +480,7 @@ export function TranslationBatchPage() {
               ))}
               {(queueQuery.data?.rows?.length ?? 0) === 0 ? (
                 <tr>
-                  <td colSpan={6}>最近 7 天暂无翻译任务。</td>
+                  <td colSpan={8}>最近 7 天暂无翻译任务。</td>
                 </tr>
               ) : null}
             </tbody>
