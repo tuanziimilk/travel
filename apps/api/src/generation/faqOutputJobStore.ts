@@ -9,6 +9,8 @@ import {
   listPersistedHistoryRows,
 } from "./faqOutputRowStore";
 
+const FAQ_BOARD_NAME_FIELD = "????" as const;
+
 type RouteSummaryRow = {
   factType: string;
   count: number;
@@ -50,7 +52,7 @@ type StoredFaqOutputRow = {
   Domain: string;
   Source: string;
   Subclass: string;
-  板块名称: string;
+  [FAQ_BOARD_NAME_FIELD]: string;
   Titile1: string;
   "Brief Introduction": string;
   "Href Kw": string;
@@ -108,7 +110,7 @@ function mapStoredOutputRow(
     Domain: normalize(row.Domain),
     Source: normalize(row.Source),
     Subclass: normalize(row.Subclass),
-    板块名称: normalize(row["板块名称"]),
+    [FAQ_BOARD_NAME_FIELD]: normalize(row[FAQ_BOARD_NAME_FIELD]),
     Titile1: normalize(row.Titile1),
     "Brief Introduction": normalize(row["Brief Introduction"]),
     "Href Kw": normalize(row["Href Kw"]),
@@ -175,7 +177,7 @@ async function listDoneGenerationRows(scType = "faq") {
       createdAt: row.createdAt,
       startedAt: row.startedAt,
       finishedAt: row.finishedAt,
-      板块名称: row.板块名称,
+      [FAQ_BOARD_NAME_FIELD]: row[FAQ_BOARD_NAME_FIELD],
     })),
     ...workbookRows,
   ];
@@ -232,7 +234,7 @@ function buildHistoryExportRows(rows: StoredFaqOutputRow[]) {
     Domain: row.Domain,
     Source: row.Source,
     Subclass: row.Subclass,
-    板块名称: row["板块名称"],
+    [FAQ_BOARD_NAME_FIELD]: row[FAQ_BOARD_NAME_FIELD],
     Titile1: row.Titile1,
     "Brief Introduction": row["Brief Introduction"],
     "Href Kw": row["Href Kw"],

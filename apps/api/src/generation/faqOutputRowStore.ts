@@ -3,6 +3,8 @@ import { and, desc, eq } from "drizzle-orm";
 import { db, pool } from "../db/client";
 import { contentGenerationJobs } from "../db/schema";
 
+const FAQ_BOARD_NAME_FIELD = "????" as const;
+
 export type PersistedGenerationRow = {
   jobId: string;
   rowIndex: number;
@@ -96,7 +98,7 @@ type PersistedHistoryRow = {
   Domain: string;
   Source: string;
   Subclass: string;
-  板块名称: string;
+  [FAQ_BOARD_NAME_FIELD]: string;
   Titile1: string;
   "Brief Introduction": string;
   "Href Kw": string;
@@ -363,7 +365,7 @@ export async function listPersistedHistoryRows(scType = "faq") {
       Domain: String(record.domain || ""),
       Source: String(record.source || ""),
       Subclass: String(record.subclass || ""),
-      板块名称: String(record.board_name || "faq"),
+      [FAQ_BOARD_NAME_FIELD]: String(record.board_name || "faq"),
       Titile1: String(record.title1 || ""),
       "Brief Introduction": String(record.brief_introduction || ""),
       "Href Kw": String(record.href_kw || ""),
