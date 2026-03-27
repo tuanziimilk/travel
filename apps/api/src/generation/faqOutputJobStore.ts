@@ -3,7 +3,11 @@ import * as XLSX from "xlsx";
 import { db } from "../db/client";
 import { contentGenerationJobs } from "../db/schema";
 import { formatChinaDateTime, formatChinaIsoOffset } from "../utils/time";
-import { listPersistedHistoryJobIds, listPersistedHistoryRows } from "./faqOutputRowStore";
+import {
+  getPersistedGenerationSummary,
+  listPersistedHistoryJobIds,
+  listPersistedHistoryRows,
+} from "./faqOutputRowStore";
 
 type RouteSummaryRow = {
   factType: string;
@@ -276,21 +280,19 @@ export async function createGenerationJob(input: {
 }
 
 export async function markGenerationJobQueued(jobId: string) {
+  const persisted = await getPersistedGenerationSummary(jobId);
   await db
     .update(contentGenerationJobs)
     .set({
       status: "queued",
       errorReason: null,
-      totalRows: 0,
-      executableRows: 0,
-      successRows: 0,
-      failedRows: 0,
+      successRows: persisted.successRows,
+      failedRows: persisted.failedRows,
       skippedRows: 0,
-      promptTokensSum: 0,
-      completionTokensSum: 0,
-      totalTokensSum: 0,
-      estimatedCostUsdSum: "0",
-      aiModel: "",
+      promptTokensSum: persisted.promptTokensSum,
+      completionTokensSum: persisted.completionTokensSum,
+      totalTokensSum: persisted.totalTokensSum,
+      estimatedCostUsdSum: String(persisted.estimatedCostUsdSum),
       resultFileName: "",
       resultFileBase64: null,
       routeSummaryJson: null,
@@ -301,21 +303,19 @@ export async function markGenerationJobQueued(jobId: string) {
 }
 
 export async function markGenerationJobRunning(jobId: string) {
+  const persisted = await getPersistedGenerationSummary(jobId);
   await db
     .update(contentGenerationJobs)
     .set({
       status: "running",
       errorReason: null,
-      totalRows: 0,
-      executableRows: 0,
-      successRows: 0,
-      failedRows: 0,
+      successRows: persisted.successRows,
+      failedRows: persisted.failedRows,
       skippedRows: 0,
-      promptTokensSum: 0,
-      completionTokensSum: 0,
-      totalTokensSum: 0,
-      estimatedCostUsdSum: "0",
-      aiModel: "",
+      promptTokensSum: persisted.promptTokensSum,
+      completionTokensSum: persisted.completionTokensSum,
+      totalTokensSum: persisted.totalTokensSum,
+      estimatedCostUsdSum: String(persisted.estimatedCostUsdSum),
       resultFileName: "",
       resultFileBase64: null,
       routeSummaryJson: null,

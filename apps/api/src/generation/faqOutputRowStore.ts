@@ -38,6 +38,16 @@ export type PersistedGenerationRow = {
   updatedAt: Date;
 };
 
+export type PersistedGenerationSummary = {
+  successRows: number;
+  failedRows: number;
+  promptTokensSum: number;
+  completionTokensSum: number;
+  totalTokensSum: number;
+  estimatedCostUsdSum: number;
+  latestUpdatedAt: Date | null;
+};
+
 type PersistGenerationRowInput = {
   jobId: string;
   rowIndex: number;
@@ -264,6 +274,40 @@ export async function listPersistedGenerationRows(jobId: string) {
     [jobId],
   );
   return rows.map((row) => toPersistedRow(row as unknown as Record<string, unknown>));
+}
+
+export async function getPersistedGenerationSummary(jobId: string): Promise<PersistedGenerationSummary> {
+  await ensureGenerationRowsTable();
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `
+      SELECT
+        SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS success_rows,
+        SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS failed_rows,
+        SUM(CASE WHEN status = 'success' THEN prompt_tokens ELSE 0 END) AS prompt_tokens_sum,
+        SUM(CASE WHEN status = 'success' THEN completion_tokens ELSE 0 END) AS completion_tokens_sum,
+        SUM(CASE WHEN status = 'success' THEN total_tokens ELSE 0 END) AS total_tokens_sum,
+        SUM(CASE WHEN status = 'success' THEN estimated_cost_usd ELSE 0 END) AS estimated_cost_usd_sum,
+        MAX(updated_at) AS latest_updated_at
+      FROM content_generation_job_rows
+      WHERE job_id = ?
+    `,
+    [jobId],
+  );
+  const record = (rows[0] || {}) as Record<string, unknown>;
+  return {
+    successRows: Number(record.success_rows || 0),
+    failedRows: Number(record.failed_rows || 0),
+    promptTokensSum: Number(record.prompt_tokens_sum || 0),
+    completionTokensSum: Number(record.completion_tokens_sum || 0),
+    totalTokensSum: Number(record.total_tokens_sum || 0),
+    estimatedCostUsdSum: Number(record.estimated_cost_usd_sum || 0),
+    latestUpdatedAt:
+      record.latest_updated_at instanceof Date
+        ? record.latest_updated_at
+        : record.latest_updated_at
+          ? new Date(String(record.latest_updated_at))
+          : null,
+  };
 }
 
 export async function listPersistedSuccessRowIndexes(jobId: string) {
