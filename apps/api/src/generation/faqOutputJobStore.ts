@@ -74,6 +74,87 @@ type HistoryFilters = {
   pageSize?: number;
 };
 
+function isMissingGenerationRowsTableError(error: unknown) {
+  const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code || "") : "";
+  const message = error instanceof Error ? error.message : String(error || "");
+  return code === "ER_NO_SUCH_TABLE" || message.includes("content_generation_job_rows");
+}
+
+function buildLegacyHistorySummary(rows: StoredFaqOutputRow[]) {
+  const uniqueResultSet = new Set<string>();
+  const merchantSet = new Set<string>();
+  const countrySet = new Set<string>();
+  const subclassSet = new Set<string>();
+  const byCountryMap = new Map<string, { rowCount: number; uniqueResults: Set<string>; merchants: Set<string>; subclasses: Set<string> }>();
+  const bySubclassMap = new Map<string, { rowCount: number; uniqueResults: Set<string>; merchants: Set<string>; countries: Set<string> }>();
+
+  for (const row of rows) {
+    const uniqueKey = `${row.Country}::${row.TermID}::${row.Subclass}`;
+    const merchantKey = `${row.Country}::${row.TermID}`;
+    uniqueResultSet.add(uniqueKey);
+    merchantSet.add(merchantKey);
+    countrySet.add(row.Country);
+    subclassSet.add(row.Subclass);
+
+    const countryBucket = byCountryMap.get(row.Country) || {
+      rowCount: 0,
+      uniqueResults: new Set<string>(),
+      merchants: new Set<string>(),
+      subclasses: new Set<string>(),
+    };
+    countryBucket.rowCount += 1;
+    countryBucket.uniqueResults.add(`${row.TermID}::${row.Subclass}`);
+    countryBucket.merchants.add(row.TermID);
+    countryBucket.subclasses.add(row.Subclass);
+    byCountryMap.set(row.Country, countryBucket);
+
+    const subclassBucket = bySubclassMap.get(row.Subclass) || {
+      rowCount: 0,
+      uniqueResults: new Set<string>(),
+      merchants: new Set<string>(),
+      countries: new Set<string>(),
+    };
+    subclassBucket.rowCount += 1;
+    subclassBucket.uniqueResults.add(uniqueKey);
+    subclassBucket.merchants.add(merchantKey);
+    subclassBucket.countries.add(row.Country);
+    bySubclassMap.set(row.Subclass, subclassBucket);
+  }
+
+  return {
+    summary: {
+      totalRows: rows.length,
+      uniqueResultCount: uniqueResultSet.size,
+      merchantCount: merchantSet.size,
+      countryCount: countrySet.size,
+      subclassCount: subclassSet.size,
+    },
+    byCountry: [...byCountryMap.entries()]
+      .map(([country, bucket]) => ({
+        country,
+        rowCount: bucket.rowCount,
+        uniqueResultCount: bucket.uniqueResults.size,
+        merchantCount: bucket.merchants.size,
+        subclassCount: bucket.subclasses.size,
+      }))
+      .sort((a, b) => b.uniqueResultCount - a.uniqueResultCount || a.country.localeCompare(b.country)),
+    bySubclass: [...bySubclassMap.entries()]
+      .map(([subclass, bucket]) => ({
+        subclass,
+        rowCount: bucket.rowCount,
+        uniqueResultCount: bucket.uniqueResults.size,
+        merchantCount: bucket.merchants.size,
+        countryCount: bucket.countries.size,
+      }))
+      .sort((a, b) => b.uniqueResultCount - a.uniqueResultCount || a.subclass.localeCompare(b.subclass)),
+  };
+}
+
+async function loadLegacyHistoryRows(input: HistoryFilters) {
+  const allRows = await listDoneGenerationRows(input.scType || "faq");
+  return filterHistoryRows(allRows, input);
+}
+
 function buildPersistedHistoryWhere(input: HistoryFilters) {
   const conditions = ["j.sc_type = ?", "r.status = 'success'"];
   const params: unknown[] = [input.scType || "faq"];
@@ -757,80 +838,89 @@ export async function getGenerationJobForRetry(jobId: string) {
 export async function getGenerationHistorySummary(input: HistoryFilters) {
   const { whereSql, params } = buildPersistedHistoryWhere(input);
 
-  const [summaryRows] = await pool.query<RowDataPacket[]>(
-    `
-      SELECT
-        COUNT(*) AS total_rows,
-        COUNT(DISTINCT CONCAT(r.country, '::', r.term_id, '::', r.subclass)) AS unique_result_count,
-        COUNT(DISTINCT CONCAT(r.country, '::', r.term_id)) AS merchant_count,
-        COUNT(DISTINCT r.country) AS country_count,
-        COUNT(DISTINCT r.subclass) AS subclass_count
-      FROM content_generation_job_rows r
-      INNER JOIN content_generation_jobs j ON j.id = r.job_id
-      ${whereSql}
-    `,
-    params,
-  );
+  try {
+    const [summaryRows] = await pool.query<RowDataPacket[]>(
+      `
+        SELECT
+          COUNT(*) AS total_rows,
+          COUNT(DISTINCT CONCAT(r.country, '::', r.term_id, '::', r.subclass)) AS unique_result_count,
+          COUNT(DISTINCT CONCAT(r.country, '::', r.term_id)) AS merchant_count,
+          COUNT(DISTINCT r.country) AS country_count,
+          COUNT(DISTINCT r.subclass) AS subclass_count
+        FROM content_generation_job_rows r
+        INNER JOIN content_generation_jobs j ON j.id = r.job_id
+        ${whereSql}
+      `,
+      params,
+    );
 
-  const [byCountryRows] = await pool.query<RowDataPacket[]>(
-    `
-      SELECT
-        r.country AS country,
-        COUNT(*) AS row_count,
-        COUNT(DISTINCT CONCAT(r.term_id, '::', r.subclass)) AS unique_result_count,
-        COUNT(DISTINCT r.term_id) AS merchant_count,
-        COUNT(DISTINCT r.subclass) AS subclass_count
-      FROM content_generation_job_rows r
-      INNER JOIN content_generation_jobs j ON j.id = r.job_id
-      ${whereSql}
-      GROUP BY r.country
-      ORDER BY unique_result_count DESC, country ASC
-    `,
-    params,
-  );
+    const totalRows = Number(((summaryRows[0] || {}) as Record<string, unknown>).total_rows || 0);
+    if (totalRows === 0) {
+      return buildLegacyHistorySummary(await loadLegacyHistoryRows(input));
+    }
 
-  const [bySubclassRows] = await pool.query<RowDataPacket[]>(
-    `
-      SELECT
-        r.subclass AS subclass,
-        COUNT(*) AS row_count,
-        COUNT(DISTINCT CONCAT(r.country, '::', r.term_id, '::', r.subclass)) AS unique_result_count,
-        COUNT(DISTINCT CONCAT(r.country, '::', r.term_id)) AS merchant_count,
-        COUNT(DISTINCT r.country) AS country_count
-      FROM content_generation_job_rows r
-      INNER JOIN content_generation_jobs j ON j.id = r.job_id
-      ${whereSql}
-      GROUP BY r.subclass
-      ORDER BY unique_result_count DESC, subclass ASC
-    `,
-    params,
-  );
+    const [byCountryRows] = await pool.query<RowDataPacket[]>(
+      `
+        SELECT
+          r.country AS country,
+          COUNT(*) AS row_count,
+          COUNT(DISTINCT CONCAT(r.term_id, '::', r.subclass)) AS unique_result_count,
+          COUNT(DISTINCT r.term_id) AS merchant_count,
+          COUNT(DISTINCT r.subclass) AS subclass_count
+        FROM content_generation_job_rows r
+        INNER JOIN content_generation_jobs j ON j.id = r.job_id
+        ${whereSql}
+        GROUP BY r.country
+        ORDER BY unique_result_count DESC, country ASC
+      `,
+      params,
+    );
 
-  const summaryRow = (summaryRows[0] || {}) as Record<string, unknown>;
+    const [bySubclassRows] = await pool.query<RowDataPacket[]>(
+      `
+        SELECT
+          r.subclass AS subclass,
+          COUNT(*) AS row_count,
+          COUNT(DISTINCT CONCAT(r.country, '::', r.term_id, '::', r.subclass)) AS unique_result_count,
+          COUNT(DISTINCT CONCAT(r.country, '::', r.term_id)) AS merchant_count,
+          COUNT(DISTINCT r.country) AS country_count
+        FROM content_generation_job_rows r
+        INNER JOIN content_generation_jobs j ON j.id = r.job_id
+        ${whereSql}
+        GROUP BY r.subclass
+        ORDER BY unique_result_count DESC, subclass ASC
+      `,
+      params,
+    );
 
-  return {
-    summary: {
-      totalRows: Number(summaryRow.total_rows || 0),
-      uniqueResultCount: Number(summaryRow.unique_result_count || 0),
-      merchantCount: Number(summaryRow.merchant_count || 0),
-      countryCount: Number(summaryRow.country_count || 0),
-      subclassCount: Number(summaryRow.subclass_count || 0),
-    },
-    byCountry: byCountryRows.map((row) => ({
-      country: String(row.country || ""),
-      rowCount: Number(row.row_count || 0),
-      uniqueResultCount: Number(row.unique_result_count || 0),
-      merchantCount: Number(row.merchant_count || 0),
-      subclassCount: Number(row.subclass_count || 0),
-    })),
-    bySubclass: bySubclassRows.map((row) => ({
-      subclass: String(row.subclass || ""),
-      rowCount: Number(row.row_count || 0),
-      uniqueResultCount: Number(row.unique_result_count || 0),
-      merchantCount: Number(row.merchant_count || 0),
-      countryCount: Number(row.country_count || 0),
-    })),
-  };
+    const summaryRow = (summaryRows[0] || {}) as Record<string, unknown>;
+    return {
+      summary: {
+        totalRows: Number(summaryRow.total_rows || 0),
+        uniqueResultCount: Number(summaryRow.unique_result_count || 0),
+        merchantCount: Number(summaryRow.merchant_count || 0),
+        countryCount: Number(summaryRow.country_count || 0),
+        subclassCount: Number(summaryRow.subclass_count || 0),
+      },
+      byCountry: byCountryRows.map((row) => ({
+        country: String(row.country || ""),
+        rowCount: Number(row.row_count || 0),
+        uniqueResultCount: Number(row.unique_result_count || 0),
+        merchantCount: Number(row.merchant_count || 0),
+        subclassCount: Number(row.subclass_count || 0),
+      })),
+      bySubclass: bySubclassRows.map((row) => ({
+        subclass: String(row.subclass || ""),
+        rowCount: Number(row.row_count || 0),
+        uniqueResultCount: Number(row.unique_result_count || 0),
+        merchantCount: Number(row.merchant_count || 0),
+        countryCount: Number(row.country_count || 0),
+      })),
+    };
+  } catch (error) {
+    if (!isMissingGenerationRowsTableError(error)) throw error;
+    return buildLegacyHistorySummary(await loadLegacyHistoryRows(input));
+  }
 }
 
 export async function listGenerationHistoryRows(input: HistoryFilters) {
@@ -839,55 +929,99 @@ export async function listGenerationHistoryRows(input: HistoryFilters) {
   const start = (page - 1) * pageSize;
   const { whereSql, params } = buildPersistedHistoryWhere(input);
 
-  const [countRows] = await pool.query<RowDataPacket[]>(
-    `
-      SELECT COUNT(*) AS total_count
-      FROM content_generation_job_rows r
-      INNER JOIN content_generation_jobs j ON j.id = r.job_id
-      ${whereSql}
-    `,
-    params,
-  );
+  try {
+    const [countRows] = await pool.query<RowDataPacket[]>(
+      `
+        SELECT COUNT(*) AS total_count
+        FROM content_generation_job_rows r
+        INNER JOIN content_generation_jobs j ON j.id = r.job_id
+        ${whereSql}
+      `,
+      params,
+    );
 
-  const [rows] = await pool.query<RowDataPacket[]>(
-    `
-      SELECT
-        r.job_id,
-        j.uploader,
-        j.created_at AS created_at,
-        j.finished_at AS finished_at,
-        r.country,
-        r.term_id,
-        r.term_name,
-        r.domain,
-        r.subclass,
-        r.title1,
-        r.brief_introduction
-      FROM content_generation_job_rows r
-      INNER JOIN content_generation_jobs j ON j.id = r.job_id
-      ${whereSql}
-      ORDER BY COALESCE(j.finished_at, j.created_at) DESC, r.row_index ASC
-      LIMIT ? OFFSET ?
-    `,
-    [...params, pageSize, start],
-  );
+    const total = Number((countRows[0] as Record<string, unknown> | undefined)?.total_count || 0);
+    if (total === 0) {
+      const legacyRows = await loadLegacyHistoryRows(input);
+      const pagedRows = legacyRows.slice(start, start + pageSize);
+      return {
+        total: legacyRows.length,
+        rows: pagedRows.map((row) => ({
+          jobId: row.jobId,
+          uploader: row.uploader,
+          createdAt: formatChinaIsoOffset(row.createdAt),
+          finishedAt: formatChinaIsoOffset(row.finishedAt),
+          Country: row.Country,
+          TermID: row.TermID,
+          TermName: row.TermName,
+          Domain: row.Domain,
+          Subclass: row.Subclass,
+          Titile1: row.Titile1,
+          "Brief Introduction": row["Brief Introduction"],
+        })),
+      };
+    }
 
-  return {
-    total: Number((countRows[0] as Record<string, unknown> | undefined)?.total_count || 0),
-    rows: rows.map((row) => ({
-      jobId: String(row.job_id || ""),
-      uploader: String(row.uploader || ""),
-      createdAt: formatChinaIsoOffset(row.created_at instanceof Date ? row.created_at : new Date(String(row.created_at || ""))),
-      finishedAt: formatChinaIsoOffset(row.finished_at instanceof Date ? row.finished_at : row.finished_at ? new Date(String(row.finished_at)) : null),
-      Country: String(row.country || ""),
-      TermID: String(row.term_id || ""),
-      TermName: String(row.term_name || ""),
-      Domain: String(row.domain || ""),
-      Subclass: String(row.subclass || ""),
-      Titile1: String(row.title1 || ""),
-      "Brief Introduction": String(row.brief_introduction || ""),
-    })),
-  };
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `
+        SELECT
+          r.job_id,
+          j.uploader,
+          j.created_at AS created_at,
+          j.finished_at AS finished_at,
+          r.country,
+          r.term_id,
+          r.term_name,
+          r.domain,
+          r.subclass,
+          r.title1,
+          r.brief_introduction
+        FROM content_generation_job_rows r
+        INNER JOIN content_generation_jobs j ON j.id = r.job_id
+        ${whereSql}
+        ORDER BY COALESCE(j.finished_at, j.created_at) DESC, r.row_index ASC
+        LIMIT ? OFFSET ?
+      `,
+      [...params, pageSize, start],
+    );
+
+    return {
+      total,
+      rows: rows.map((row) => ({
+        jobId: String(row.job_id || ""),
+        uploader: String(row.uploader || ""),
+        createdAt: formatChinaIsoOffset(row.created_at instanceof Date ? row.created_at : new Date(String(row.created_at || ""))),
+        finishedAt: formatChinaIsoOffset(row.finished_at instanceof Date ? row.finished_at : row.finished_at ? new Date(String(row.finished_at)) : null),
+        Country: String(row.country || ""),
+        TermID: String(row.term_id || ""),
+        TermName: String(row.term_name || ""),
+        Domain: String(row.domain || ""),
+        Subclass: String(row.subclass || ""),
+        Titile1: String(row.title1 || ""),
+        "Brief Introduction": String(row.brief_introduction || ""),
+      })),
+    };
+  } catch (error) {
+    if (!isMissingGenerationRowsTableError(error)) throw error;
+    const legacyRows = await loadLegacyHistoryRows(input);
+    const pagedRows = legacyRows.slice(start, start + pageSize);
+    return {
+      total: legacyRows.length,
+      rows: pagedRows.map((row) => ({
+        jobId: row.jobId,
+        uploader: row.uploader,
+        createdAt: formatChinaIsoOffset(row.createdAt),
+        finishedAt: formatChinaIsoOffset(row.finishedAt),
+        Country: row.Country,
+        TermID: row.TermID,
+        TermName: row.TermName,
+        Domain: row.Domain,
+        Subclass: row.Subclass,
+        Titile1: row.Titile1,
+        "Brief Introduction": row["Brief Introduction"],
+      })),
+    };
+  }
 }
 
 export async function exportGenerationHistory(input: HistoryFilters & { format?: "xlsx" | "csv" }) {
