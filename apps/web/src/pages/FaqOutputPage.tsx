@@ -333,17 +333,17 @@ export function FaqOutputPage() {
     }
   }
 
-  function handleDropzoneDragOver(event: DragEvent<HTMLLabelElement>) {
+  function handleDropzoneDragOver(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setIsDragActive(true);
   }
 
-  function handleDropzoneDragLeave(event: DragEvent<HTMLLabelElement>) {
+  function handleDropzoneDragLeave(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setIsDragActive(false);
   }
 
-  function handleDropzoneDrop(event: DragEvent<HTMLLabelElement>) {
+  function handleDropzoneDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setIsDragActive(false);
     const nextFile = event.dataTransfer.files?.[0] || null;
@@ -613,7 +613,7 @@ export function FaqOutputPage() {
             </thead>
             <tbody>
               {(queueQuery.data?.rows ?? []).map((item) => {
-                const hasResult = Boolean(item.resultFileName);
+                const hasResult = Boolean(item.resultFileName) || item.status === "done" || item.status === "failed";
                 const itemProgress = getExecutionProgress(item);
                 return (
                   <tr key={item.id}>

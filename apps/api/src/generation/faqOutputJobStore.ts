@@ -1,10 +1,12 @@
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { db } from "../db/client";
 import { contentGenerationJobs } from "../db/schema";
 import { formatChinaDateTime, formatChinaIsoOffset } from "../utils/time";
 import {
   getPersistedGenerationSummary,
+  listPersistedGenerationRows,
   listPersistedHistoryJobIds,
   listPersistedHistoryRows,
 } from "./faqOutputRowStore";
@@ -72,6 +74,36 @@ type HistoryFilters = {
 };
 
 const parsedWorkbookCache = new Map<string, StoredFaqOutputRow[]>();
+const generationBoardNameField = "板块名称";
+const outputHeaders = [
+  "ContentType",
+  "Country",
+  "TermID",
+  "TermName",
+  "Domain",
+  "Source",
+  "Subclass",
+  generationBoardNameField,
+  "Titile1",
+  "Brief Introduction",
+  "Href Kw",
+  "Href Url",
+] as const;
+
+const extractionSheetHeaders = [
+  "term_id",
+  "country",
+  "domain",
+  "term_name",
+  "fact_type",
+  "supported",
+  "status",
+  "discount_type",
+  "discount_value",
+  "currency",
+  "discount_details",
+  "url",
+] as const;
 
 function normalize(value: unknown) {
   return String(value || "").trim();
@@ -79,6 +111,12 @@ function normalize(value: unknown) {
 
 function normalizeCountry(value: unknown) {
   return normalize(value).toUpperCase();
+}
+
+function normalizeHeader(value: string) {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
 }
 
 function getWorkbookCacheKey(row: {
@@ -155,6 +193,127 @@ function parseStoredWorkbook(row: {
 
   parsedWorkbookCache.set(cacheKey, parsed);
   return parsed;
+}
+
+function parseGenerationInputWorkbook(fileName: string, fileBase64: string) {
+  const buffer = Buffer.from(fileBase64, "base64");
+  const mapRow = (row: Record<string, unknown>) => {
+    const mapped = new Map<string, unknown>();
+    for (const [key, value] of Object.entries(row)) mapped.set(normalizeHeader(key), value);
+    const pick = (key: string) => String(mapped.get(key) ?? "").trim();
+    return {
+      term_id: pick("term_id"),
+      country: normalizeCountry(pick("country")),
+      domain: pick("domain"),
+      term_name: pick("term_name"),
+      fact_type: pick("fact_type"),
+      supported: pick("supported"),
+      status: pick("status"),
+      discount_type: pick("discount_type"),
+      discount_value: pick("discount_value"),
+      currency: pick("currency"),
+      discount_details: pick("discount_details"),
+      url: pick("url"),
+    };
+  };
+
+  if (fileName.toLowerCase().endsWith(".csv")) {
+    return (parse(buffer.toString("utf8"), {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+    }) as Record<string, unknown>[]).map(mapRow);
+  }
+
+  const workbook = XLSX.read(buffer, { type: "buffer" });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+  return rows.map(mapRow);
+}
+
+async function rebuildGenerationResultArtifact(row: typeof contentGenerationJobs.$inferSelect) {
+  if (!row.inputFileBase64) {
+    return {
+      fileName: row.resultFileName || `faq-output-${row.id}.xlsx`,
+      xlsxBase64: row.resultFileBase64 || "",
+    };
+  }
+
+  const inputRows = parseGenerationInputWorkbook(row.inputFileName, row.inputFileBase64);
+  const persistedRows = await listPersistedGenerationRows(row.id);
+  const persistedByRowIndex = new Map(persistedRows.map((item) => [item.rowIndex, item]));
+  const successRows = persistedRows.filter((item) => item.status === "success");
+  const failedRows = persistedRows.filter((item) => item.status === "error");
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.json_to_sheet(
+      successRows.map((item) => ({
+        ContentType: "faq",
+        Country: item.country,
+        TermID: item.termId,
+        TermName: item.termName,
+        Domain: item.domain,
+        Source: item.source || "AI",
+        Subclass: item.subclass,
+        [generationBoardNameField]: item.boardName || "faq",
+        Titile1: item.title1,
+        "Brief Introduction": item.briefIntroduction,
+        "Href Kw": item.hrefKw,
+        "Href Url": item.hrefUrl,
+      })),
+      { header: [...outputHeaders] },
+    ),
+    "FAQ输出",
+  );
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.json_to_sheet(
+      inputRows.map((inputRow, index) => {
+        const persisted = persistedByRowIndex.get(index + 1);
+        if (!persisted || persisted.status !== "success") return inputRow;
+        return {
+          ...inputRow,
+          supported: persisted.supported,
+          status: persisted.inputStatus,
+          discount_type: persisted.discountType,
+          discount_value: persisted.discountValue,
+          currency: persisted.currency,
+          discount_details: persisted.discountDetails || inputRow.discount_details,
+          url: persisted.url || inputRow.url,
+        };
+      }),
+      { header: [...extractionSheetHeaders] },
+    ),
+    "字段提取",
+  );
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.json_to_sheet(
+      failedRows.map((item) => ({
+        rowIndex: item.rowIndex,
+        factType: item.factType,
+        subclass: item.subclass,
+        routeKey: item.routeKey,
+        error: item.errorReason,
+      })),
+    ),
+    "失败明细",
+  );
+
+  const xlsxBase64 = XLSX.write(workbook, { type: "base64", bookType: "xlsx" });
+  const fileName = row.resultFileName || `faq-output-${row.id}.xlsx`;
+
+  await db
+    .update(contentGenerationJobs)
+    .set({
+      resultFileName: fileName,
+      resultFileBase64: xlsxBase64,
+    })
+    .where(eq(contentGenerationJobs.id, row.id));
+
+  return { fileName, xlsxBase64 };
 }
 
 async function listDoneGenerationRows(scType = "faq") {
@@ -481,11 +640,15 @@ export async function listGenerationJobs(page: number, pageSize: number, scType 
 export async function getGenerationJobResult(jobId: string) {
   const rows = await db.select().from(contentGenerationJobs).where(eq(contentGenerationJobs.id, jobId));
   const row = rows[0];
+  const rebuiltResult =
+    row && !row.resultFileBase64 && (row.status === "done" || row.status === "failed")
+      ? await rebuildGenerationResultArtifact(row)
+      : null;
   if (!row) throw new Error("未找到 FAQ 输出任务。");
   return {
     id: row.id,
-    fileName: row.resultFileName || `faq-output-${row.id}.xlsx`,
-    xlsxBase64: row.resultFileBase64 || "",
+    fileName: rebuiltResult?.fileName || row.resultFileName || `faq-output-${row.id}.xlsx`,
+    xlsxBase64: rebuiltResult?.xlsxBase64 || row.resultFileBase64 || "",
     status: row.status,
     routeSummary: (row.routeSummaryJson as RouteSummaryRow[] | null) || [],
     rowResults: (row.rowResultsJson as RowRuntimeResult[] | null) || [],
