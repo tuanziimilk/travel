@@ -132,7 +132,7 @@ function DonutCard({
   }, [data]);
 
   const lead = data[0];
-  const shouldCollapse = collapsible && data.length > collapsedLimit;
+  const shouldCollapse = collapsible && data.length >= collapsedLimit;
   const visibleData = shouldCollapse && !expanded ? data.slice(0, collapsedLimit) : data;
   const hiddenCount = Math.max(0, data.length - collapsedLimit);
   const toggleLabel = expanded ? "\u6536\u8d77" : `\u5c55\u5f00 ${hiddenCount} \u4e2a`;
@@ -275,7 +275,7 @@ export function FaqOutputHistoryPage() {
   const queryError = summaryQuery.error || rowsQuery.error;
 
   const countryShare = useMemo(
-    () => buildShareData(byCountry.map((item) => ({ label: item.country, value: item.uniqueResultCount }))),
+    () => buildShareData(byCountry.map((item) => ({ label: item.country, value: item.merchantCount }))),
     [byCountry],
   );
 
@@ -492,7 +492,7 @@ export function FaqOutputHistoryPage() {
           </div>
 
           <div className="history-dashboard-chart-grid">
-            <DonutCard title="国家分布" subtitle="按唯一结果数（Country + TermID + Subclass）计算占比" data={countryShare} collapsible />
+            <DonutCard title="国家分布" subtitle="按覆盖商家数（Country + TermID）计算占比" data={countryShare} collapsible />
             <DonutCard title="Subclass 分布" subtitle="按唯一结果数（Country + TermID + Subclass）计算占比" data={subclassShare} />
           </div>
 
