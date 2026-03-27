@@ -1,6 +1,6 @@
 import * as Select from "@radix-ui/react-select";
 import { useEffect, useMemo, useState } from "react";
-import { uploaderOptions } from "@about-demo/trpc";
+import { countryOptions, uploaderOptions } from "@about-demo/trpc";
 import { PopDatePicker } from "../components/PopDatePicker";
 import { trpc } from "../lib/trpc";
 import { formatChinaDateTime } from "../utils/time";
@@ -236,8 +236,6 @@ export function FaqOutputHistoryPage() {
     page,
     pageSize,
   });
-  const optionsQuery = trpc.generation.historySummary.useQuery({ scType });
-
   useEffect(() => {
     setPage(1);
   }, [country, subclass, uploader, keyword, startDate, endDate]);
@@ -245,9 +243,9 @@ export function FaqOutputHistoryPage() {
   const summary = (summaryQuery.data as HistorySummaryResponse | undefined)?.summary;
   const byCountry = (summaryQuery.data as HistorySummaryResponse | undefined)?.byCountry ?? [];
   const bySubclass = (summaryQuery.data as HistorySummaryResponse | undefined)?.bySubclass ?? [];
-  const allCountries = (optionsQuery.data as HistorySummaryResponse | undefined)?.byCountry ?? [];
   const rows = (rowsQuery.data?.rows ?? []) as HistoryRow[];
   const totalPages = Math.max(1, Math.ceil((rowsQuery.data?.total ?? 0) / pageSize));
+  const queryError = summaryQuery.error || rowsQuery.error;
 
   const countryShare = useMemo(
     () => buildShareData(byCountry.map((item) => ({ label: item.country, value: item.uniqueResultCount }))),
@@ -318,9 +316,9 @@ export function FaqOutputHistoryPage() {
                       <Select.Item className="select-item" value="all">
                         <Select.ItemText>全部国家</Select.ItemText>
                       </Select.Item>
-                      {allCountries.map((item) => (
-                        <Select.Item className="select-item" key={item.country} value={item.country}>
-                          <Select.ItemText>{item.country}</Select.ItemText>
+                      {countryOptions.map((item) => (
+                        <Select.Item className="select-item" key={item} value={item}>
+                          <Select.ItemText>{item}</Select.ItemText>
                         </Select.Item>
                       ))}
                     </Select.Viewport>
@@ -441,6 +439,8 @@ export function FaqOutputHistoryPage() {
         <div className="card analytics-result-shell faq-card history-dashboard-shell">
           <div className="results-section-title history-dashboard-title">结果分析</div>
 
+          {queryError ? <p className="error-text">结果库加载失败：{queryError.message}</p> : null}
+
           <div className="kpi-row history-dashboard-kpi-row">
             <div className="kpi-card">
               <span className="kpi-label">结果行数</span>
@@ -478,6 +478,8 @@ export function FaqOutputHistoryPage() {
               <h3>结果列表</h3>
               <span className="muted">唯一键口径：Country + TermID</span>
             </div>
+
+            {queryError ? <p className="error-text">结果库加载失败：{queryError.message}</p> : null}
 
             <table className="history-table history-dashboard-table">
               <thead>
