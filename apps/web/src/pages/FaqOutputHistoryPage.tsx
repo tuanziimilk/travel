@@ -492,7 +492,7 @@ export function FaqOutputHistoryPage() {
           </div>
 
           <div className="history-dashboard-chart-grid">
-            <DonutCard title="国家分布" subtitle="按覆盖商家数（Country + TermID）计算占比" data={countryShare} collapsible />
+            <DonutCard title="国家分布" subtitle="按覆盖商家数（Country + TermID）计算占比" data={countryShare} collapsible collapsedLimit={5} />
             <DonutCard title="Subclass 分布" subtitle="按唯一结果数（Country + TermID + Subclass）计算占比" data={subclassShare} />
           </div>
 
