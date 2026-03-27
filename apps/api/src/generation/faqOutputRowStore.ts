@@ -3,7 +3,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db, pool } from "../db/client";
 import { contentGenerationJobs } from "../db/schema";
 
-const FAQ_BOARD_NAME_FIELD = "????" as const;
+const FAQ_BOARD_NAME_FIELD = "板块名称" as const;
 
 export type PersistedGenerationRow = {
   jobId: string;

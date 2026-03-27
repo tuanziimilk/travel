@@ -11,7 +11,7 @@ import {
   listPersistedHistoryRows,
 } from "./faqOutputRowStore";
 
-const FAQ_BOARD_NAME_FIELD = "????" as const;
+const FAQ_BOARD_NAME_FIELD = "板块名称" as const;
 
 type RouteSummaryRow = {
   factType: string;

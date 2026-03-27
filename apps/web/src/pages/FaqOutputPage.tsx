@@ -48,6 +48,22 @@ const queueStatusText: Record<string, string> = {
   cancelled: "已取消",
 };
 
+function getDisplayJobStatus(item: {
+  status: string;
+  startedAt?: string | Date | null;
+  successRows: number;
+  failedRows: number;
+}) {
+  if (item.status === "done" || item.status === "failed" || item.status === "cancelled" || item.status === "running") {
+    return item.status;
+  }
+  const processedRows = Number(item.successRows || 0) + Number(item.failedRows || 0);
+  if ((item.status === "queued" || item.status === "pending") && (processedRows > 0 || Boolean(item.startedAt))) {
+    return "running";
+  }
+  return item.status;
+}
+
 function normalizeHeader(value: string) {
   return String(value || "").trim().toLowerCase();
 }
@@ -199,7 +215,16 @@ export function FaqOutputPage() {
 
   const queueQuery = trpc.generation.queue.useQuery(
     { scType, page: queuePage, pageSize: queuePageSize },
-    { refetchInterval: 4000 },
+    {
+      refetchInterval: (query) => {
+        const list = query.state.data?.rows ?? [];
+        const hasActive = list.some((item) => {
+          const displayStatus = getDisplayJobStatus(item);
+          return displayStatus === "queued" || displayStatus === "pending" || displayStatus === "running";
+        });
+        return hasActive ? 1500 : 4000;
+      },
+    },
   );
 
   const runMutation = trpc.generation.run.useMutation({
@@ -251,6 +276,11 @@ export function FaqOutputPage() {
   const currentProgress = useMemo(() => {
     if (!statusQuery.data) return null;
     return getExecutionProgress(statusQuery.data);
+  }, [statusQuery.data]);
+
+  const currentDisplayStatus = useMemo(() => {
+    if (!statusQuery.data) return "";
+    return getDisplayJobStatus(statusQuery.data);
   }, [statusQuery.data]);
 
   useEffect(() => {
@@ -489,7 +519,7 @@ export function FaqOutputPage() {
           <div className="progress-group faq-output-progress-panel">
             <div className="progress-label">
               <span>
-                当前任务：{queueStatusText[statusQuery.data.status] ?? statusQuery.data.status} / {currentProgress?.processedRows ?? 0}/
+                当前任务：{queueStatusText[currentDisplayStatus] ?? currentDisplayStatus} / {currentProgress?.processedRows ?? 0}/
                 {statusQuery.data.executableRows} 已处理
               </span>
               <strong>{currentProgress?.percent ?? 0}%</strong>
@@ -615,20 +645,21 @@ export function FaqOutputPage() {
               {(queueQuery.data?.rows ?? []).map((item) => {
                 const hasResult = Boolean(item.resultFileName) || item.status === "done" || item.status === "failed";
                 const itemProgress = getExecutionProgress(item);
+                const displayStatus = getDisplayJobStatus(item);
                 return (
                   <tr key={item.id}>
                     <td title={item.id}>{formatJobId(item.id)}</td>
                     <td>
-                      <span className={`status-light status-${item.status}`}>
+                      <span className={`status-light status-${displayStatus}`}>
                         <span className="status-light-dot" />
-                        <span>{queueStatusText[item.status] ?? item.status}</span>
+                        <span>{queueStatusText[displayStatus] ?? displayStatus}</span>
                       </span>
                     </td>
                     <td title={item.uploader}>{item.uploader}</td>
                     <td title={safeValue(item.note)}>{safeValue(item.note)}</td>
                     <td title={item.errorReason || getCompactSummaryText(item)}>
                       <div>{getCompactSummaryText(item)}</div>
-                      {(item.status === "running" || item.status === "pending" || item.status === "queued") && item.executableRows > 0 ? (
+                      {(displayStatus === "running" || displayStatus === "pending" || displayStatus === "queued") && item.executableRows > 0 ? (
                         <div className="progress-track faq-queue-inline-progress">
                           <div className="progress-fill" style={{ width: `${itemProgress.percent}%` }} />
                         </div>
