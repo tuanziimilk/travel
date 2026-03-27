@@ -62,6 +62,18 @@ function formatDuration(startedAt?: string | null, finishedAt?: string | null) {
   return `${seconds}s`;
 }
 
+function getDisplayedTranslationCost(item: {
+  status: string;
+  estimatedCostUsdSum: number;
+  predictedCostUsd: number;
+}) {
+  const actual = Number(item.estimatedCostUsdSum || 0);
+  const predicted = Number(item.predictedCostUsd || 0);
+  if (item.status === "failed" || item.status === "cancelled") return actual;
+  if (item.status === "done" || item.status === "partial_failed") return actual;
+  return actual > 0 ? actual : predicted;
+}
+
 const queueStatusText: Record<string, string> = {
   queued: "排队中",
   preparing: "准备中",
@@ -464,7 +476,7 @@ export function TranslationBatchPage() {
                   <td>{formatChinaDateTime(item.startedAt || item.createdAt)}</td>
                   <td>{formatDuration(item.startedAt || item.createdAt, item.finishedAt)}</td>
                   <td title={`预计 ${formatUsd(item.predictedCostUsd)} / 实际 ${formatUsd(item.estimatedCostUsdSum)}`}>
-                    {formatUsd(item.estimatedCostUsdSum || item.predictedCostUsd)}
+                    {formatUsd(getDisplayedTranslationCost(item))}
                   </td>
                   <td className="queue-action-cell">
                     <button
