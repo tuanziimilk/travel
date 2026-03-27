@@ -110,30 +110,34 @@ function DonutCard({
   title,
   subtitle,
   data,
+  expandedData,
   collapsible = false,
   collapsedLimit = 6,
 }: {
   title: string;
   subtitle: string;
   data: ShareDatum[];
+  expandedData?: ShareDatum[];
   collapsible?: boolean;
   collapsedLimit?: number;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const fullData = expandedData?.length ? expandedData : data;
+  const activeData = expanded ? fullData : data;
   const background = useMemo(() => {
-    if (!data.length) return "conic-gradient(#e6e6e6 0 100%)";
+    if (!activeData.length) return "conic-gradient(#e6e6e6 0 100%)";
     let current = 0;
-    const segments = data.map((item) => {
+    const segments = activeData.map((item) => {
       const start = current;
       current += item.pct;
       return `${item.color} ${start}% ${current}%`;
     });
     return `conic-gradient(${segments.join(", ")})`;
-  }, [data]);
+  }, [activeData]);
 
-  const lead = data[0];
-  const shouldCollapse = collapsible && data.length >= collapsedLimit;
-  const visibleData = shouldCollapse && !expanded ? data.slice(0, collapsedLimit) : data;
+  const lead = activeData[0];
+  const shouldCollapse = collapsible && fullData.length > data.length;
+  const visibleData = activeData;
 
   return (
     <div className="history-chart-card">
@@ -273,6 +277,10 @@ export function FaqOutputHistoryPage() {
 
   const countryShare = useMemo(
     () => buildShareData(byCountry.map((item) => ({ label: item.country, value: item.merchantCount }))),
+    [byCountry],
+  );
+  const countryShareExpanded = useMemo(
+    () => buildShareData(byCountry.map((item) => ({ label: item.country, value: item.merchantCount })), 5, false),
     [byCountry],
   );
 
@@ -489,7 +497,14 @@ export function FaqOutputHistoryPage() {
           </div>
 
           <div className="history-dashboard-chart-grid">
-            <DonutCard title="国家分布" subtitle="按覆盖商家数（Country + TermID）计算占比" data={countryShare} collapsible collapsedLimit={5} />
+            <DonutCard
+              title="国家分布"
+              subtitle="按覆盖商家数（Country + TermID）计算占比"
+              data={countryShare}
+              expandedData={countryShareExpanded}
+              collapsible
+              collapsedLimit={5}
+            />
             <DonutCard title="Subclass 分布" subtitle="按唯一结果数（Country + TermID + Subclass）计算占比" data={subclassShare} />
           </div>
 
