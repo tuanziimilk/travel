@@ -265,7 +265,7 @@ async function rebuildGenerationResultArtifact(row: typeof contentGenerationJobs
       })),
       { header: [...outputHeaders] },
     ),
-    "FAQ输出",
+    "FAQ_output",
   );
   XLSX.utils.book_append_sheet(
     workbook,
@@ -286,7 +286,7 @@ async function rebuildGenerationResultArtifact(row: typeof contentGenerationJobs
       }),
       { header: [...extractionSheetHeaders] },
     ),
-    "字段提取",
+    "field_extract",
   );
   XLSX.utils.book_append_sheet(
     workbook,
@@ -299,7 +299,7 @@ async function rebuildGenerationResultArtifact(row: typeof contentGenerationJobs
         error: item.errorReason,
       })),
     ),
-    "失败明细",
+    "failures",
   );
 
   const xlsxBase64 = XLSX.write(workbook, { type: "base64", bookType: "xlsx" });
@@ -811,7 +811,7 @@ export async function exportGenerationHistory(input: HistoryFilters & { format?:
 
   const workbook = XLSX.utils.book_new();
   const sheet = XLSX.utils.json_to_sheet(exportRows);
-  XLSX.utils.book_append_sheet(workbook, sheet, "FAQ历史记录");
+  XLSX.utils.book_append_sheet(workbook, sheet, "faq_history");
   const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
   return {
     fileName: `${fileStem}.xlsx`,
