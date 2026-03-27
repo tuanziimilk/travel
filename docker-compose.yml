@@ -6,7 +6,7 @@ services:
   mysql:
     image: mysql:8.0
     restart: unless-stopped
-    mem_limit: 1g
+    mem_limit: 1280m
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-changeme}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-about_quality}
