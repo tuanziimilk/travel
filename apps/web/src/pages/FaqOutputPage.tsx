@@ -54,6 +54,9 @@ function getDisplayJobStatus(item: {
   successRows: number;
   failedRows: number;
 }) {
+  if (item.failedRows > 0 && item.successRows > 0) {
+    return "partial_failed";
+  }
   if (item.status === "done" || item.status === "failed" || item.status === "cancelled" || item.status === "running") {
     return item.status;
   }
