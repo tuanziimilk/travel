@@ -59,14 +59,6 @@ async function ensureTranslationJobsTable() {
       updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
   `);
-  await db.execute(sql`ALTER TABLE translation_jobs ADD COLUMN IF NOT EXISTS provider varchar(32) NOT NULL DEFAULT 'openai'`);
-  await db.execute(sql`ALTER TABLE translation_jobs ADD COLUMN IF NOT EXISTS execution_mode varchar(32) NOT NULL DEFAULT 'batch'`);
-  await db.execute(sql`ALTER TABLE translation_jobs ADD COLUMN IF NOT EXISTS provider_batch_id varchar(128)`);
-  await db.execute(sql`ALTER TABLE translation_jobs ADD COLUMN IF NOT EXISTS input_file_id varchar(128)`);
-  await db.execute(sql`ALTER TABLE translation_jobs ADD COLUMN IF NOT EXISTS output_file_id varchar(128)`);
-  await db.execute(sql`ALTER TABLE translation_jobs ADD COLUMN IF NOT EXISTS error_file_id varchar(128)`);
-  await db.execute(sql`ALTER TABLE translation_jobs ADD COLUMN IF NOT EXISTS predicted_total_tokens int NOT NULL DEFAULT 0`);
-  await db.execute(sql`ALTER TABLE translation_jobs ADD COLUMN IF NOT EXISTS predicted_cost_usd decimal(12,6) NOT NULL DEFAULT '0'`);
 }
 
 export async function createTranslationJob(input: {
