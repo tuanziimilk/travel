@@ -761,7 +761,8 @@ export async function getGenerationHistorySummary(input: HistoryFilters) {
     `
       SELECT
         COUNT(*) AS total_rows,
-        COUNT(DISTINCT CONCAT(r.country, '::', r.term_id)) AS unique_result_count,
+        COUNT(DISTINCT CONCAT(r.country, '::', r.term_id, '::', r.subclass)) AS unique_result_count,
+        COUNT(DISTINCT CONCAT(r.country, '::', r.term_id)) AS merchant_count,
         COUNT(DISTINCT r.country) AS country_count,
         COUNT(DISTINCT r.subclass) AS subclass_count
       FROM content_generation_job_rows r
@@ -776,7 +777,8 @@ export async function getGenerationHistorySummary(input: HistoryFilters) {
       SELECT
         r.country AS country,
         COUNT(*) AS row_count,
-        COUNT(DISTINCT CONCAT(r.country, '::', r.term_id)) AS unique_result_count,
+        COUNT(DISTINCT CONCAT(r.term_id, '::', r.subclass)) AS unique_result_count,
+        COUNT(DISTINCT r.term_id) AS merchant_count,
         COUNT(DISTINCT r.subclass) AS subclass_count
       FROM content_generation_job_rows r
       INNER JOIN content_generation_jobs j ON j.id = r.job_id
@@ -792,7 +794,8 @@ export async function getGenerationHistorySummary(input: HistoryFilters) {
       SELECT
         r.subclass AS subclass,
         COUNT(*) AS row_count,
-        COUNT(DISTINCT CONCAT(r.country, '::', r.term_id)) AS unique_result_count,
+        COUNT(DISTINCT CONCAT(r.country, '::', r.term_id, '::', r.subclass)) AS unique_result_count,
+        COUNT(DISTINCT CONCAT(r.country, '::', r.term_id)) AS merchant_count,
         COUNT(DISTINCT r.country) AS country_count
       FROM content_generation_job_rows r
       INNER JOIN content_generation_jobs j ON j.id = r.job_id
@@ -809,6 +812,7 @@ export async function getGenerationHistorySummary(input: HistoryFilters) {
     summary: {
       totalRows: Number(summaryRow.total_rows || 0),
       uniqueResultCount: Number(summaryRow.unique_result_count || 0),
+      merchantCount: Number(summaryRow.merchant_count || 0),
       countryCount: Number(summaryRow.country_count || 0),
       subclassCount: Number(summaryRow.subclass_count || 0),
     },
@@ -816,12 +820,14 @@ export async function getGenerationHistorySummary(input: HistoryFilters) {
       country: String(row.country || ""),
       rowCount: Number(row.row_count || 0),
       uniqueResultCount: Number(row.unique_result_count || 0),
+      merchantCount: Number(row.merchant_count || 0),
       subclassCount: Number(row.subclass_count || 0),
     })),
     bySubclass: bySubclassRows.map((row) => ({
       subclass: String(row.subclass || ""),
       rowCount: Number(row.row_count || 0),
       uniqueResultCount: Number(row.unique_result_count || 0),
+      merchantCount: Number(row.merchant_count || 0),
       countryCount: Number(row.country_count || 0),
     })),
   };

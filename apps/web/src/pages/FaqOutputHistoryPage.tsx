@@ -9,6 +9,7 @@ type HistorySummaryResponse = {
   summary: {
     totalRows: number;
     uniqueResultCount: number;
+    merchantCount: number;
     countryCount: number;
     subclassCount: number;
   };
@@ -16,12 +17,14 @@ type HistorySummaryResponse = {
     country: string;
     rowCount: number;
     uniqueResultCount: number;
+    merchantCount: number;
     subclassCount: number;
   }>;
   bySubclass: Array<{
     subclass: string;
     rowCount: number;
     uniqueResultCount: number;
+    merchantCount: number;
     countryCount: number;
   }>;
 };
@@ -451,6 +454,10 @@ export function FaqOutputHistoryPage() {
               <strong className="kpi-value">{summary?.uniqueResultCount ?? 0}</strong>
             </div>
             <div className="kpi-card">
+              <span className="kpi-label">覆盖商家数</span>
+              <strong className="kpi-value">{summary?.merchantCount ?? 0}</strong>
+            </div>
+            <div className="kpi-card">
               <span className="kpi-label">国家数</span>
               <strong className="kpi-value">{summary?.countryCount ?? 0}</strong>
             </div>
@@ -458,15 +465,11 @@ export function FaqOutputHistoryPage() {
               <span className="kpi-label">Subclass 数</span>
               <strong className="kpi-value">{summary?.subclassCount ?? 0}</strong>
             </div>
-            <div className="kpi-card">
-              <span className="kpi-label">当前筛选结果</span>
-              <strong className="kpi-value">{rowsQuery.data?.total ?? 0}</strong>
-            </div>
           </div>
 
           <div className="history-dashboard-chart-grid">
-            <DonutCard title="国家分布" subtitle="按唯一结果数计算占比" data={countryShare} />
-            <DonutCard title="Subclass 分布" subtitle="按唯一结果数计算占比" data={subclassShare} />
+            <DonutCard title="国家分布" subtitle="按唯一结果数（Country + TermID + Subclass）计算占比" data={countryShare} />
+            <DonutCard title="Subclass 分布" subtitle="按唯一结果数（Country + TermID + Subclass）计算占比" data={subclassShare} />
           </div>
 
           <HorizontalBars title="Subclass 全量分布" subtitle="23 个 FAQ subclass 的完整情况" items={subclassBars} />
@@ -476,7 +479,7 @@ export function FaqOutputHistoryPage() {
           <div className="history-table-panel history-dashboard-table-panel">
             <div className="dist-header history-dashboard-table-head">
               <h3>结果列表</h3>
-              <span className="muted">唯一键口径：Country + TermID</span>
+              <span className="muted">唯一结果口径：Country + TermID + Subclass；覆盖商家口径：Country + TermID</span>
             </div>
 
             {queryError ? <p className="error-text">结果库加载失败：{queryError.message}</p> : null}
