@@ -4032,10 +4032,40 @@ pre {
   margin-bottom: 14px;
 }
 
+.history-chart-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .history-chart-head h3 {
   margin: 0;
   font-size: 18px;
   font-weight: 900;
+}
+
+.history-chart-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 2px solid var(--black);
+  background: var(--white);
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 3px 3px 0 var(--black);
+  flex: 0 0 auto;
+}
+
+.history-chart-toggle-arrow {
+  display: inline-block;
+  transition: transform 0.14s ease;
+}
+
+.history-chart-toggle-arrow.open {
+  transform: rotate(180deg);
 }
 
 .history-chart-head span {
@@ -4089,6 +4119,13 @@ pre {
   display: grid;
   gap: 8px;
   min-width: 0;
+}
+
+.history-more-copy {
+  font-size: 11px;
+  font-weight: 800;
+  color: #6a6a6a;
+  padding-top: 2px;
 }
 
 .history-legend-row {

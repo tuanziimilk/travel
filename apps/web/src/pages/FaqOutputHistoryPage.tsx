@@ -110,11 +110,16 @@ function DonutCard({
   title,
   subtitle,
   data,
+  collapsible = false,
+  collapsedLimit = 6,
 }: {
   title: string;
   subtitle: string;
   data: ShareDatum[];
+  collapsible?: boolean;
+  collapsedLimit?: number;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const background = useMemo(() => {
     if (!data.length) return "conic-gradient(#e6e6e6 0 100%)";
     let current = 0;
@@ -127,11 +132,21 @@ function DonutCard({
   }, [data]);
 
   const lead = data[0];
+  const shouldCollapse = collapsible && data.length > collapsedLimit;
+  const visibleData = shouldCollapse && !expanded ? data.slice(0, collapsedLimit) : data;
 
   return (
     <div className="history-chart-card">
       <div className="history-chart-head">
-        <h3>{title}</h3>
+        <div className="history-chart-title-row">
+          <h3>{title}</h3>
+          {shouldCollapse ? (
+            <button className="history-chart-toggle" type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}>
+              <span>{expanded ? "收起" : "展开"}</span>
+              <span className={`history-chart-toggle-arrow ${expanded ? "open" : ""}`}>▾</span>
+            </button>
+          ) : null}
+        </div>
         <span>{subtitle}</span>
       </div>
 
@@ -144,8 +159,8 @@ function DonutCard({
         </div>
 
         <div className="history-donut-legend">
-          {data.length ? (
-            data.map((item) => (
+          {visibleData.length ? (
+            visibleData.map((item) => (
               <div className="history-legend-row" key={item.label}>
                 <span className="history-legend-label">
                   <i style={{ background: item.color }} />
@@ -158,6 +173,7 @@ function DonutCard({
           ) : (
             <div className="history-empty-copy">暂无数据</div>
           )}
+          {shouldCollapse && !expanded ? <div className="history-more-copy">还有 {data.length - collapsedLimit} 个国家，点击展开查看</div> : null}
         </div>
       </div>
     </div>
@@ -468,7 +484,7 @@ export function FaqOutputHistoryPage() {
           </div>
 
           <div className="history-dashboard-chart-grid">
-            <DonutCard title="国家分布" subtitle="按唯一结果数（Country + TermID + Subclass）计算占比" data={countryShare} />
+            <DonutCard title="国家分布" subtitle="按唯一结果数（Country + TermID + Subclass）计算占比" data={countryShare} collapsible />
             <DonutCard title="Subclass 分布" subtitle="按唯一结果数（Country + TermID + Subclass）计算占比" data={subclassShare} />
           </div>
 
