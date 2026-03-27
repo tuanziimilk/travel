@@ -4024,6 +4024,7 @@ pre {
   box-shadow: 6px 6px 0 var(--black);
   padding: 18px;
   min-width: 0;
+  position: relative;
 }
 
 .history-chart-head {
@@ -4048,19 +4049,28 @@ pre {
 .history-chart-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
   border: 2px solid var(--black);
   background: var(--white);
-  padding: 4px 8px;
-  font-size: 11px;
-  font-weight: 900;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
   cursor: pointer;
-  box-shadow: 3px 3px 0 var(--black);
+  box-shadow: 2px 2px 0 var(--black);
   flex: 0 0 auto;
+}
+
+.history-chart-toggle-corner {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 1;
 }
 
 .history-chart-toggle-arrow {
   display: inline-block;
+  font-size: 12px;
+  line-height: 1;
   transition: transform 0.14s ease;
 }
 
@@ -4119,13 +4129,6 @@ pre {
   display: grid;
   gap: 8px;
   min-width: 0;
-}
-
-.history-more-copy {
-  font-size: 11px;
-  font-weight: 800;
-  color: #6a6a6a;
-  padding-top: 2px;
 }
 
 .history-legend-row {

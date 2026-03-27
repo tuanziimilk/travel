@@ -134,26 +134,12 @@ function DonutCard({
   const lead = data[0];
   const shouldCollapse = collapsible && data.length >= collapsedLimit;
   const visibleData = shouldCollapse && !expanded ? data.slice(0, collapsedLimit) : data;
-  const hiddenCount = Math.max(0, data.length - collapsedLimit);
-  const toggleLabel = expanded ? "\u6536\u8d77" : `\u5c55\u5f00 ${hiddenCount} \u4e2a`;
 
   return (
     <div className="history-chart-card">
       <div className="history-chart-head">
         <div className="history-chart-title-row">
           <h3>{title}</h3>
-          {shouldCollapse ? (
-            <button
-              className="history-chart-toggle"
-              type="button"
-              onClick={() => setExpanded((value) => !value)}
-              aria-expanded={expanded}
-              aria-label={`${title}${expanded ? "\u6536\u8d77" : "\u5c55\u5f00"}\u8be6\u7ec6\u5206\u5e03`}
-            >
-              <span>{toggleLabel}</span>
-              <span className={`history-chart-toggle-arrow ${expanded ? "open" : ""}`}>{"\u25be"}</span>
-            </button>
-          ) : null}
         </div>
         <span>{subtitle}</span>
       </div>
@@ -181,9 +167,20 @@ function DonutCard({
           ) : (
             <div className="history-empty-copy">{"\u6682\u65e0\u6570\u636e"}</div>
           )}
-          {shouldCollapse && !expanded ? <div className="history-more-copy">{"\u8fd8\u6709 "}{hiddenCount}{" \u4e2a\u56fd\u5bb6\uff0c\u70b9\u51fb\u53f3\u4e0a\u89d2\u5c55\u5f00\u67e5\u770b"}</div> : null}
         </div>
       </div>
+      {shouldCollapse ? (
+        <button
+          className="history-chart-toggle history-chart-toggle-corner"
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          aria-expanded={expanded}
+          aria-label={`${title}${expanded ? "\u6536\u8d77" : "\u5c55\u5f00"}\u8be6\u7ec6\u5206\u5e03`}
+          title={expanded ? "\u6536\u8d77" : "\u5c55\u5f00"}
+        >
+          <span className={`history-chart-toggle-arrow ${expanded ? "open" : ""}`}>{"\u25be"}</span>
+        </button>
+      ) : null}
     </div>
   );
 }
