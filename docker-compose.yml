@@ -6,10 +6,10 @@ services:
   mysql:
     image: mysql:8.0
     restart: unless-stopped
-    mem_limit: 768m
+    mem_limit: 1g
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-changeme}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-quality_scoring}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-about_quality}
     volumes:
       - mysql_data:/var/lib/mysql
       - ./mysql/my.cnf:/etc/mysql/conf.d/my.cnf:ro
