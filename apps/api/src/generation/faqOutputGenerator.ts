@@ -555,8 +555,8 @@ function triggerGenerationScheduler() {
 
 async function bootstrapGenerationQueue() {
   if (generationSchedulerBootstrapped) return;
-  generationSchedulerBootstrapped = true;
   await recoverInterruptedGenerationJobs("faq");
+  generationSchedulerBootstrapped = true;
 }
 
 async function processGenerationQueue() {
