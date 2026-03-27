@@ -40,12 +40,13 @@ const faqOutputTemplateCsv = [
 ].join("\n");
 
 const queueStatusText: Record<string, string> = {
-  queued: "排队中",
-  pending: "排队中",
-  running: "执行中",
-  done: "已完成",
-  failed: "失败",
-  cancelled: "已取消",
+  queued: "\u6392\u961f\u4e2d",
+  pending: "\u6392\u961f\u4e2d",
+  running: "\u6267\u884c\u4e2d",
+  done: "\u5df2\u5b8c\u6210",
+  partial_failed: "\u90e8\u5206\u5931\u8d25",
+  failed: "\u5931\u8d25",
+  cancelled: "\u5df2\u53d6\u6d88",
 };
 
 function getDisplayJobStatus(item: {
@@ -54,7 +55,7 @@ function getDisplayJobStatus(item: {
   successRows: number;
   failedRows: number;
 }) {
-  if (item.failedRows > 0 && item.successRows > 0) {
+  if (item.status === "failed" && item.failedRows > 0 && item.successRows > 0) {
     return "partial_failed";
   }
   if (item.status === "done" || item.status === "failed" || item.status === "cancelled" || item.status === "running") {
