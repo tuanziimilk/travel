@@ -450,6 +450,7 @@ export function TranslationBatchPage() {
           <table className="history-table queue-table translation-queue-table">
             <thead>
               <tr>
+                <th>上传人</th>
                 <th>任务 ID</th>
                 <th>状态</th>
                 <th>执行模式</th>
@@ -463,6 +464,7 @@ export function TranslationBatchPage() {
             <tbody>
               {(queueQuery.data?.rows ?? []).map((item) => (
                 <tr key={item.id}>
+                  <td title={item.note || ""}>{item.uploader || "-"}</td>
                   <td
                     title={`列：${item.selectedColumns.join(", ") || "-"}\n预测 token：${item.predictedTotalTokens}\n预计费用：${formatUsd(item.predictedCostUsd)}\n实际费用：${formatUsd(item.estimatedCostUsdSum)}`}
                   >
