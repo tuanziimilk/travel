@@ -67,7 +67,7 @@ type PreparedJob = {
   totalRows: number;
   predictedTotalTokens: number;
   predictedCostUsd: number;
-  executionMode: "batch" | "realtime";
+  executionMode: "realtime";
 };
 
 function normalizeCell(value: unknown) {
@@ -156,6 +156,28 @@ function chunkItems<T>(items: T[], chunkSize: number) {
   return chunks;
 }
 
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+) {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  const workerCount = Math.max(1, Math.min(concurrency, items.length || 1));
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (cursor < items.length) {
+        const currentIndex = cursor;
+        cursor += 1;
+        results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+      }
+    }),
+  );
+
+  return results;
+}
+
 function estimateBatchCost(predictedInputTokens: number) {
   const predictedOutputTokens = Math.ceil(predictedInputTokens * 1.05);
   const usd =
@@ -202,10 +224,7 @@ function buildPreparedJob(parsed: ParsedTranslationFile, selectedColumnsRaw: str
     }
   });
 
-  const executionMode =
-    cells.length <= translationRealtimeCellThreshold && predictedInputTokens <= translationRealtimeTokenThreshold
-      ? "realtime"
-      : "batch";
+  const executionMode: "realtime" = "realtime";
 
   return {
     rows,
@@ -215,7 +234,7 @@ function buildPreparedJob(parsed: ParsedTranslationFile, selectedColumnsRaw: str
     cells,
     totalRows: rows.length,
     predictedTotalTokens: predictedInputTokens,
-    predictedCostUsd: executionMode === "batch" ? estimateBatchCost(predictedInputTokens) : estimateRealtimeCost(predictedInputTokens),
+    predictedCostUsd: estimateRealtimeCost(predictedInputTokens),
     executionMode,
   };
 }
@@ -378,7 +397,7 @@ async function runQueuedTranslationJob(jobId: string, input: QueuedTranslationJo
 
     await updateTranslationJobProgress({
       jobId,
-      status: prepared.executionMode === "realtime" ? "running" : "preparing",
+      status: "running",
       totalRows: prepared.totalRows,
       processedRows: 0,
       successRows: 0,
@@ -394,11 +413,7 @@ async function runQueuedTranslationJob(jobId: string, input: QueuedTranslationJo
       aiModel: env.translationAiModel,
     });
 
-    if (prepared.executionMode === "realtime") {
-      await executeRealtimeTranslation(jobId, prepared);
-    } else {
-      await submitBatchTranslation(jobId, prepared);
-    }
+    await executeRealtimeTranslation(jobId, prepared);
   } catch (error) {
     await failTranslationJob(jobId, error instanceof Error ? error.message : String(error));
   } finally {
@@ -420,33 +435,49 @@ async function executeRealtimeTranslation(jobId: string, prepared: PreparedJob) 
   let completionTokensSum = 0;
   let totalTokensSum = 0;
   let estimatedCostUsdSum = 0;
+  const chunkConcurrency = env.translationRealtimeChunkConcurrency;
+  const waves = chunkItems(chunks, chunkConcurrency);
 
-  for (const chunk of chunks) {
-    try {
-      const translated = await translationProvider.translateCellsRealtime({
-        items: chunk.map((item) => ({ i: item.i, t: item.t })),
-        targetLanguage: translationDefaultTargetLanguage,
-      });
-      applyTranslationItems({
-        rows: prepared.rows,
-        items: translated.items,
-        languageCounts,
-        rowStates,
-      });
-      promptTokensSum += translated.runtime.promptTokens;
-      completionTokensSum += translated.runtime.completionTokens;
-      totalTokensSum += translated.runtime.totalTokens;
-      estimatedCostUsdSum += translated.runtime.estimatedCostUsd;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      for (const item of chunk) {
-        const errors = rowErrors.get(item.rowIndex) || [];
-        errors.push(`${item.column}: ${message}`);
-        rowErrors.set(item.rowIndex, errors);
+  for (const wave of waves) {
+    const waveResults = await mapWithConcurrency(wave, chunkConcurrency, async (chunk) => {
+      try {
+        const translated = await translationProvider.translateCellsRealtime({
+          items: chunk.map((item) => ({ i: item.i, t: item.t })),
+          targetLanguage: translationDefaultTargetLanguage,
+        });
+        return { chunk, translated, error: null as string | null };
+      } catch (error) {
+        return {
+          chunk,
+          translated: null,
+          error: error instanceof Error ? error.message : String(error),
+        };
       }
+    });
+
+    for (const result of waveResults) {
+      if (result.translated) {
+        applyTranslationItems({
+          rows: prepared.rows,
+          items: result.translated.items,
+          languageCounts,
+          rowStates,
+        });
+        promptTokensSum += result.translated.runtime.promptTokens;
+        completionTokensSum += result.translated.runtime.completionTokens;
+        totalTokensSum += result.translated.runtime.totalTokens;
+        estimatedCostUsdSum += result.translated.runtime.estimatedCostUsd;
+      } else {
+        for (const item of result.chunk) {
+          const errors = rowErrors.get(item.rowIndex) || [];
+          errors.push(`${item.column}: ${result.error}`);
+          rowErrors.set(item.rowIndex, errors);
+        }
+      }
+
+      for (const rowIndex of new Set(result.chunk.map((item) => item.rowIndex))) processedRowSet.add(rowIndex);
     }
 
-    for (const rowIndex of new Set(chunk.map((item) => item.rowIndex))) processedRowSet.add(rowIndex);
     processedRows = Math.min(prepared.totalRows, processedRowSet.size);
     const interim = finalizeRowStates({
       totalRows: prepared.totalRows,
