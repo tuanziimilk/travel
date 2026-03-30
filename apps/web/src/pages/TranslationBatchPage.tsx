@@ -74,6 +74,16 @@ function getDisplayedTranslationCost(item: {
   return actual > 0 ? actual : predicted;
 }
 
+function formatTranslationQueueSummary(item: {
+  processedRows: number;
+  totalRows: number;
+  successRows: number;
+  failedRows: number;
+  mixedRows: number;
+}) {
+  return `${item.processedRows}/${item.totalRows}，成功${item.successRows}，失败${item.failedRows}，混合${item.mixedRows}`;
+}
+
 const queueStatusText: Record<string, string> = {
   queued: "排队中",
   preparing: "准备中",
@@ -446,7 +456,7 @@ export function TranslationBatchPage() {
           </button>
         </div>
 
-        <div className="table-scroll faq-output-table-scroll">
+        <div className="table-scroll faq-output-table-scroll translation-queue-scroll">
           <table className="history-table queue-table translation-queue-table">
             <thead>
               <tr>
