@@ -19,6 +19,17 @@ type RowResult = {
   error?: string;
 };
 
+const TRANSLATION_ERROR_REASON_MAX_LENGTH = 512;
+
+function compactErrorMessage(message: string | null | undefined) {
+  const normalized = String(message || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return null;
+  if (normalized.length <= TRANSLATION_ERROR_REASON_MAX_LENGTH) return normalized;
+  return `${normalized.slice(0, TRANSLATION_ERROR_REASON_MAX_LENGTH - 1).trimEnd()}…`;
+}
+
 async function ensureTranslationJobsTable() {
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS translation_jobs (
@@ -172,7 +183,7 @@ export async function updateTranslationJobPhase(input: {
       outputFileId: input.outputFileId ?? undefined,
       errorFileId: input.errorFileId ?? undefined,
       aiModel: input.aiModel ?? undefined,
-      errorReason: input.errorReason ?? null,
+      errorReason: compactErrorMessage(input.errorReason),
     })
     .where(eq(translationJobs.id, input.jobId));
 }
@@ -308,20 +319,23 @@ export async function completeTranslationJob(input: {
       resultFileName: input.resultFileName,
       resultFileBase64: input.resultFileBase64,
       rowResultsJson: input.rowResults,
-      errorReason: input.errorReason || null,
+      errorReason: compactErrorMessage(input.errorReason),
       finishedAt: new Date(),
     })
     .where(eq(translationJobs.id, input.jobId));
 }
 
 export async function failTranslationJob(jobId: string, message: string) {
+  const compactMessage = compactErrorMessage(message);
   await ensureTranslationJobsTable();
   await db
     .update(translationJobs)
     .set({
       status: "failed",
-      errorReason: message,
-      rowResultsJson: [{ rowIndex: 0, status: "error", detectedLanguages: [], mixedColumns: [], error: message }],
+      errorReason: compactMessage,
+      rowResultsJson: [
+        { rowIndex: 0, status: "error", detectedLanguages: [], mixedColumns: [], error: compactMessage || "任务失败" },
+      ],
       finishedAt: new Date(),
     })
     .where(eq(translationJobs.id, jobId));

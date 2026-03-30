@@ -19,9 +19,9 @@ const translationTextResponseSchema = z.object({
 const translationBatchItemSchema = z.object({
   i: z.string(),
   t: z.string(),
-  detectedLanguages: z.array(z.string()).optional(),
-  dominantLanguage: z.string().optional(),
-  isMixed: z.boolean().optional(),
+  detectedLanguages: z.preprocess((value) => (value == null ? [] : value), z.array(z.string())).optional(),
+  dominantLanguage: z.preprocess((value) => (value == null ? "" : value), z.string()).optional(),
+  isMixed: z.preprocess((value) => (value == null ? false : value), z.boolean()).optional(),
 });
 
 const translationBatchArraySchema = z.array(translationBatchItemSchema);
