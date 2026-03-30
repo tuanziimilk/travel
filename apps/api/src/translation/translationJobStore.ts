@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, ne, or } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { translationJobs } from "../db/schema";
@@ -204,7 +204,13 @@ export async function recoverInterruptedTranslationJobs() {
       errorReason: null,
       finishedAt: null,
     })
-    .where(and(inArray(translationJobs.status, ["running", "preparing"]), isNull(translationJobs.finishedAt)));
+    .where(
+      and(
+        inArray(translationJobs.status, ["running", "preparing"]),
+        isNull(translationJobs.finishedAt),
+        or(ne(translationJobs.executionMode, "batch"), isNull(translationJobs.providerBatchId)),
+      ),
+    );
 }
 
 export async function updateTranslationJobProgress(input: {
