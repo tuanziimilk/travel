@@ -182,7 +182,12 @@ export async function listQueuedTranslationJobs() {
   return db
     .select()
     .from(translationJobs)
-    .where(eq(translationJobs.status, "queued"))
+    .where(
+      and(
+        eq(translationJobs.status, "queued"),
+        or(ne(translationJobs.executionMode, "batch"), isNull(translationJobs.providerBatchId)),
+      ),
+    )
     .orderBy(translationJobs.createdAt);
 }
 
@@ -191,7 +196,12 @@ export async function listPollingTranslationJobs() {
   return db
     .select()
     .from(translationJobs)
-    .where(inArray(translationJobs.status, ["submitted", "running"]))
+    .where(
+      or(
+        inArray(translationJobs.status, ["submitted", "running"]),
+        and(eq(translationJobs.status, "queued"), eq(translationJobs.executionMode, "batch"), sql`provider_batch_id is not null`),
+      ),
+    )
     .orderBy(translationJobs.updatedAt);
 }
 
