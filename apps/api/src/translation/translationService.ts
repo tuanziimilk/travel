@@ -60,6 +60,7 @@ type OpenAiChatResponse = {
       content?: string | Array<{ type?: string; text?: string }>;
       refusal?: string;
     };
+    finish_reason?: string | null;
   }>;
 };
 
@@ -160,6 +161,10 @@ function extractContent(json: OpenAiChatResponse) {
   const refusal = json.choices?.[0]?.message?.refusal;
   if (typeof refusal === "string" && refusal.trim()) throw new Error(`LLM 拒绝回答: ${refusal}`);
   throw new Error("LLM 返回为空。");
+}
+
+function getPrimaryFinishReason(json: OpenAiChatResponse) {
+  return String(json.choices?.[0]?.finish_reason || "").trim();
 }
 
 async function callChatCompletions(body: Record<string, unknown>, timeoutMs: number) {
@@ -494,6 +499,21 @@ class OpenAiTranslationProvider implements TranslationProvider {
 
         const promptTokens = body.usage?.prompt_tokens ?? 0;
         const completionTokens = body.usage?.completion_tokens ?? 0;
+        const finishReason = getPrimaryFinishReason(body);
+        if (finishReason === "length") {
+          return {
+            customId: row.custom_id || "",
+            items: [],
+            runtime: {
+              promptTokens,
+              completionTokens,
+              totalTokens: body.usage?.total_tokens ?? promptTokens + completionTokens,
+              estimatedCostUsd: estimateCostUsd(promptTokens, completionTokens, "batch"),
+              aiModel: env.translationAiModel || translationDefaultAiModel,
+            },
+            error: "批量翻译分片过大，模型输出被截断，请重试。",
+          };
+        }
         return {
           customId: row.custom_id || "",
           items: parseRealtimeBatchResponse(extractContent(body)),

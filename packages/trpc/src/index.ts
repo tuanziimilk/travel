@@ -75,6 +75,7 @@ export const translationDefaultAiModel = "gpt-4o-mini";
 export const translationRealtimeCellThreshold = 200;
 export const translationRealtimeTokenThreshold = 25_000;
 export const translationRealtimeChunkSize = 400;
+export const translationBatchChunkSize = 80;
 export const translationBatchInputCostPer1M = 0.075;
 export const translationBatchOutputCostPer1M = 0.3;
 

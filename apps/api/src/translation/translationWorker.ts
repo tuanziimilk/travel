@@ -1,6 +1,7 @@
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import {
+  translationBatchChunkSize,
   translationDefaultTargetLanguage,
   translationRealtimeCellThreshold,
   translationRealtimeChunkSize,
@@ -501,7 +502,7 @@ async function executeRealtimeTranslation(jobId: string, prepared: PreparedJob) 
 }
 
 async function submitBatchTranslation(jobId: string, prepared: PreparedJob) {
-  const chunks = chunkItems(prepared.cells, translationRealtimeChunkSize).map((items, index) => ({
+  const chunks = chunkItems(prepared.cells, translationBatchChunkSize).map((items, index) => ({
     customId: `chunk_${index}`,
     items: items.map((item) => ({ i: item.i, t: item.t })),
   }));
@@ -558,6 +559,7 @@ async function pollBatchTranslationJob(jobId: string, providerBatchId: string) {
     const rowStates = new Map<number, TranslationRowResult>();
     const rowErrors = new Map<number, string[]>();
     const rowsWithWork = new Set<number>(prepared.cells.map((item) => item.rowIndex));
+    const batchCellChunks = chunkItems(prepared.cells, translationBatchChunkSize);
     let promptTokensSum = 0;
     let completionTokensSum = 0;
     let totalTokensSum = 0;
@@ -566,7 +568,7 @@ async function pollBatchTranslationJob(jobId: string, providerBatchId: string) {
     for (const chunk of batchRows) {
       if (chunk.error) {
         const chunkIndex = Number(chunk.customId.replace("chunk_", ""));
-        const failedChunk = chunkItems(prepared.cells, translationRealtimeChunkSize)[chunkIndex] || [];
+        const failedChunk = batchCellChunks[chunkIndex] || [];
         for (const cell of failedChunk) {
           const errors = rowErrors.get(cell.rowIndex) || [];
           errors.push(`${cell.column}: ${chunk.error}`);
