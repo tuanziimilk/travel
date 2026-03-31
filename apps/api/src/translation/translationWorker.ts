@@ -71,6 +71,18 @@ type PreparedJob = {
   executionMode: "realtime";
 };
 
+type RealtimeChunkExecutionResult = {
+  items: TranslationCellOutput[];
+  runtime: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    estimatedCostUsd: number;
+    aiModel: string;
+  };
+  errors: Array<{ rowIndex: number; column: string; message: string }>;
+};
+
 function normalizeCell(value: unknown) {
   return String(value ?? "").replace(/\r\n/g, "\n");
 }
@@ -157,6 +169,16 @@ function chunkItems<T>(items: T[], chunkSize: number) {
   return chunks;
 }
 
+function emptyRealtimeRuntime() {
+  return {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    estimatedCostUsd: 0,
+    aiModel: env.translationAiModel,
+  };
+}
+
 async function mapWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
@@ -177,6 +199,50 @@ async function mapWithConcurrency<T, R>(
   );
 
   return results;
+}
+
+async function translateChunkWithFallback(
+  chunk: PreparedCell[],
+  targetLanguage: string,
+): Promise<RealtimeChunkExecutionResult> {
+  try {
+    const translated = await translationProvider.translateCellsRealtime({
+      items: chunk.map((item) => ({ i: item.i, t: item.t })),
+      targetLanguage,
+    });
+    return {
+      items: translated.items,
+      runtime: translated.runtime,
+      errors: [],
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (chunk.length <= 1) {
+      return {
+        items: [],
+        runtime: emptyRealtimeRuntime(),
+        errors: chunk.map((item) => ({ rowIndex: item.rowIndex, column: item.column, message })),
+      };
+    }
+
+    const middle = Math.ceil(chunk.length / 2);
+    const [left, right] = await Promise.all([
+      translateChunkWithFallback(chunk.slice(0, middle), targetLanguage),
+      translateChunkWithFallback(chunk.slice(middle), targetLanguage),
+    ]);
+
+    return {
+      items: [...left.items, ...right.items],
+      runtime: {
+        promptTokens: left.runtime.promptTokens + right.runtime.promptTokens,
+        completionTokens: left.runtime.completionTokens + right.runtime.completionTokens,
+        totalTokens: left.runtime.totalTokens + right.runtime.totalTokens,
+        estimatedCostUsd: Math.round((left.runtime.estimatedCostUsd + right.runtime.estimatedCostUsd) * 1_000_000) / 1_000_000,
+        aiModel: left.runtime.aiModel || right.runtime.aiModel || env.translationAiModel,
+      },
+      errors: [...left.errors, ...right.errors],
+    };
+  }
 }
 
 function estimateBatchCost(predictedInputTokens: number) {
@@ -437,55 +503,39 @@ async function executeRealtimeTranslation(jobId: string, prepared: PreparedJob) 
   let totalTokensSum = 0;
   let estimatedCostUsdSum = 0;
   const chunkConcurrency = env.translationRealtimeChunkConcurrency;
-  const waves = chunkItems(chunks, chunkConcurrency);
+  let nextChunkIndex = 0;
+  let progressChain = Promise.resolve();
 
-  for (const wave of waves) {
-    const waveResults = await mapWithConcurrency(wave, chunkConcurrency, async (chunk) => {
-      try {
-        const translated = await translationProvider.translateCellsRealtime({
-          items: chunk.map((item) => ({ i: item.i, t: item.t })),
-          targetLanguage: translationDefaultTargetLanguage,
-        });
-        return { chunk, translated, error: null as string | null };
-      } catch (error) {
-        return {
-          chunk,
-          translated: null,
-          error: error instanceof Error ? error.message : String(error),
-        };
-      }
-    });
-
-    for (const result of waveResults) {
-      if (result.translated) {
-        applyTranslationItems({
-          rows: prepared.rows,
-          items: result.translated.items,
-          languageCounts,
-          rowStates,
-        });
-        promptTokensSum += result.translated.runtime.promptTokens;
-        completionTokensSum += result.translated.runtime.completionTokens;
-        totalTokensSum += result.translated.runtime.totalTokens;
-        estimatedCostUsdSum += result.translated.runtime.estimatedCostUsd;
-      } else {
-        for (const item of result.chunk) {
-          const errors = rowErrors.get(item.rowIndex) || [];
-          errors.push(`${item.column}: ${result.error}`);
-          rowErrors.set(item.rowIndex, errors);
-        }
-      }
-
-      for (const rowIndex of new Set(result.chunk.map((item) => item.rowIndex))) processedRowSet.add(rowIndex);
+  const applyChunkResult = async (chunk: PreparedCell[], result: RealtimeChunkExecutionResult) => {
+    if (result.items.length > 0) {
+      applyTranslationItems({
+        rows: prepared.rows,
+        items: result.items,
+        languageCounts,
+        rowStates,
+      });
+      promptTokensSum += result.runtime.promptTokens;
+      completionTokensSum += result.runtime.completionTokens;
+      totalTokensSum += result.runtime.totalTokens;
+      estimatedCostUsdSum += result.runtime.estimatedCostUsd;
     }
 
+    for (const error of result.errors) {
+      const errors = rowErrors.get(error.rowIndex) || [];
+      errors.push(`${error.column}: ${error.message}`);
+      rowErrors.set(error.rowIndex, errors);
+    }
+
+    for (const rowIndex of new Set(chunk.map((item) => item.rowIndex))) processedRowSet.add(rowIndex);
     processedRows = Math.min(prepared.totalRows, processedRowSet.size);
+
     const interim = finalizeRowStates({
       totalRows: prepared.totalRows,
       rowStates,
       rowsWithWork,
       rowErrors,
     });
+
     await updateTranslationJobProgress({
       jobId,
       status: "running",
@@ -503,7 +553,23 @@ async function executeRealtimeTranslation(jobId: string, prepared: PreparedJob) 
       languageSummary: summarizeLanguages(languageCounts, interim.mixedRows, prepared.cells.length),
       aiModel: env.translationAiModel,
     });
-  }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.max(1, Math.min(chunkConcurrency, chunks.length || 1)) }, async () => {
+      while (true) {
+        const currentIndex = nextChunkIndex;
+        nextChunkIndex += 1;
+        const chunk = chunks[currentIndex];
+        if (!chunk) break;
+        const result = await translateChunkWithFallback(chunk, translationDefaultTargetLanguage);
+        progressChain = progressChain.then(() => applyChunkResult(chunk, result));
+        await progressChain;
+      }
+    }),
+  );
+
+  await progressChain;
 
   const finalState = finalizeRowStates({
     totalRows: prepared.totalRows,

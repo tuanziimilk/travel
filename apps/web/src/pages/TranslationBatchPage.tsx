@@ -138,6 +138,11 @@ export function TranslationBatchPage() {
 
   const previewData = previewMutation.data;
   const currentStatus = statusQuery.data;
+  const queueRows = useMemo(() => {
+    const rows = queueQuery.data?.rows ?? [];
+    if (!currentStatus || !currentJobId) return rows;
+    return rows.map((item) => (item.id === currentJobId ? { ...item, ...currentStatus } : item));
+  }, [queueQuery.data?.rows, currentJobId, currentStatus]);
 
   const queueTotalPages = useMemo(() => {
     const total = queueQuery.data?.total ?? 0;
@@ -472,7 +477,7 @@ export function TranslationBatchPage() {
               </tr>
             </thead>
             <tbody>
-              {(queueQuery.data?.rows ?? []).map((item) => (
+              {queueRows.map((item) => (
                 <tr key={item.id}>
                   <td title={item.note || ""}>{item.uploader || "-"}</td>
                   <td

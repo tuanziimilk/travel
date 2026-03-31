@@ -173,6 +173,16 @@ function isAbortLikeError(error: unknown) {
   return maybeError.name === "AbortError" || String(maybeError.message || "").includes("aborted");
 }
 
+function isRetryableRealtimeError(error: unknown) {
+  const message = String((error as { message?: string } | null | undefined)?.message || error || "");
+  if (isAbortLikeError(error)) return true;
+  if (/fetch failed/i.test(message)) return true;
+  if (/ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|ECONNREFUSED|socket hang up/i.test(message)) return true;
+  const statusMatch = message.match(/(?:翻译请求失败|OpenAI 请求失败):\s*(\d{3})/);
+  const status = statusMatch ? Number(statusMatch[1]) : 0;
+  return status === 408 || status === 409 || status === 429 || (status >= 500 && status <= 599);
+}
+
 async function callChatCompletions(body: Record<string, unknown>, timeoutMs: number) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -202,7 +212,7 @@ async function callChatCompletionsWithRetry(body: Record<string, unknown>, timeo
     try {
       return await callChatCompletions(body, timeoutMs);
     } catch (error) {
-      if (!isAbortLikeError(error) || attempt >= maxRetries) throw error;
+      if (!isRetryableRealtimeError(error) || attempt >= maxRetries) throw error;
       attempt += 1;
       const delayMs = Math.min(5_000, 1_000 * attempt);
       await new Promise((resolve) => setTimeout(resolve, delayMs));
