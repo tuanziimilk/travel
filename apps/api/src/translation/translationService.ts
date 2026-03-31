@@ -167,6 +167,12 @@ function getPrimaryFinishReason(json: OpenAiChatResponse) {
   return String(json.choices?.[0]?.finish_reason || "").trim();
 }
 
+function isAbortLikeError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const maybeError = error as { name?: string; message?: string };
+  return maybeError.name === "AbortError" || String(maybeError.message || "").includes("aborted");
+}
+
 async function callChatCompletions(body: Record<string, unknown>, timeoutMs: number) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -188,6 +194,20 @@ async function callChatCompletions(body: Record<string, unknown>, timeoutMs: num
   const raw = await response.text();
   if (!response.ok) throw new Error(`翻译请求失败: ${response.status} ${raw}`);
   return JSON.parse(raw) as OpenAiChatResponse;
+}
+
+async function callChatCompletionsWithRetry(body: Record<string, unknown>, timeoutMs: number, maxRetries: number) {
+  let attempt = 0;
+  for (;;) {
+    try {
+      return await callChatCompletions(body, timeoutMs);
+    } catch (error) {
+      if (!isAbortLikeError(error) || attempt >= maxRetries) throw error;
+      attempt += 1;
+      const delayMs = Math.min(5_000, 1_000 * attempt);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
 }
 
 async function callOpenAiJson<T>(path: string, init: RequestInit, timeoutMs = env.aiRequestTimeoutMsBatch) {
@@ -395,9 +415,10 @@ class OpenAiTranslationProvider implements TranslationProvider {
 
   async translateCellsRealtime(input: { items: TranslationCellInput[]; targetLanguage: string }) {
     const chunkedItems = input.items.slice(0, translationRealtimeChunkSize);
-    const response = await callChatCompletions(
+    const response = await callChatCompletionsWithRetry(
       buildRealtimeBatchPrompt(input.targetLanguage, chunkedItems),
-      env.aiRequestTimeoutMsBatch,
+      env.translationRealtimeTimeoutMs,
+      env.translationRealtimeMaxRetries,
     );
     const items = parseRealtimeBatchResponse(extractContent(response));
     const promptTokens = response.usage?.prompt_tokens ?? 0;
