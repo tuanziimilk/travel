@@ -18,6 +18,7 @@ import {
   completeTranslationJob,
   createTranslationJob,
   failTranslationJob,
+  findReusableTranslationJob,
   getTranslationJobForRetry,
   listPollingTranslationJobs,
   listQueuedTranslationJobs,
@@ -695,6 +696,26 @@ export async function translateTextNow(input: {
 
 export async function startBatchTranslation(input: QueuedTranslationJobInput) {
   const prepared = buildPreparedJob(parseTranslationFile(input.fileName, input.fileBase64), input.selectedColumns);
+  const reusableJob = await findReusableTranslationJob({
+    uploader: input.uploader,
+    targetLanguage: translationDefaultTargetLanguage,
+    inputFileName: input.fileName,
+    inputFileBase64: input.fileBase64,
+    selectedColumns: prepared.selectedColumns,
+  });
+
+  if (reusableJob) {
+    return {
+      jobId: reusableJob.id,
+      totalRows: reusableJob.totalRows || prepared.totalRows,
+      selectedColumns: prepared.selectedColumns,
+      executionMode: reusableJob.executionMode as "realtime",
+      predictedCostUsd: Number(reusableJob.predictedCostUsd || prepared.predictedCostUsd),
+      predictedTotalTokens: reusableJob.predictedTotalTokens || prepared.predictedTotalTokens,
+      reusedExisting: true,
+    };
+  }
+
   const { jobId } = await createTranslationJob({
     uploader: input.uploader,
     note: input.note || "",
@@ -724,6 +745,7 @@ export async function startBatchTranslation(input: QueuedTranslationJobInput) {
     executionMode: prepared.executionMode,
     predictedCostUsd: prepared.predictedCostUsd,
     predictedTotalTokens: prepared.predictedTotalTokens,
+    reusedExisting: false,
   };
 }
 

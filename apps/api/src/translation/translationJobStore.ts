@@ -106,6 +106,38 @@ export async function createTranslationJob(input: {
   return { jobId: id };
 }
 
+export async function findReusableTranslationJob(input: {
+  uploader: string;
+  targetLanguage: string;
+  inputFileName: string;
+  inputFileBase64: string;
+  selectedColumns: string[];
+  windowMinutes?: number;
+}) {
+  await ensureTranslationJobsTable();
+  const since = new Date(Date.now() - (input.windowMinutes ?? 10) * 60 * 1000);
+  const rows = await db
+    .select()
+    .from(translationJobs)
+    .where(
+      and(
+        eq(translationJobs.uploader, input.uploader),
+        eq(translationJobs.targetLanguage, input.targetLanguage),
+        eq(translationJobs.inputFileName, input.inputFileName),
+        eq(translationJobs.inputFileBase64, input.inputFileBase64),
+        gte(translationJobs.createdAt, since),
+        inArray(translationJobs.status, ["queued", "preparing", "submitted", "running"]),
+      ),
+    )
+    .orderBy(desc(translationJobs.createdAt));
+
+  return rows.find((row) => {
+    const selectedColumns = ((row.selectedColumnsJson as string[] | null) || []).slice().sort();
+    const incomingColumns = input.selectedColumns.slice().sort();
+    return JSON.stringify(selectedColumns) === JSON.stringify(incomingColumns);
+  });
+}
+
 export async function markTranslationJobQueued(jobId: string) {
   await ensureTranslationJobsTable();
   await db
