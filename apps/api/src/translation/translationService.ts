@@ -3,10 +3,11 @@ import {
   translationBatchOutputCostPer1M,
   translationDefaultAiModel,
   translationDefaultTargetLanguage,
-  translationRealtimeChunkSize,
 } from "@about-demo/trpc";
 import { z } from "zod";
 import { env } from "../env";
+
+const translationRealtimeChunkSize = Math.max(1, Number(process.env.TRANSLATION_REALTIME_CHUNK_SIZE || 40));
 
 const translationTextResponseSchema = z.object({
   translatedText: z.string(),
@@ -271,7 +272,15 @@ async function uploadBatchFile(content: string) {
   return callOpenAiJson<{ id: string }>("/files", { method: "POST", body: formData });
 }
 
-function buildRealtimeBatchPrompt(targetLanguage: string, items: TranslationCellInput[]) {
+function buildRealtimeBatchPrompt(
+  targetLanguage: string,
+  items: TranslationCellInput[],
+  options?: { includeLanguageMetadata?: boolean },
+) {
+  const includeLanguageMetadata = options?.includeLanguageMetadata ?? true;
+  const responseFieldText = includeLanguageMetadata
+    ? 'Keep "i" unchanged. For each item return fields: i, t, detectedLanguages, dominantLanguage, isMixed.'
+    : 'Keep "i" unchanged. For each item return only fields: i, t.';
   return {
     model: env.translationAiModel || translationDefaultAiModel,
     temperature: 0,
@@ -281,7 +290,7 @@ function buildRealtimeBatchPrompt(targetLanguage: string, items: TranslationCell
         role: "system",
         content:
           `Translate all "t" fields to ${targetLanguage || translationDefaultTargetLanguage}. Return JSON only as {"items":[...]}. ` +
-          'Keep "i" unchanged. For each item return fields: i, t, detectedLanguages, dominantLanguage, isMixed.',
+          responseFieldText,
       },
       {
         role: "user",
@@ -426,7 +435,7 @@ class OpenAiTranslationProvider implements TranslationProvider {
   async translateCellsRealtime(input: { items: TranslationCellInput[]; targetLanguage: string }) {
     const chunkedItems = input.items.slice(0, translationRealtimeChunkSize);
     const response = await callChatCompletionsWithRetry(
-      buildRealtimeBatchPrompt(input.targetLanguage, chunkedItems),
+      buildRealtimeBatchPrompt(input.targetLanguage, chunkedItems, { includeLanguageMetadata: false }),
       env.translationRealtimeTimeoutMs,
       env.translationRealtimeMaxRetries,
     );
@@ -456,7 +465,7 @@ class OpenAiTranslationProvider implements TranslationProvider {
           custom_id: chunk.customId,
           method: "POST",
           url: "/v1/chat/completions",
-          body: buildRealtimeBatchPrompt(input.targetLanguage, chunk.items),
+          body: buildRealtimeBatchPrompt(input.targetLanguage, chunk.items, { includeLanguageMetadata: false }),
         }),
       )
       .join("\n");

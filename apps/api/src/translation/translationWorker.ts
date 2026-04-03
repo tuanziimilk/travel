@@ -3,9 +3,6 @@ import * as XLSX from "xlsx";
 import {
   translationBatchChunkSize,
   translationDefaultTargetLanguage,
-  translationRealtimeCellThreshold,
-  translationRealtimeChunkSize,
-  translationRealtimeTokenThreshold,
   translationTextMaxChars,
   translationUploadMaxFileBytes,
   translationUploadMaxRows,
@@ -27,6 +24,13 @@ import {
   updateTranslationJobProgress,
   recoverInterruptedTranslationJobs,
 } from "./translationJobStore";
+
+const translationRealtimeCellThreshold = Math.max(1, Number(process.env.TRANSLATION_REALTIME_CELL_THRESHOLD || 3000));
+const translationRealtimeTokenThreshold = Math.max(
+  1,
+  Number(process.env.TRANSLATION_REALTIME_TOKEN_THRESHOLD || 100000),
+);
+const translationRealtimeChunkSize = Math.max(1, Number(process.env.TRANSLATION_REALTIME_CHUNK_SIZE || 40));
 
 type ParsedTranslationFile = {
   rows: Array<Record<string, string>>;
@@ -68,7 +72,8 @@ type PreparedJob = {
   totalRows: number;
   predictedTotalTokens: number;
   predictedCostUsd: number;
-  executionMode: "realtime";
+  executionMode: "realtime" | "batch";
+  targetLanguage: string;
 };
 
 type RealtimeChunkExecutionResult = {
@@ -261,7 +266,11 @@ function estimateRealtimeCost(predictedInputTokens: number) {
   return Math.round(usd * 1_000_000) / 1_000_000;
 }
 
-function buildPreparedJob(parsed: ParsedTranslationFile, selectedColumnsRaw: string[]): PreparedJob {
+function buildPreparedJob(
+  parsed: ParsedTranslationFile,
+  selectedColumnsRaw: string[],
+  targetLanguage: string,
+): PreparedJob {
   const selectedColumns = selectedColumnsRaw.filter((item) => parsed.columns.includes(item));
   if (!selectedColumns.length) throw new Error("未匹配到可翻译列，请重新选择后再试。");
 
@@ -291,7 +300,10 @@ function buildPreparedJob(parsed: ParsedTranslationFile, selectedColumnsRaw: str
     }
   });
 
-  const executionMode: "realtime" = "realtime";
+  const executionMode: "realtime" | "batch" =
+    cells.length <= translationRealtimeCellThreshold && predictedInputTokens <= translationRealtimeTokenThreshold
+      ? "realtime"
+      : "batch";
 
   return {
     rows,
@@ -301,8 +313,10 @@ function buildPreparedJob(parsed: ParsedTranslationFile, selectedColumnsRaw: str
     cells,
     totalRows: rows.length,
     predictedTotalTokens: predictedInputTokens,
-    predictedCostUsd: estimateRealtimeCost(predictedInputTokens),
+    predictedCostUsd:
+      executionMode === "batch" ? estimateBatchCost(predictedInputTokens) : estimateRealtimeCost(predictedInputTokens),
     executionMode,
+    targetLanguage,
   };
 }
 
@@ -460,7 +474,11 @@ async function runQueuedTranslationJob(jobId: string, input: QueuedTranslationJo
       aiModel: env.translationAiModel,
       errorReason: null,
     });
-    const prepared = buildPreparedJob(parseTranslationFile(input.fileName, input.fileBase64), input.selectedColumns);
+    const prepared = buildPreparedJob(
+      parseTranslationFile(input.fileName, input.fileBase64),
+      input.selectedColumns,
+      input.targetLanguage,
+    );
 
     await updateTranslationJobProgress({
       jobId,
@@ -480,7 +498,11 @@ async function runQueuedTranslationJob(jobId: string, input: QueuedTranslationJo
       aiModel: env.translationAiModel,
     });
 
-    await executeRealtimeTranslation(jobId, prepared);
+    if (prepared.executionMode === "batch") {
+      await submitBatchTranslation(jobId, prepared);
+    } else {
+      await executeRealtimeTranslation(jobId, prepared);
+    }
   } catch (error) {
     await failTranslationJob(jobId, error instanceof Error ? error.message : String(error));
   } finally {
@@ -562,7 +584,7 @@ async function executeRealtimeTranslation(jobId: string, prepared: PreparedJob) 
         nextChunkIndex += 1;
         const chunk = chunks[currentIndex];
         if (!chunk) break;
-        const result = await translateChunkWithFallback(chunk, translationDefaultTargetLanguage);
+        const result = await translateChunkWithFallback(chunk, prepared.targetLanguage);
         progressChain = progressChain.then(() => applyChunkResult(chunk, result));
         await progressChain;
       }
@@ -606,7 +628,7 @@ async function submitBatchTranslation(jobId: string, prepared: PreparedJob) {
   }));
   const submitted = await translationProvider.submitBatchTranslation({
     chunks,
-    targetLanguage: translationDefaultTargetLanguage,
+    targetLanguage: prepared.targetLanguage,
   });
   await updateTranslationJobPhase({
     jobId,
@@ -650,7 +672,11 @@ async function pollBatchTranslationJob(jobId: string, providerBatchId: string) {
       targetLanguage: (job.targetLanguage as TranslationTargetLanguage) || translationDefaultTargetLanguage,
       selectedColumns: (job.selectedColumnsJson as string[] | null) || [],
     } satisfies QueuedTranslationJobInput;
-    const prepared = buildPreparedJob(parseTranslationFile(input.fileName, input.fileBase64), input.selectedColumns);
+    const prepared = buildPreparedJob(
+      parseTranslationFile(input.fileName, input.fileBase64),
+      input.selectedColumns,
+      input.targetLanguage,
+    );
     const batchRows = await translationProvider.fetchBatchTranslationResult({ outputFileId: status.outputFileId });
 
     const languageCounts = new Map<string, number>();
@@ -748,7 +774,7 @@ export async function translateTextNow(input: {
   }
   const translated = await translationProvider.translateTextSync({
     text: input.text,
-    targetLanguage: translationDefaultTargetLanguage,
+    targetLanguage: input.targetLanguage,
   });
   return {
     translatedText: translated.result.translatedText,
@@ -761,10 +787,14 @@ export async function translateTextNow(input: {
 }
 
 export async function startBatchTranslation(input: QueuedTranslationJobInput) {
-  const prepared = buildPreparedJob(parseTranslationFile(input.fileName, input.fileBase64), input.selectedColumns);
+  const prepared = buildPreparedJob(
+    parseTranslationFile(input.fileName, input.fileBase64),
+    input.selectedColumns,
+    input.targetLanguage,
+  );
   const reusableJob = await findReusableTranslationJob({
     uploader: input.uploader,
-    targetLanguage: translationDefaultTargetLanguage,
+    targetLanguage: prepared.targetLanguage,
     inputFileName: input.fileName,
     inputFileBase64: input.fileBase64,
     selectedColumns: prepared.selectedColumns,
@@ -775,7 +805,7 @@ export async function startBatchTranslation(input: QueuedTranslationJobInput) {
       jobId: reusableJob.id,
       totalRows: reusableJob.totalRows || prepared.totalRows,
       selectedColumns: prepared.selectedColumns,
-      executionMode: reusableJob.executionMode as "realtime",
+      executionMode: reusableJob.executionMode as "realtime" | "batch",
       predictedCostUsd: Number(reusableJob.predictedCostUsd || prepared.predictedCostUsd),
       predictedTotalTokens: reusableJob.predictedTotalTokens || prepared.predictedTotalTokens,
       reusedExisting: true,
@@ -787,7 +817,7 @@ export async function startBatchTranslation(input: QueuedTranslationJobInput) {
     note: input.note || "",
     provider: "openai",
     executionMode: prepared.executionMode,
-    targetLanguage: translationDefaultTargetLanguage,
+    targetLanguage: prepared.targetLanguage,
     inputFileName: input.fileName,
     inputFileBase64: input.fileBase64,
     selectedColumns: prepared.selectedColumns,
@@ -797,7 +827,7 @@ export async function startBatchTranslation(input: QueuedTranslationJobInput) {
 
   translationJobInputs.set(jobId, {
     ...input,
-    targetLanguage: translationDefaultTargetLanguage,
+    targetLanguage: prepared.targetLanguage,
     selectedColumns: prepared.selectedColumns,
     executionMode: prepared.executionMode,
     predictedTotalTokens: prepared.predictedTotalTokens,

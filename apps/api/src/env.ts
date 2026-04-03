@@ -114,7 +114,7 @@ export const env = {
   faqOutputJobConcurrency: Math.max(1, Number(process.env.FAQ_OUTPUT_JOB_CONCURRENCY || 4)),
   faqOutputRowConcurrencyCap: Math.max(1, Number(process.env.FAQ_OUTPUT_ROW_CONCURRENCY_CAP || 6)),
   translationJobConcurrency: Math.max(1, Number(process.env.TRANSLATION_JOB_CONCURRENCY || 2)),
-  translationRealtimeChunkConcurrency: Math.max(1, Number(process.env.TRANSLATION_REALTIME_CHUNK_CONCURRENCY || 2)),
+  translationRealtimeChunkConcurrency: Math.max(1, Number(process.env.TRANSLATION_REALTIME_CHUNK_CONCURRENCY || 6)),
   translationRealtimeTimeoutMs: Math.max(30_000, Number(process.env.TRANSLATION_REALTIME_TIMEOUT_MS || 1_800_000)),
   translationRealtimeMaxRetries: Math.max(0, Number(process.env.TRANSLATION_REALTIME_MAX_RETRIES || 1)),
   aiHttpMaxRetries: Math.max(0, Number(process.env.AI_HTTP_MAX_RETRIES || 2)),
