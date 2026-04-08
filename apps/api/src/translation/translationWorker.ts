@@ -88,6 +88,90 @@ type RealtimeChunkExecutionResult = {
   errors: Array<{ rowIndex: number; column: string; message: string }>;
 };
 
+function normalizeForComparison(value: string) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function containsChineseText(value: string) {
+  return /[\u3400-\u9fff]/.test(String(value || ""));
+}
+
+function containsTranslatableLetters(value: string) {
+  return /\p{L}/u.test(String(value || ""));
+}
+
+function isSuspiciousUntranslated(source: string, translated: string) {
+  const normalizedSource = normalizeForComparison(source);
+  const normalizedTranslated = normalizeForComparison(translated);
+  if (!normalizedSource || !normalizedTranslated) return false;
+  if (containsChineseText(normalizedSource)) return false;
+  if (!containsTranslatableLetters(normalizedSource)) return false;
+  return normalizedSource === normalizedTranslated;
+}
+
+async function retrySuspiciousItems(
+  chunk: PreparedCell[],
+  initial: RealtimeChunkExecutionResult,
+  targetLanguage: string,
+): Promise<RealtimeChunkExecutionResult> {
+  const sourceById = new Map(chunk.map((item) => [item.i, item.t]));
+  const suspiciousItems = initial.items.filter((item) =>
+    isSuspiciousUntranslated(sourceById.get(item.i) || "", item.translatedText),
+  );
+  if (suspiciousItems.length === 0) return initial;
+
+  try {
+    const retried = await mapWithConcurrency(
+      chunkItems(
+        suspiciousItems.map((item) => ({
+          i: item.i,
+          t: sourceById.get(item.i) || "",
+        })),
+        8,
+      ),
+      2,
+      async (items) =>
+        translationProvider.translateCellsRealtime({
+          items,
+          targetLanguage,
+          strictTranslation: true,
+        }),
+    );
+
+    const replacedById = new Map(initial.items.map((item) => [item.i, item]));
+    let promptTokens = initial.runtime.promptTokens;
+    let completionTokens = initial.runtime.completionTokens;
+    let totalTokens = initial.runtime.totalTokens;
+    let estimatedCostUsd = initial.runtime.estimatedCostUsd;
+
+    for (const retriedChunk of retried) {
+      promptTokens += retriedChunk.runtime.promptTokens;
+      completionTokens += retriedChunk.runtime.completionTokens;
+      totalTokens += retriedChunk.runtime.totalTokens;
+      estimatedCostUsd += retriedChunk.runtime.estimatedCostUsd;
+      for (const item of retriedChunk.items) {
+        replacedById.set(item.i, item);
+      }
+    }
+
+    return {
+      items: initial.items.map((item) => replacedById.get(item.i) || item),
+      runtime: {
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        estimatedCostUsd: Math.round(estimatedCostUsd * 1_000_000) / 1_000_000,
+        aiModel: initial.runtime.aiModel,
+      },
+      errors: initial.errors,
+    };
+  } catch {
+    return initial;
+  }
+}
+
 function normalizeCell(value: unknown) {
   return String(value ?? "").replace(/\r\n/g, "\n");
 }
@@ -215,11 +299,15 @@ async function translateChunkWithFallback(
       items: chunk.map((item) => ({ i: item.i, t: item.t })),
       targetLanguage,
     });
-    return {
-      items: translated.items,
-      runtime: translated.runtime,
-      errors: [],
-    };
+    return retrySuspiciousItems(
+      chunk,
+      {
+        items: translated.items,
+        runtime: translated.runtime,
+        errors: [],
+      },
+      targetLanguage,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (chunk.length <= 1) {
