@@ -161,6 +161,7 @@ export const translationJobs = mysqlTable("translation_jobs", {
   outputFileId: varchar("output_file_id", { length: 128 }),
   errorFileId: varchar("error_file_id", { length: 128 }),
   selectedColumnsJson: json("selected_columns_json"),
+  detectLanguage: int("detect_language").notNull().default(0),
   totalRows: int("total_rows").notNull().default(0),
   processedRows: int("processed_rows").notNull().default(0),
   successRows: int("success_rows").notNull().default(0),

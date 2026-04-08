@@ -47,6 +47,7 @@ async function ensureTranslationJobsTable() {
       output_file_id varchar(128),
       error_file_id varchar(128),
       selected_columns_json json,
+      detect_language int NOT NULL DEFAULT 0,
       total_rows int NOT NULL DEFAULT 0,
       processed_rows int NOT NULL DEFAULT 0,
       success_rows int NOT NULL DEFAULT 0,
@@ -70,6 +71,11 @@ async function ensureTranslationJobsTable() {
       updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
   `);
+  try {
+    await db.execute(sql`ALTER TABLE translation_jobs ADD COLUMN detect_language int NOT NULL DEFAULT 0`);
+  } catch {
+    // column already exists
+  }
 }
 
 export async function createTranslationJob(input: {
@@ -81,6 +87,7 @@ export async function createTranslationJob(input: {
   inputFileName: string;
   inputFileBase64: string;
   selectedColumns: string[];
+  detectLanguage: boolean;
   predictedTotalTokens: number;
   predictedCostUsd: number;
 }) {
@@ -96,6 +103,7 @@ export async function createTranslationJob(input: {
     inputFileName: input.inputFileName,
     inputFileBase64: input.inputFileBase64,
     selectedColumnsJson: input.selectedColumns,
+    detectLanguage: input.detectLanguage ? 1 : 0,
     predictedTotalTokens: input.predictedTotalTokens,
     predictedCostUsd: String(input.predictedCostUsd),
     status: "queued",
@@ -112,6 +120,7 @@ export async function findReusableTranslationJob(input: {
   inputFileName: string;
   inputFileBase64: string;
   selectedColumns: string[];
+  detectLanguage: boolean;
   windowMinutes?: number;
 }) {
   await ensureTranslationJobsTable();
@@ -123,6 +132,7 @@ export async function findReusableTranslationJob(input: {
       and(
         eq(translationJobs.uploader, input.uploader),
         eq(translationJobs.targetLanguage, input.targetLanguage),
+        eq(translationJobs.detectLanguage, input.detectLanguage ? 1 : 0),
         eq(translationJobs.inputFileName, input.inputFileName),
         eq(translationJobs.inputFileBase64, input.inputFileBase64),
         gte(translationJobs.createdAt, since),
@@ -402,6 +412,7 @@ export async function listTranslationJobs(page: number, pageSize: number) {
       provider: row.provider,
       executionMode: row.executionMode,
       targetLanguage: row.targetLanguage,
+      detectLanguage: Boolean(row.detectLanguage),
       status: row.status,
       inputFileName: row.inputFileName,
       providerBatchId: row.providerBatchId || "",
@@ -442,6 +453,7 @@ export async function getTranslationJobStatus(jobId: string) {
     provider: row.provider,
     executionMode: row.executionMode,
     targetLanguage: row.targetLanguage,
+    detectLanguage: Boolean(row.detectLanguage),
     status: row.status,
     inputFileName: row.inputFileName,
     providerBatchId: row.providerBatchId || "",
@@ -484,6 +496,7 @@ export async function getTranslationJobResult(jobId: string) {
     xlsxBase64: row.resultFileBase64 || "",
     status: row.status,
     selectedColumns: (row.selectedColumnsJson as string[] | null) || [],
+    detectLanguage: Boolean(row.detectLanguage),
     languageSummary: (row.languageSummaryJson as LanguageSummary | null) || {
       topLanguages: [],
       mixedRows: 0,

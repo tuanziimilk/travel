@@ -3445,6 +3445,45 @@ pre {
   gap: 12px;
 }
 
+.translation-inline-toggle {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  padding: 6px 2px 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.translation-inline-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  margin: 3px 0 0;
+  accent-color: var(--yellow);
+  box-shadow: none;
+}
+
+.translation-inline-toggle > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.translation-inline-toggle strong {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.translation-inline-toggle > span > span {
+  color: #666;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
 .translation-action-bar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

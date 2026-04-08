@@ -368,6 +368,7 @@ export const translationBatchRunInputSchema = z.object({
   fileBase64: z.string().min(1),
   targetLanguage: translationTargetLanguageSchema,
   selectedColumns: z.array(z.string().trim().min(1)).min(1),
+  detectLanguage: z.boolean().optional().default(false),
 });
 
 export const translationQueueInputSchema = z.object({
