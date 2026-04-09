@@ -9,6 +9,10 @@ const uploadLimitMb = Math.round(ggCleaningUploadMaxFileBytes / 1024 / 1024);
 const ggCleaningFileChunkBytes = 8 * 1024 * 1024;
 const ggCleaningUploadApiBase = (() => {
   const trpcUrl = import.meta.env.VITE_TRPC_URL || "/trpc";
+  if (/^https?:\/\//i.test(trpcUrl)) return trpcUrl.replace(/\/trpc\/?$/, "");
+  if (typeof window !== "undefined") {
+    return `${window.location.protocol}//${window.location.hostname}:3001`;
+  }
   return trpcUrl.replace(/\/trpc\/?$/, "");
 })();
 

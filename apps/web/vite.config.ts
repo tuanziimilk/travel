@@ -15,6 +15,10 @@ export default defineConfig({
         target: "http://localhost:3001",
         changeOrigin: true,
       },
+      "/gg-cleaning/jobs": {
+        target: "http://localhost:3001",
+        changeOrigin: true,
+      },
       "/category-calibration/uploads": {
         target: "http://localhost:3001",
         changeOrigin: true,
