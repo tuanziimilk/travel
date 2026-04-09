@@ -116,6 +116,10 @@ const aiOutputSchema = z.object({
   judgement: z.enum(["???", "???"]).optional().default("???"),
   suggestedParentId: z.string().trim().min(1),
   suggestedChildId: z.string().trim().min(1),
+  verificationNote: z.string().trim().min(1).max(60).optional().default(""),
+});
+
+const verificationNoteSchema = z.object({
   verificationNote: z.string().trim().min(1).max(60),
 });
 
@@ -192,6 +196,17 @@ function buildVerificationNote(input: {
 
 function sanitizeVerificationNote(value: string) {
   return normalizeText(value).replace(/[\u3002.!\uFF01]+$/u, "").slice(0, 60);
+}
+
+function addUsage(
+  left: { promptTokens: number; completionTokens: number; totalTokens: number },
+  right: { promptTokens: number; completionTokens: number; totalTokens: number },
+) {
+  return {
+    promptTokens: left.promptTokens + right.promptTokens,
+    completionTokens: left.completionTokens + right.completionTokens,
+    totalTokens: left.totalTokens + right.totalTokens,
+  };
 }
 
 function normalizeJsonCandidate(candidate: string) {
@@ -387,7 +402,7 @@ function parseCandidate(candidate: string, dictionary: CategoryDictionary) {
       suggestedParentName: parent.name,
       suggestedChildId: child.id,
       suggestedChildName: child.name,
-      verificationNote: sanitizeVerificationNote(normalized.data.verificationNote),
+      verificationNote: sanitizeVerificationNote(normalized.data.verificationNote || ""),
     },
     errors: [] as string[],
   };
@@ -602,6 +617,96 @@ async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictiona
       maxRetries: strictMode ? 3 : undefined,
     });
 
+  const generateVerificationNote = async (input: {
+    finalJudgement: string;
+    suggestedParentName: string;
+    suggestedChildName: string;
+  }) =>
+    aiExecutor.execute({
+      buildMessages: () => ({
+        system: [
+          "You write one short verification note for category calibration results.",
+          "Return JSON only with key verificationNote.",
+          "verificationNote must be concise Chinese for humans, ideally 8-20 characters.",
+          "Do not explain the full reasoning.",
+          "Do not use markdown or line breaks.",
+        ].join("\n\n"),
+        user: JSON.stringify(
+          {
+            domain: row.domain,
+            termName: row.termName,
+            country: row.country,
+            meta: row.meta,
+            about: row.about,
+            currentCategory: {
+              id: row.currentCategoryId,
+              name: row.currentCategoryName,
+            },
+            judgement: input.finalJudgement,
+            suggestedParent: input.suggestedParentName,
+            suggestedChild: input.suggestedChildName,
+          },
+          null,
+          2,
+        ),
+      }),
+      validate: (candidate) => {
+        const normalizedCandidate = normalizeJsonCandidate(candidate);
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(normalizedCandidate);
+        } catch (error) {
+          const salvaged = sanitizeVerificationNote(
+            extractFirstMatch(String(candidate || ""), [
+              /"verificationNote"\s*:\s*"([^"]+)"/i,
+              /\u6838\u9a8c\u8bf4\u660e\s*[:=：]\s*"?([^"\r\n]+)"?/i,
+              /note\s*[:=]\s*"?([^"\r\n]+)"?/i,
+            ]),
+          );
+          if (!salvaged) {
+            return {
+              ok: false as const,
+              errors: [error instanceof Error ? error.message : "Invalid JSON output."],
+            };
+          }
+          parsed = { verificationNote: salvaged };
+        }
+
+        const validated = verificationNoteSchema.safeParse(parsed);
+        if (!validated.success) {
+          return {
+            ok: false as const,
+            errors: validated.error.issues.map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`),
+          };
+        }
+
+        return {
+          ok: true as const,
+          value: {
+            verificationNote: sanitizeVerificationNote(validated.data.verificationNote),
+          },
+          errors: [] as string[],
+        };
+      },
+      buildRepairMessages: async (candidate, errors) => ({
+        system: 'Repair the output into exactly one JSON object with key verificationNote. No markdown, no explanation.',
+        user: JSON.stringify(
+          {
+            previousOutput: candidate,
+            errors,
+            requiredFormat: {
+              verificationNote: "short Chinese note for humans",
+            },
+          },
+          null,
+          2,
+        ),
+      }),
+      requestTimeoutMs: env.aiRequestTimeoutMsBatch,
+      aiModel,
+      maxRetries: 2,
+    });
+
   let executed;
   try {
     executed = await executeStrictPass(false);
@@ -625,6 +730,18 @@ async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictiona
   const computedJudgement =
     row.currentCategoryId === parent.id || row.currentCategoryId === child.id ? "\u6b63\u786e" : "\u6709\u8bef";
   const finalJudgement = !hasCurrentCategory(row) ? "\u65e0\u5206\u7c7b\u65b0\u589e" : computedJudgement;
+  let verificationNote = sanitizeVerificationNote(executed.result.verificationNote || "");
+  let usage = executed.usage;
+
+  if (!verificationNote) {
+    const noteGenerated = await generateVerificationNote({
+      finalJudgement,
+      suggestedParentName: parent.name,
+      suggestedChildName: child.name,
+    });
+    verificationNote = sanitizeVerificationNote(noteGenerated.result.verificationNote);
+    usage = addUsage(usage, noteGenerated.usage);
+  }
 
   return {
     judgement: finalJudgement,
@@ -632,14 +749,8 @@ async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictiona
     suggestedParentName: parent.name,
     suggestedChildId: child.id,
     suggestedChildName: child.name,
-    verificationNote:
-      sanitizeVerificationNote(executed.result.verificationNote) ||
-      buildVerificationNote({
-        judgement: finalJudgement,
-        suggestedParentName: parent.name,
-        suggestedChildName: child.name,
-      }),
-    usage: executed.usage,
+    verificationNote,
+    usage,
   };
 }
 
@@ -726,6 +837,7 @@ export async function executeCategoryCalibrationChunkRows(input: {
   let completionTokens = 0;
   let rowOffset = 0;
   let completedSubBatches = 0;
+  let lastProgressReportedAt = 0;
   const totalSubBatches = Math.max(1, Math.ceil(input.totalRows / CATEGORY_CALIBRATION_SUB_BATCH_SIZE));
   const dedupeCache = new Map<
     string,
@@ -843,6 +955,23 @@ export async function executeCategoryCalibrationChunkRows(input: {
           }
 
           processedRows += 1;
+          if (input.onProgress) {
+            const now = Date.now();
+            if (processedRows <= 10 || processedRows === input.totalRows || now - lastProgressReportedAt >= 1200) {
+              lastProgressReportedAt = now;
+              await input.onProgress({
+                processedRows,
+                successRows,
+                failedRows,
+                promptTokens,
+                completionTokens,
+                totalTokens: promptTokens + completionTokens,
+                estimatedCostUsd: Math.round(estimateCategoryCost(promptTokens, completionTokens, input.aiModel) * 1_000_000) / 1_000_000,
+                completedSubBatches,
+                totalSubBatches,
+              });
+            }
+          }
         }
 
         completedSubBatches += 1;
