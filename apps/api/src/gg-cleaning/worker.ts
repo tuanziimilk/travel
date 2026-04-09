@@ -230,7 +230,7 @@ export async function startGgCleaningJob(input: {
     note: input.note || "",
     fileName: uploaded.fileName || input.fileName,
     fileBase64: null,
-    filePath: uploaded.id,
+    filePath: uploaded.kind === "file-chunks" && uploaded.rawFilePath ? uploaded.rawFilePath : uploaded.id,
     inputMode: preview.inputMode,
     totalRows: preview.totalRows,
     groupedRows: preview.groupedRows,
