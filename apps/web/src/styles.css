@@ -3828,7 +3828,7 @@ pre {
 
 .gg-cleaning-queue-table th:nth-child(4),
 .gg-cleaning-queue-table td:nth-child(4) {
-  width: 38%;
+  width: 36%;
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
@@ -3848,7 +3848,7 @@ pre {
 
 .gg-cleaning-queue-table th:nth-child(7),
 .gg-cleaning-queue-table td:nth-child(7) {
-  width: 17%;
+  width: 19%;
   white-space: nowrap;
   overflow: visible;
   text-overflow: clip;
@@ -3856,12 +3856,12 @@ pre {
 
 .gg-cleaning-queue-table th:nth-child(8),
 .gg-cleaning-queue-table td:nth-child(8) {
-  width: 6%;
+  width: 7%;
 }
 
 .gg-cleaning-queue-table th:nth-child(9),
 .gg-cleaning-queue-table td:nth-child(9) {
-  width: 5%;
+  width: 6%;
 }
 
 .gg-cleaning-queue-table th,
@@ -3922,6 +3922,39 @@ pre {
   overflow: visible;
   text-overflow: clip;
   line-height: 1.45;
+}
+
+.category-calibration-queue-table th:nth-child(4),
+.category-calibration-queue-table td:nth-child(4) {
+  width: 24%;
+}
+
+.category-calibration-queue-table th:nth-child(5),
+.category-calibration-queue-table td:nth-child(5) {
+  width: 8%;
+}
+
+.category-calibration-queue-table th:nth-child(6),
+.category-calibration-queue-table td:nth-child(6) {
+  width: 8%;
+}
+
+.category-calibration-queue-table th:nth-child(7),
+.category-calibration-queue-table td:nth-child(7) {
+  width: 15%;
+  white-space: nowrap;
+}
+
+.category-calibration-queue-table th:nth-child(8),
+.category-calibration-queue-table td:nth-child(8) {
+  width: 9%;
+  white-space: nowrap;
+}
+
+.category-calibration-time-cell,
+.category-calibration-duration-cell {
+  white-space: nowrap;
+  min-width: max-content;
 }
 
 .gg-cleaning-summary-meta + .muted {

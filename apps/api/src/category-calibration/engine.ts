@@ -18,6 +18,7 @@ const RESULT_CURRENT_CATEGORY = "\u5f53\u524d\u5206\u7c7b";
 const RESULT_JUDGEMENT = "\u5224\u65ad";
 const RESULT_PARENT = "\u5efa\u8bae\u7236\u7c7b";
 const RESULT_CHILD = "\u5efa\u8bae\u5b50\u7c7b";
+const RESULT_NOTE = "\u6838\u9a8c\u8bf4\u660e";
 const ROW_MARKER_VALUES = new Set(["\u5fc5\u586b", "\u9009\u586b", "\u793a\u4f8b", "example", "required", "optional"]);
 const CATEGORY_CALIBRATION_ROW_CONCURRENCY = Math.max(1, Number(process.env.CATEGORY_CALIBRATION_ROW_CONCURRENCY || 3));
 const CATEGORY_CALIBRATION_SUB_BATCH_SIZE = Math.max(200, Number(process.env.CATEGORY_CALIBRATION_SUB_BATCH_SIZE || 2000));
@@ -34,7 +35,7 @@ const REQUIRED_COLUMNS = [
   CURRENT_CATEGORY_NAME_COLUMN,
 ] as const;
 
-const RESULT_HEADERS = ["domain", RESULT_CURRENT_CATEGORY, RESULT_JUDGEMENT, RESULT_PARENT, RESULT_CHILD] as const;
+const RESULT_HEADERS = ["domain", RESULT_CURRENT_CATEGORY, RESULT_JUDGEMENT, RESULT_PARENT, RESULT_CHILD, RESULT_NOTE] as const;
 
 type DictionaryParent = {
   id: string;
@@ -85,6 +86,7 @@ type RowOutput = {
   [RESULT_JUDGEMENT]: string;
   [RESULT_PARENT]: string;
   [RESULT_CHILD]: string;
+  [RESULT_NOTE]: string;
 };
 
 type RowDebugResult = {
@@ -93,6 +95,7 @@ type RowDebugResult = {
   judgement: string;
   suggestedParentId: string;
   suggestedChildId: string;
+  note: string;
   error?: string;
 };
 
@@ -110,9 +113,10 @@ type CalibrationResult = {
 };
 
 const aiOutputSchema = z.object({
-  judgement: z.enum(["正确", "有误"]).optional().default("有误"),
+  judgement: z.enum(["???", "???"]).optional().default("???"),
   suggestedParentId: z.string().trim().min(1),
   suggestedChildId: z.string().trim().min(1),
+  verificationNote: z.string().trim().min(1).max(60),
 });
 
 let dictionaryCache: Promise<CategoryDictionary> | null = null;
@@ -156,6 +160,40 @@ function estimateCategoryCost(promptTokens: number, completionTokens: number, ai
   );
 }
 
+function formatCurrentCategoryDisplay(row: NormalizedInputRow) {
+  if (!row.currentCategoryId && !row.currentCategoryName) return "-";
+  return `${row.currentCategoryId} · ${row.currentCategoryName}`;
+}
+
+function formatCategoryDisplay(id: string, name: string) {
+  return `${id} · ${name}`;
+}
+
+function hasCurrentCategory(row: NormalizedInputRow) {
+  return Boolean(row.currentCategoryId || row.currentCategoryName);
+}
+
+function buildVerificationNote(input: {
+  judgement: string;
+  suggestedParentName?: string;
+  suggestedChildName?: string;
+  error?: string;
+}) {
+  if (input.error) return "\u7ed3\u679c\u672a\u751f\u6210";
+  if (input.judgement === "\u65e0\u5206\u7c7b\u65b0\u589e") {
+    return `\u539f\u65e0\u5206\u7c7b\uff0c\u8865\u5145\u4e3a ${input.suggestedChildName || input.suggestedParentName || "\u5efa\u8bae\u7c7b\u76ee"}`;
+  }
+  if (input.judgement === "\u6b63\u786e") {
+    return "\u5f53\u524d\u5206\u7c7b\u53ef\u7528";
+  }
+  const target = input.suggestedChildName || input.suggestedParentName || "\u5efa\u8bae\u7c7b\u76ee";
+  return `\u66f4\u9002\u5408 ${target}`;
+}
+
+function sanitizeVerificationNote(value: string) {
+  return normalizeText(value).replace(/[\u3002.!\uFF01]+$/u, "").slice(0, 60);
+}
+
 function normalizeJsonCandidate(candidate: string) {
   const text = String(candidate || "").trim();
   if (!text) return text;
@@ -179,11 +217,17 @@ function extractFirstMatch(text: string, patterns: RegExp[]) {
 function normalizeJudgementValue(value: string) {
   const normalized = value.trim().toLowerCase();
   if (!normalized) return "";
-  if (normalized.includes("正确") || normalized === "yes" || normalized === "correct" || normalized === "right") {
-    return "正确";
+  if (normalized.includes("\u6b63\u786e") || normalized === "yes" || normalized === "correct" || normalized === "right") {
+    return "\u6b63\u786e";
   }
-  if (normalized.includes("有误") || normalized.includes("错误") || normalized === "no" || normalized === "wrong" || normalized === "incorrect") {
-    return "有误";
+  if (
+    normalized.includes("\u6709\u8bef") ||
+    normalized.includes("\u9519\u8bef") ||
+    normalized === "no" ||
+    normalized === "wrong" ||
+    normalized === "incorrect"
+  ) {
+    return "\u6709\u8bef";
   }
   return "";
 }
@@ -205,17 +249,24 @@ function salvageStructuredCandidate(candidate: string) {
   const judgement = normalizeJudgementValue(
     extractFirstMatch(text, [
       /"judgement"\s*:\s*"([^"]+)"/i,
-      /judgement\s*[:=]\s*"?(正确|有误|correct|incorrect|wrong|right|yes|no)"?/i,
-      /判断\s*[:：]\s*"?(正确|有误)"?/i,
+      /judgement\s*[:=]\s*"?(\u6b63\u786e|\u6709\u8bef|correct|incorrect|wrong|right|yes|no)"?/i,
+      /\u5224\u65ad\s*[:=：]\s*"?(\u6b63\u786e|\u6709\u8bef)"?/i,
     ]),
   );
 
   if (!suggestedParentId || !suggestedChildId) return null;
 
   return {
-    judgement: judgement || "有误",
+    judgement: judgement || "\u6709\u8bef",
     suggestedParentId,
     suggestedChildId,
+    verificationNote: sanitizeVerificationNote(
+      extractFirstMatch(text, [
+        /"verificationNote"\s*:\s*"([^"]+)"/i,
+        /\u6838\u9a8c\u8bf4\u660e\s*[:=：]\s*"?([^"\r\n]+)"?/i,
+        /note\s*[:=]\s*"?([^"\r\n]+)"?/i,
+      ]),
+    ),
   };
 }
 
@@ -336,6 +387,7 @@ function parseCandidate(candidate: string, dictionary: CategoryDictionary) {
       suggestedParentName: parent.name,
       suggestedChildId: child.id,
       suggestedChildName: child.name,
+      verificationNote: sanitizeVerificationNote(normalized.data.verificationNote),
     },
     errors: [] as string[],
   };
@@ -470,8 +522,10 @@ async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictiona
       "You are a category calibration engine.",
       "Choose the single best parent category and child category for the merchant based on Meta, About, TermName, Domain, and Country.",
       "Use only category ids from the provided taxonomy.",
-      "Return JSON only with keys judgement, suggestedParentId, suggestedChildId.",
-      "Judgement means whether the CURRENT category is acceptable. Use 正确 or 有误.",
+      "Return JSON only with keys judgement, suggestedParentId, suggestedChildId, verificationNote.",
+      "Judgement means whether the CURRENT category is acceptable. Use exact Chinese values: \u6b63\u786e or \u6709\u8bef.",
+      "verificationNote must be short Chinese text for humans, ideally within 8-20 characters, with no line breaks and no markdown.",
+      "If current category is empty, verificationNote should reflect that this is a new category addition.",
       "Taxonomy:",
       dictionary.promptText,
     ].join("\n\n"),
@@ -512,10 +566,11 @@ async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictiona
         return {
           system: [
             built.system,
-            'Output must be a single JSON object only. Example: {"judgement":"有误","suggestedParentId":"32","suggestedChildId":"212"}',
+            'Output must be a single JSON object only. Example: {"judgement":"\u6709\u8bef","suggestedParentId":"32","suggestedChildId":"212","verificationNote":"更适合运动服饰"}',
             "Do not wrap the JSON in markdown.",
             "Do not omit any field.",
             "suggestedParentId and suggestedChildId must be strings containing valid taxonomy ids.",
+            "verificationNote must be a short Chinese sentence only.",
           ].join("\n\n"),
           user: built.user,
         };
@@ -523,7 +578,7 @@ async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictiona
       validate: (candidate) => parseCandidate(candidate, dictionary),
       buildRepairMessages: async (candidate, errors) => ({
         system: strictMode
-          ? 'Repair the output into exactly one JSON object with keys judgement, suggestedParentId, suggestedChildId. No markdown, no explanation.'
+          ? 'Repair the output into exactly one JSON object with keys judgement, suggestedParentId, suggestedChildId, verificationNote. No markdown, no explanation.'
           : "Repair the previous JSON so it matches the required schema and taxonomy. Return JSON only.",
         user: JSON.stringify(
           strictMode
@@ -531,9 +586,10 @@ async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictiona
                 previousOutput: candidate,
                 errors,
                 requiredFormat: {
-                  judgement: "正确|有误",
+                  judgement: "\u6b63\u786e|\u6709\u8bef",
                   suggestedParentId: "valid parent id as string",
                   suggestedChildId: "valid child id as string",
+                  verificationNote: "short Chinese note for humans",
                 },
               }
             : { previousOutput: candidate, errors },
@@ -567,14 +623,22 @@ async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictiona
   }
 
   const computedJudgement =
-    row.currentCategoryId === parent.id || row.currentCategoryId === child.id ? "正确" : "有误";
+    row.currentCategoryId === parent.id || row.currentCategoryId === child.id ? "\u6b63\u786e" : "\u6709\u8bef";
+  const finalJudgement = !hasCurrentCategory(row) ? "\u65e0\u5206\u7c7b\u65b0\u589e" : computedJudgement;
 
   return {
-    judgement: computedJudgement,
+    judgement: finalJudgement,
     suggestedParentId: parent.id,
     suggestedParentName: parent.name,
     suggestedChildId: child.id,
     suggestedChildName: child.name,
+    verificationNote:
+      sanitizeVerificationNote(executed.result.verificationNote) ||
+      buildVerificationNote({
+        judgement: finalJudgement,
+        suggestedParentName: parent.name,
+        suggestedChildName: child.name,
+      }),
     usage: executed.usage,
   };
 }
@@ -598,6 +662,7 @@ async function writeCsvRow(stream: WriteStream, row: RowOutput) {
     csvEscape(row[RESULT_JUDGEMENT]),
     csvEscape(row[RESULT_PARENT]),
     csvEscape(row[RESULT_CHILD]),
+    csvEscape(row[RESULT_NOTE]),
   ].join(",") + "\n";
   await new Promise<void>((resolve, reject) => {
     stream.write(line, (error) => {
@@ -733,10 +798,11 @@ export async function executeCategoryCalibrationChunkRows(input: {
             successRows += 1;
             const outputRow: RowOutput = {
               domain: item.row.domain,
-              [RESULT_CURRENT_CATEGORY]: currentCategoryDisplay(item.row),
+              [RESULT_CURRENT_CATEGORY]: formatCurrentCategoryDisplay(item.row),
               [RESULT_JUDGEMENT]: item.classified.judgement,
-              [RESULT_PARENT]: categoryDisplay(item.classified.suggestedParentId, item.classified.suggestedParentName),
-              [RESULT_CHILD]: categoryDisplay(item.classified.suggestedChildId, item.classified.suggestedChildName),
+              [RESULT_PARENT]: formatCategoryDisplay(item.classified.suggestedParentId, item.classified.suggestedParentName),
+              [RESULT_CHILD]: formatCategoryDisplay(item.classified.suggestedChildId, item.classified.suggestedChildName),
+              [RESULT_NOTE]: item.classified.verificationNote,
             };
             await writeCsvRow(csvStream, outputRow);
             rowResults.push({
@@ -745,23 +811,33 @@ export async function executeCategoryCalibrationChunkRows(input: {
               judgement: item.classified.judgement,
               suggestedParentId: item.classified.suggestedParentId,
               suggestedChildId: item.classified.suggestedChildId,
+              note: item.classified.verificationNote,
             });
           } else {
             failedRows += 1;
+            const failedJudgementText = hasCurrentCategory(item.row) ? "\u6709\u8bef" : "\u65e0\u5206\u7c7b\u65b0\u589e";
             const outputRow: RowOutput = {
               domain: item.row.domain,
-              [RESULT_CURRENT_CATEGORY]: currentCategoryDisplay(item.row),
-              [RESULT_JUDGEMENT]: "有误",
+              [RESULT_CURRENT_CATEGORY]: formatCurrentCategoryDisplay(item.row),
+              [RESULT_JUDGEMENT]: failedJudgementText,
               [RESULT_PARENT]: "",
               [RESULT_CHILD]: "",
+              [RESULT_NOTE]: buildVerificationNote({
+                judgement: failedJudgementText,
+                error: item.error,
+              }),
             };
             await writeCsvRow(csvStream, outputRow);
             rowResults.push({
               rowIndex: item.row.rowIndex,
               domain: item.row.domain,
-              judgement: "有误",
+              judgement: failedJudgementText,
               suggestedParentId: "",
               suggestedChildId: "",
+              note: buildVerificationNote({
+                judgement: failedJudgementText,
+                error: item.error,
+              }),
               error: item.error,
             });
           }

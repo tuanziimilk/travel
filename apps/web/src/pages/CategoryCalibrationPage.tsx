@@ -510,17 +510,17 @@ export function CategoryCalibrationPage() {
         </div>
 
         <div className="table-scroll faq-output-table-scroll translation-queue-scroll">
-          <table className="history-table queue-table gg-cleaning-queue-table">
+          <table className="history-table queue-table gg-cleaning-queue-table category-calibration-queue-table">
             <colgroup>
               <col style={{ width: "10%" }} />
               <col style={{ width: "12%" }} />
               <col style={{ width: "8%" }} />
-              <col style={{ width: "27%" }} />
-              <col style={{ width: "10%" }} />
+              <col style={{ width: "24%" }} />
               <col style={{ width: "8%" }} />
-              <col style={{ width: "18%" }} />
+              <col style={{ width: "8%" }} />
+              <col style={{ width: "15%" }} />
+              <col style={{ width: "9%" }} />
               <col style={{ width: "6%" }} />
-              <col style={{ width: "5%" }} />
             </colgroup>
             <thead>
               <tr>
@@ -568,8 +568,12 @@ export function CategoryCalibrationPage() {
                     </td>
                     <td>{formatTotalTokens(row.summary as Record<string, unknown> | undefined)}</td>
                     <td>{formatEstimatedCost(row.summary as Record<string, unknown> | undefined)}</td>
-                    <td>{formatChinaDateTime(row.startedAt || row.createdAt)}</td>
-                    <td>{formatDuration(row.startedAt || row.createdAt, row.finishedAt)}</td>
+                    <td className="category-calibration-time-cell" title={formatChinaDateTime(row.startedAt || row.createdAt)}>
+                      {formatChinaDateTime(row.startedAt || row.createdAt)}
+                    </td>
+                    <td className="category-calibration-duration-cell" title={formatDuration(row.startedAt || row.createdAt, row.finishedAt)}>
+                      {formatDuration(row.startedAt || row.createdAt, row.finishedAt)}
+                    </td>
                     <td className="queue-action-cell">
                       <button className="btn-ghost faq-queue-action-btn" type="button" disabled={!canDownload} onClick={() => void downloadJobResult(row.id)}>
                         下载
