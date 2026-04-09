@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import path from "node:path";
 import { env } from "./env";
 import { appRouter } from "./trpc/router";
 import { createContext } from "./trpc/context";
@@ -9,6 +10,7 @@ import {
   completeCategoryCalibrationUpload,
   initCategoryCalibrationUpload,
 } from "./category-calibration/uploadStore";
+import { getGgCleaningJobDownloadMeta } from "./gg-cleaning/jobStore";
 import { appendGgCleaningUploadChunk, appendGgCleaningUploadFileChunk, completeGgCleaningUpload, initGgCleaningUpload } from "./gg-cleaning/uploadStore";
 
 const app = express();
@@ -65,6 +67,27 @@ app.post("/gg-cleaning/uploads/:uploadId/complete", async (req, res) => {
     res.json(await completeGgCleaningUpload({ uploadId, chunkCount, groupCount, oversizedGroupCount }));
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.get("/gg-cleaning/jobs/:jobId/download", async (req, res) => {
+  try {
+    const jobId = String(req.params.jobId || "").trim();
+    if (!jobId) throw new Error("jobId is required.");
+    const result = await getGgCleaningJobDownloadMeta(jobId);
+    if (!result.resultFilePath && !result.resultFileBase64) {
+      throw new Error(result.errorReason || "Current task has no downloadable result yet.");
+    }
+    const safeFileName = path.basename(result.fileName || `gg-cleaning-${jobId}.xlsx`);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(safeFileName)}`);
+    if (result.resultFilePath) {
+      res.sendFile(path.resolve(result.resultFilePath));
+      return;
+    }
+    res.send(Buffer.from(result.resultFileBase64, "base64"));
+  } catch (error) {
+    res.status(404).json({ error: error instanceof Error ? error.message : String(error) });
   }
 });
 

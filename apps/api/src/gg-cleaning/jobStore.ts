@@ -291,3 +291,15 @@ export async function getGgCleaningJobResult(jobId: string) {
     summary: (row.summaryJson as Record<string, unknown> | null) || {},
   };
 }
+
+export async function getGgCleaningJobDownloadMeta(jobId: string) {
+  const row = await getGgCleaningJobById(jobId);
+  return {
+    id: row.id,
+    status: row.status,
+    errorReason: row.errorReason || "",
+    fileName: row.resultFileName || `gg-cleaning-${row.id}.xlsx`,
+    resultFilePath: row.resultFilePath || "",
+    resultFileBase64: row.resultFileBase64 || "",
+  };
+}

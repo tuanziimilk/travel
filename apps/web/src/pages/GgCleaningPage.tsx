@@ -63,25 +63,29 @@ async function uploadRawFile(file: File, onProgress?: (progressPercent: number, 
   return { uploadId: initPayload.uploadId, chunkCount };
 }
 
+function triggerBrowserDownload(url: string, fileName?: string) {
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  if (fileName) anchor.download = fileName;
+  anchor.rel = "noopener";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
 function downloadBase64File(fileName: string, base64: string) {
   const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
   const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = fileName;
-  anchor.click();
-  URL.revokeObjectURL(url);
+  triggerBrowserDownload(url, fileName);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function downloadTextFile(fileName: string, content: string, mimeType = "text/csv;charset=utf-8") {
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = fileName;
-  anchor.click();
-  URL.revokeObjectURL(url);
+  triggerBrowserDownload(url, fileName);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function formatDuration(startedAt?: string | null, finishedAt?: string | null) {
@@ -227,6 +231,8 @@ export function GgCleaningPage() {
 
   async function downloadJobResult(jobId: string) {
     setError("");
+    triggerBrowserDownload(`${ggCleaningUploadApiBase}/gg-cleaning/jobs/${encodeURIComponent(jobId)}/download`);
+    return;
     const data = await utils.client.ggCleaning.result.query({ jobId });
     if (!data.xlsxBase64) {
       setError(data.errorReason || "当前任务暂无可下载结果，请稍后刷新列表后重试。");
