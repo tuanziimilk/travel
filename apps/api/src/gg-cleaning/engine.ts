@@ -1,5 +1,6 @@
 ﻿import { parse as parseCsv } from "csv-parse/sync";
 import { parse as parseCsvStream } from "csv-parse";
+import iconv from "iconv-lite";
 import { createReadStream, promises as fs } from "node:fs";
 import readline from "node:readline";
 import * as XLSX from "xlsx";
@@ -1392,6 +1393,86 @@ function parseJsonlRows(text: string) {
     .map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
+function looksLikeUtf16Le(buffer: Buffer) {
+  if (buffer.length < 4 || buffer.length % 2 !== 0) return false;
+  let zeroOddBytes = 0;
+  const sampleLength = Math.min(buffer.length, 256);
+  for (let index = 1; index < sampleLength; index += 2) {
+    if (buffer[index] === 0) zeroOddBytes += 1;
+  }
+  return zeroOddBytes >= Math.max(2, Math.floor(sampleLength / 8));
+}
+
+function decodeDelimitedTextBuffer(buffer: Buffer) {
+  if (buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
+    return iconv.decode(buffer, "utf8");
+  }
+  if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
+    return iconv.decode(buffer, "utf16-le");
+  }
+  if (buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff) {
+    return iconv.decode(buffer.slice(2), "utf16-be");
+  }
+  if (looksLikeUtf16Le(buffer)) {
+    return iconv.decode(buffer, "utf16-le");
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+  } catch {
+    return iconv.decode(buffer, "gb18030");
+  }
+}
+
+function hasRequiredCollectedColumns(columns: string[]) {
+  return GG_COLLECTED_REQUIRED_COLUMNS.every((column) => columns.includes(column));
+}
+
+function collectColumnsFromHeaderLine(text: string) {
+  const headerLine = text.split(/\r?\n/, 1)[0] || "";
+  return headerLine
+    .replace(/^\uFEFF/, "")
+    .split(",")
+    .map((part) => String(part || "").trim())
+    .filter(Boolean);
+}
+
+function parseCsvRowsSync(text: string) {
+  return parseCsv(text, {
+    columns: true,
+    skip_empty_lines: true,
+    trim: true,
+    relax_quotes: true,
+    bom: true,
+  }) as Array<Record<string, unknown>>;
+}
+
+function parseCsvRowsWithEncodingFallback(buffer: Buffer) {
+  const candidates = [
+    { name: "detected", text: decodeDelimitedTextBuffer(buffer) },
+    { name: "gb18030", text: iconv.decode(buffer, "gb18030") },
+    { name: "utf8", text: iconv.decode(buffer, "utf8") },
+  ];
+  let fallbackRows: Array<Record<string, unknown>> | null = null;
+  let fallbackError: Error | null = null;
+
+  for (const candidate of candidates) {
+    try {
+      const rows = parseCsvRowsSync(candidate.text);
+      if (!fallbackRows) fallbackRows = rows;
+      const columns = collectColumns(rows);
+      if (hasRequiredCollectedColumns(columns)) {
+        return rows;
+      }
+    } catch (error) {
+      if (!fallbackError && error instanceof Error) fallbackError = error;
+    }
+  }
+
+  if (fallbackRows) return fallbackRows;
+  if (fallbackError) throw fallbackError;
+  throw new Error("Failed to parse CSV input.");
+}
+
 function collectColumns(rows: Array<Record<string, unknown>>) {
   return Array.from(new Set(rows.flatMap((row) => Object.keys(row)).map((column) => String(column || "").trim()).filter(Boolean)));
 }
@@ -1413,15 +1494,15 @@ function parseBufferRows(fileName: string, buffer: Buffer) {
   let rawRows: Array<Record<string, unknown>> = [];
 
   if (lowerName.endsWith(".csv")) {
-    rawRows = parseCsv(buffer.toString("utf8"), { columns: true, skip_empty_lines: true, trim: true }) as Array<Record<string, unknown>>;
+    rawRows = parseCsvRowsWithEncodingFallback(buffer);
   } else if (lowerName.endsWith(".xlsx") || lowerName.endsWith(".xlsm")) {
     const workbook = XLSX.read(buffer, { type: "buffer" });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
   } else if (lowerName.endsWith(".json")) {
-    rawRows = parseJsonRows(buffer.toString("utf8"));
+    rawRows = parseJsonRows(decodeDelimitedTextBuffer(buffer));
   } else if (lowerName.endsWith(".jsonl")) {
-    rawRows = parseJsonlRows(buffer.toString("utf8"));
+    rawRows = parseJsonlRows(decodeDelimitedTextBuffer(buffer));
   } else {
     throw new Error("Only .csv, .xlsx, .xlsm, .json, and .jsonl files are supported.");
   }
@@ -1447,7 +1528,31 @@ function parseFile(fileName: string, fileBase64: string, options?: { skipFileSiz
 async function* iterateRawRowsFromFile(filePath: string, fileName: string): AsyncGenerator<Record<string, unknown>> {
   const lowerName = fileName.toLowerCase();
   if (lowerName.endsWith(".csv")) {
-    const parser = createReadStream(filePath).pipe(parseCsvStream({ columns: true, skip_empty_lines: true, trim: true }));
+    const handle = await fs.open(filePath, "r");
+    const sampleBuffer = Buffer.alloc(16 * 1024);
+    const { bytesRead } = await handle.read(sampleBuffer, 0, sampleBuffer.length, 0);
+    await handle.close();
+    const sample = sampleBuffer.subarray(0, bytesRead);
+    const encodingCandidates = [
+      { name: "utf8", text: iconv.decode(sample, "utf8"), encoding: "utf8" as const },
+      { name: "gb18030", text: iconv.decode(sample, "gb18030"), encoding: "gb18030" as const },
+      { name: "utf16-le", text: iconv.decode(sample, "utf16-le"), encoding: "utf16-le" as const },
+    ];
+    let streamEncoding: "utf8" | "gb18030" | "utf16-le" = "utf8";
+    for (const candidate of encodingCandidates) {
+      try {
+        const columns = collectColumnsFromHeaderLine(candidate.text);
+        if (hasRequiredCollectedColumns(columns)) {
+          streamEncoding = candidate.encoding;
+          break;
+        }
+      } catch {
+        continue;
+      }
+    }
+    const parser = createReadStream(filePath)
+      .pipe(iconv.decodeStream(streamEncoding))
+      .pipe(parseCsvStream({ columns: true, skip_empty_lines: true, trim: true, relax_quotes: true, bom: true }));
     for await (const row of parser) {
       yield row as Record<string, unknown>;
     }

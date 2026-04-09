@@ -1,3 +1,4 @@
+import iconv from "iconv-lite";
 import * as XLSX from "xlsx";
 import { describe, expect, it } from "vitest";
 import { GG_COLLECTED_SOURCE_COLUMN, GG_COLLECTED_STATUS_COLUMN } from "./collectedSchema";
@@ -3197,6 +3198,22 @@ describe("gg cleaning engine", () => {
     expect(result.debugRows[0].final_snippet.toLowerCase()).toContain("free shipping");
     expect(result.debugRows[0].final_url).toContain("example.com");
     expect(result.debugRows[0].final_url).not.toContain("google.com");
+  });
+
+  it("decodes GB18030 CSV uploads without corrupting collected-table headers", () => {
+    const csv = [
+      `country,domain,term_id,term_name,subclass,${GG_COLLECTED_SOURCE_COLUMN},content,product_urls`,
+      'US,shopa.com,1001,Shop A,shipping,ai_mode,"[""Shop A offers free shipping on orders over $50.""]","[""https://shopa.com/shipping""]"',
+    ].join("\n");
+    const fileBase64 = iconv.encode(csv, "gb18030").toString("base64");
+
+    const preview = previewGgCleaningFile(
+      { fileName: "fixture.csv", fileBase64 },
+      { skipFileSizeLimit: true },
+    );
+
+    expect(preview.totalRows).toBe(1);
+    expect(preview.groupedRows).toBe(1);
   });
 
   it("supports collected-table rows in JSONL uploads", () => {

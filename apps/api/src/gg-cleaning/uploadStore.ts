@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ggCleaningUploadMaxFileBytes } from "@about-demo/trpc";
 import { makeId } from "../utils/id";
@@ -12,15 +12,20 @@ type UploadChunkMeta = {
   groupCount: number;
 };
 
+type UploadKind = "row-chunks" | "file-chunks";
+
 type UploadMeta = {
   id: string;
   fileName: string;
   fileSize: number;
+  kind: UploadKind | null;
   nextChunkIndex: number;
   uploadedRowCount: number;
+  uploadedByteCount: number;
   columns: string[];
   sampleRows: GgCleaningUploadRow[];
   chunkFiles: UploadChunkMeta[];
+  rawFilePath: string | null;
   chunkCount: number;
   groupCount: number;
   oversizedGroupCount: number;
@@ -43,6 +48,11 @@ function metaPathOf(uploadId: string) {
 
 function chunkPathOf(uploadId: string, chunkIndex: number) {
   return path.join(uploadDirOf(uploadId), `chunk-${chunkIndex}.json`);
+}
+
+function rawFilePathOf(uploadId: string, fileName: string) {
+  const ext = path.extname(fileName || "").toLowerCase() || ".bin";
+  return path.join(uploadDirOf(uploadId), `uploaded${ext}`);
 }
 
 async function readMeta(uploadId: string): Promise<UploadMeta> {
@@ -71,11 +81,14 @@ export async function initGgCleaningUpload(fileName: string, fileSize: number) {
     id,
     fileName,
     fileSize,
+    kind: null,
     nextChunkIndex: 0,
     uploadedRowCount: 0,
+    uploadedByteCount: 0,
     columns: [],
     sampleRows: [],
     chunkFiles: [],
+    rawFilePath: null,
     chunkCount: 0,
     groupCount: 0,
     oversizedGroupCount: 0,
@@ -94,6 +107,7 @@ export async function appendGgCleaningUploadChunk(input: {
 }) {
   const meta = await readMeta(input.uploadId);
   if (meta.completed) throw new Error("Upload already completed.");
+  if (meta.kind === "file-chunks") throw new Error("Upload already started in file-chunk mode.");
   if (input.chunkIndex !== meta.nextChunkIndex) {
     throw new Error(`Unexpected chunk index ${input.chunkIndex}, expected ${meta.nextChunkIndex}.`);
   }
@@ -105,6 +119,7 @@ export async function appendGgCleaningUploadChunk(input: {
   const storedChunk: StoredChunkFile = { rows: input.rows };
   await writeFile(chunkFilePath, JSON.stringify(storedChunk), "utf8");
 
+  meta.kind = "row-chunks";
   meta.nextChunkIndex += 1;
   meta.uploadedRowCount += input.rows.length;
   meta.columns = Array.from(new Set([...meta.columns, ...collectColumns(input.rows)]));
@@ -126,27 +141,67 @@ export async function appendGgCleaningUploadChunk(input: {
   };
 }
 
+export async function appendGgCleaningUploadFileChunk(input: {
+  uploadId: string;
+  chunkIndex: number;
+  buffer: Buffer;
+}) {
+  const meta = await readMeta(input.uploadId);
+  if (meta.completed) throw new Error("Upload already completed.");
+  if (meta.kind === "row-chunks") throw new Error("Upload already started in row-chunk mode.");
+  if (input.chunkIndex !== meta.nextChunkIndex) {
+    throw new Error(`Unexpected chunk index ${input.chunkIndex}, expected ${meta.nextChunkIndex}.`);
+  }
+  if (!Buffer.isBuffer(input.buffer) || input.buffer.length === 0) {
+    throw new Error("buffer must contain at least one byte.");
+  }
+
+  const rawFilePath = meta.rawFilePath || rawFilePathOf(input.uploadId, meta.fileName);
+  await appendFile(rawFilePath, input.buffer);
+
+  meta.kind = "file-chunks";
+  meta.rawFilePath = rawFilePath;
+  meta.nextChunkIndex += 1;
+  meta.uploadedByteCount += input.buffer.length;
+  await writeMeta(meta);
+
+  return {
+    uploadId: input.uploadId,
+    nextChunkIndex: meta.nextChunkIndex,
+    uploadedByteCount: meta.uploadedByteCount,
+  };
+}
+
 export async function completeGgCleaningUpload(input: {
   uploadId: string;
   chunkCount: number;
-  groupCount: number;
+  groupCount?: number;
   oversizedGroupCount?: number;
 }) {
   const meta = await readMeta(input.uploadId);
   if (meta.completed) return meta;
+  if (!meta.kind) throw new Error("Upload does not contain any chunks yet.");
   if (!Number.isInteger(input.chunkCount) || input.chunkCount <= 0) {
     throw new Error("chunkCount must be a positive integer.");
   }
   if (meta.nextChunkIndex !== input.chunkCount) {
     throw new Error(`Chunk count mismatch: received ${meta.nextChunkIndex}, expected ${input.chunkCount}.`);
   }
-  if (!Number.isInteger(input.groupCount) || input.groupCount <= 0) {
+  if (meta.kind === "row-chunks" && (!Number.isInteger(input.groupCount) || Number(input.groupCount) <= 0)) {
     throw new Error("groupCount must be a positive integer.");
+  }
+  if (meta.kind === "file-chunks") {
+    if (meta.uploadedByteCount !== meta.fileSize) {
+      throw new Error(`File size mismatch: received ${meta.uploadedByteCount}, expected ${meta.fileSize}.`);
+    }
+    meta.groupCount = 0;
+    meta.oversizedGroupCount = 0;
+  } else {
+    meta.groupCount = Number(input.groupCount || 0);
+    meta.oversizedGroupCount = Math.max(0, Number(input.oversizedGroupCount || 0));
   }
 
   meta.chunkCount = input.chunkCount;
-  meta.groupCount = input.groupCount;
-  meta.oversizedGroupCount = Math.max(0, Number(input.oversizedGroupCount || 0));
   meta.completed = true;
   await writeMeta(meta);
   return {
@@ -167,6 +222,9 @@ export async function getCompletedGgCleaningUpload(uploadId: string) {
 
 export async function* iterateGgCleaningUploadChunks(uploadId: string): AsyncGenerator<{ chunkIndex: number; rows: GgCleaningUploadRow[] }> {
   const meta = await getCompletedGgCleaningUpload(uploadId);
+  if (meta.kind !== "row-chunks") {
+    throw new Error("Upload is not stored as row chunks.");
+  }
   for (const chunk of meta.chunkFiles.sort((left, right) => left.chunkIndex - right.chunkIndex)) {
     const text = await readFile(chunk.filePath, "utf8");
     const parsed = JSON.parse(text) as StoredChunkFile;

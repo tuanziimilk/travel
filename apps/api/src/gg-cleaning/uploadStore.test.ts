@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { appendGgCleaningUploadChunk, completeGgCleaningUpload, getCompletedGgCleaningUpload, initGgCleaningUpload, iterateGgCleaningUploadChunks } from "./uploadStore";
+import { GG_COLLECTED_SOURCE_COLUMN } from "./collectedSchema";
+import {
+  appendGgCleaningUploadChunk,
+  appendGgCleaningUploadFileChunk,
+  completeGgCleaningUpload,
+  getCompletedGgCleaningUpload,
+  initGgCleaningUpload,
+  iterateGgCleaningUploadChunks,
+} from "./uploadStore";
 
 describe("gg cleaning upload store", () => {
-  it("stores grouped chunks without splitting and preserves chunk order", async () => {
+  it("stores grouped row chunks without splitting and preserves chunk order", async () => {
     const initialized = await initGgCleaningUpload("fixture.csv", 1024);
 
     await appendGgCleaningUploadChunk({
@@ -16,7 +24,7 @@ describe("gg cleaning upload store", () => {
           subclass: "shipping",
           domain: "shopa.com",
           term_name: "Shop A",
-          "采集数据源": "ai_mode",
+          [GG_COLLECTED_SOURCE_COLUMN]: "ai_mode",
           content: ["Shop A offers free shipping on orders over $50."],
           product_urls: ["https://shopa.com/shipping"],
         },
@@ -26,7 +34,7 @@ describe("gg cleaning upload store", () => {
           subclass: "shipping",
           domain: "shopa.com",
           term_name: "Shop A",
-          "采集数据源": "search_lab",
+          [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
           content: ["Shipping policy: free delivery over $50."],
           product_urls: ["https://shopa.com/help/shipping"],
         },
@@ -44,7 +52,7 @@ describe("gg cleaning upload store", () => {
           subclass: "app",
           domain: "shopb.com",
           term_name: "Shop B",
-          "采集数据源": "ai_mode",
+          [GG_COLLECTED_SOURCE_COLUMN]: "ai_mode",
           content: ["Shop B offers an app-exclusive 10% discount."],
           product_urls: ["https://shopb.com/app"],
         },
@@ -59,6 +67,7 @@ describe("gg cleaning upload store", () => {
     });
 
     const completed = await getCompletedGgCleaningUpload(initialized.uploadId);
+    expect(completed.kind).toBe("row-chunks");
     expect(completed.chunkCount).toBe(2);
     expect(completed.groupCount).toBe(2);
     expect(completed.uploadedRowCount).toBe(3);
@@ -75,5 +84,33 @@ describe("gg cleaning upload store", () => {
     expect(chunks[0].rows).toHaveLength(2);
     expect(chunks[1].chunkIndex).toBe(1);
     expect(chunks[1].rows[0]?.term_id).toBe("102");
+  });
+
+  it("stores raw file chunks and validates the uploaded byte size", async () => {
+    const first = Buffer.from("term_id,country\n101,US\n", "utf8");
+    const second = Buffer.from("102,UK\n", "utf8");
+    const initialized = await initGgCleaningUpload("fixture.csv", first.length + second.length);
+
+    await appendGgCleaningUploadFileChunk({
+      uploadId: initialized.uploadId,
+      chunkIndex: 0,
+      buffer: first,
+    });
+    await appendGgCleaningUploadFileChunk({
+      uploadId: initialized.uploadId,
+      chunkIndex: 1,
+      buffer: second,
+    });
+
+    await completeGgCleaningUpload({
+      uploadId: initialized.uploadId,
+      chunkCount: 2,
+    });
+
+    const completed = await getCompletedGgCleaningUpload(initialized.uploadId);
+    expect(completed.kind).toBe("file-chunks");
+    expect(completed.rawFilePath).toBeTruthy();
+    expect(completed.uploadedByteCount).toBe(first.length + second.length);
+    expect(completed.chunkCount).toBe(2);
   });
 });

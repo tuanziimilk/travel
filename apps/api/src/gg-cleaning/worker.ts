@@ -38,14 +38,19 @@ async function processJob(jobId: string) {
 
   const uploaded = await getUploadedInput(job.inputFilePath);
   const preview = uploaded
-    ? await previewGgCleaningChunkRows({
-        columns: uploaded.columns,
-        sampleRawRows: uploaded.sampleRows,
-        totalRows: uploaded.uploadedRowCount,
-        groupedRows: uploaded.groupCount,
-        chunkCount: uploaded.chunkCount,
-        oversizedGroupCount: uploaded.oversizedGroupCount,
-      })
+    ? uploaded.kind === "file-chunks" && uploaded.rawFilePath
+      ? await previewGgCleaningFileByPath({
+          fileName: uploaded.fileName,
+          filePath: uploaded.rawFilePath,
+        })
+      : await previewGgCleaningChunkRows({
+          columns: uploaded.columns,
+          sampleRawRows: uploaded.sampleRows,
+          totalRows: uploaded.uploadedRowCount,
+          groupedRows: uploaded.groupCount,
+          chunkCount: uploaded.chunkCount,
+          oversizedGroupCount: uploaded.oversizedGroupCount,
+        })
     : job.inputFilePath
     ? await previewGgCleaningFileByPath({
         fileName: job.inputFileName,
@@ -71,19 +76,24 @@ async function processJob(jobId: string) {
   });
 
   const result = uploaded
-    ? await executeGgCleaningChunkRows({
-        rawRowChunks: (async function* () {
-          for await (const chunk of iterateGgCleaningUploadChunks(uploaded.id)) {
-            yield chunk.rows;
-          }
-        })(),
-        columns: uploaded.columns,
-        sampleRawRows: uploaded.sampleRows,
-        totalRows: uploaded.uploadedRowCount,
-        groupedRows: uploaded.groupCount,
-        chunkCount: uploaded.chunkCount,
-        oversizedGroupCount: uploaded.oversizedGroupCount,
-      })
+    ? uploaded.kind === "file-chunks" && uploaded.rawFilePath
+      ? await executeGgCleaningByPath({
+          fileName: uploaded.fileName,
+          filePath: uploaded.rawFilePath,
+        })
+      : await executeGgCleaningChunkRows({
+          rawRowChunks: (async function* () {
+            for await (const chunk of iterateGgCleaningUploadChunks(uploaded.id)) {
+              yield chunk.rows;
+            }
+          })(),
+          columns: uploaded.columns,
+          sampleRawRows: uploaded.sampleRows,
+          totalRows: uploaded.uploadedRowCount,
+          groupedRows: uploaded.groupCount,
+          chunkCount: uploaded.chunkCount,
+          oversizedGroupCount: uploaded.oversizedGroupCount,
+        })
     : job.inputFilePath
     ? await executeGgCleaningByPath({
         fileName: job.inputFileName,
@@ -173,6 +183,12 @@ export async function previewGgCleaning(input: { fileName: string; fileBase64?: 
     throw new Error("GG 清洗预览只支持分块上传后的文件，请先完成上传。");
   }
   const uploaded = await getCompletedGgCleaningUpload(input.uploadId);
+  if (uploaded.kind === "file-chunks" && uploaded.rawFilePath) {
+    return previewGgCleaningFileByPath({
+      fileName: uploaded.fileName || input.fileName,
+      filePath: uploaded.rawFilePath,
+    });
+  }
   return previewGgCleaningChunkRows({
     columns: uploaded.columns,
     sampleRawRows: uploaded.sampleRows,
@@ -194,14 +210,20 @@ export async function startGgCleaningJob(input: {
     throw new Error("GG 清洗任务只支持分块上传后的文件，请先完成上传。");
   }
   const uploaded = await getCompletedGgCleaningUpload(input.uploadId);
-  const preview = await previewGgCleaningChunkRows({
-    columns: uploaded.columns,
-    sampleRawRows: uploaded.sampleRows,
-    totalRows: uploaded.uploadedRowCount,
-    groupedRows: uploaded.groupCount,
-    chunkCount: uploaded.chunkCount,
-    oversizedGroupCount: uploaded.oversizedGroupCount,
-  });
+  const preview =
+    uploaded.kind === "file-chunks" && uploaded.rawFilePath
+      ? await previewGgCleaningFileByPath({
+          fileName: uploaded.fileName || input.fileName,
+          filePath: uploaded.rawFilePath,
+        })
+      : await previewGgCleaningChunkRows({
+          columns: uploaded.columns,
+          sampleRawRows: uploaded.sampleRows,
+          totalRows: uploaded.uploadedRowCount,
+          groupedRows: uploaded.groupCount,
+          chunkCount: uploaded.chunkCount,
+          oversizedGroupCount: uploaded.oversizedGroupCount,
+        });
 
   const created = await createGgCleaningJob({
     uploader: input.uploader,

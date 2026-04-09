@@ -9,7 +9,7 @@ import {
   completeCategoryCalibrationUpload,
   initCategoryCalibrationUpload,
 } from "./category-calibration/uploadStore";
-import { appendGgCleaningUploadChunk, completeGgCleaningUpload, initGgCleaningUpload } from "./gg-cleaning/uploadStore";
+import { appendGgCleaningUploadChunk, appendGgCleaningUploadFileChunk, completeGgCleaningUpload, initGgCleaningUpload } from "./gg-cleaning/uploadStore";
 
 const app = express();
 app.use(cors({ origin: env.webOrigin }));
@@ -37,6 +37,19 @@ app.post("/gg-cleaning/uploads/:uploadId/chunk", async (req, res) => {
     if (!Number.isInteger(chunkIndex) || chunkIndex < 0) throw new Error("chunkIndex must be a non-negative integer.");
     if (!rows?.length) throw new Error("rows is required.");
     res.json(await appendGgCleaningUploadChunk({ uploadId, chunkIndex, rows, groupCount }));
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.post("/gg-cleaning/uploads/:uploadId/file-chunk/:chunkIndex", express.raw({ type: "*/*", limit: "16mb" }), async (req, res) => {
+  try {
+    const uploadId = String(req.params.uploadId || "").trim();
+    const chunkIndex = Number(req.params.chunkIndex ?? -1);
+    if (!uploadId) throw new Error("uploadId is required.");
+    if (!Number.isInteger(chunkIndex) || chunkIndex < 0) throw new Error("chunkIndex must be a non-negative integer.");
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) throw new Error("chunk body is required.");
+    res.json(await appendGgCleaningUploadFileChunk({ uploadId, chunkIndex, buffer: req.body }));
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
   }

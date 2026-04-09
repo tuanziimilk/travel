@@ -1,23 +1,12 @@
 import * as Select from "@radix-ui/react-select";
-import * as XLSX from "xlsx";
 import { useMemo, useState } from "react";
 import { ggCleaningUploadMaxFileBytes, ggCleaningUploadMaxRows, uploaderOptions } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
 import { formatChinaDateTime } from "../utils/time";
 
-type CollectedRow = Record<string, unknown>;
-
-type GroupedChunk = {
-  rows: CollectedRow[];
-  groupCount: number;
-  estimatedBytes: number;
-};
-
 const GG_SOURCE_COLUMN = "采集数据源";
-const REQUIRED_COLUMNS = ["country", "domain", "term_id", "term_name", "subclass", GG_SOURCE_COLUMN, "content", "product_urls"];
 const uploadLimitMb = Math.round(ggCleaningUploadMaxFileBytes / 1024 / 1024);
-const ggCleaningTargetChunkBytes = 4 * 1024 * 1024;
-const ggCleaningBrowserHighMemoryLimitBytes = 12 * 1024 * 1024;
+const ggCleaningFileChunkBytes = 8 * 1024 * 1024;
 const ggCleaningUploadApiBase = (() => {
   const trpcUrl = import.meta.env.VITE_TRPC_URL || "/trpc";
   return trpcUrl.replace(/\/trpc\/?$/, "");
@@ -31,295 +20,8 @@ const ggCleaningDemoCsv = [
   '13,"Does shopa.com offer free shipping?",US,en,shopa.com,1002,Shop A,shipping,hd,抓取完成,search_lab,https://www.google.com/search?q=shopa+free+shipping,"[""Shipping policy: free delivery for orders over $50.""]","[""https://shopa.com/shipping"",""https://coupon.example/shipping""]",2026-04-08 05:38:49',
 ].join("\n");
 
-function normalizeText(value: unknown) {
-  return String(value ?? "").replace(/\r\n/g, "\n").trim();
-}
-
-function normalizeSourceType(value: unknown) {
-  const collapsed = normalizeText(value).toLowerCase().replace(/[\s_-]+/g, "");
-  if (collapsed === "aimode" || collapsed === "ai") return "aimode";
-  if (collapsed === "searchlab" || collapsed === "search") return "searchlab";
-  return collapsed;
-}
-
-function parseStringArrayCell(value: unknown) {
-  if (Array.isArray(value)) return value.map((item) => normalizeText(item)).filter(Boolean);
-  const raw = normalizeText(value);
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map((item) => normalizeText(item)).filter(Boolean);
-  } catch {
-    return [];
-  }
-}
-
-function hasValidSnippet(row: CollectedRow) {
-  return parseStringArrayCell(row.content).length > 0;
-}
-
-function isSupportedCollectedRow(row: CollectedRow) {
-  const termId = normalizeText(row.term_id);
-  const country = normalizeText(row.country);
-  const subclass = normalizeText(row.subclass);
-  const sourceType = normalizeSourceType(row[GG_SOURCE_COLUMN]);
-  return Boolean(termId && country && subclass && hasValidSnippet(row) && (sourceType === "aimode" || sourceType === "searchlab"));
-}
-
-function groupKeyOf(row: CollectedRow) {
-  return [normalizeText(row.term_id), normalizeText(row.country).toUpperCase(), normalizeText(row.subclass)].join("__");
-}
-
-function estimateJsonBytes(value: unknown) {
-  return new Blob([JSON.stringify(value)]).size;
-}
-
-function ensureRequiredColumns(rows: CollectedRow[]) {
-  const columns = new Set(rows.flatMap((row) => Object.keys(row)).map((key) => String(key || "").trim()).filter(Boolean));
-  const missing = REQUIRED_COLUMNS.filter((column) => !columns.has(column));
-  if (missing.length) {
-    throw new Error(`上传文件缺少必填列: ${missing.join(", ")}`);
-  }
-}
-
-function packGroupedChunks(rows: CollectedRow[]) {
-  const grouped = new Map<string, CollectedRow[]>();
-  for (const row of rows) {
-    const key = groupKeyOf(row);
-    const bucket = grouped.get(key);
-    if (bucket) {
-      bucket.push(row);
-    } else {
-      grouped.set(key, [row]);
-    }
-  }
-
-  const chunks: GroupedChunk[] = [];
-  let oversizedGroupCount = 0;
-  let currentRows: CollectedRow[] = [];
-  let currentGroupCount = 0;
-  let currentBytes = 0;
-
-  const flushCurrent = () => {
-    if (!currentRows.length) return;
-    chunks.push({
-      rows: currentRows,
-      groupCount: currentGroupCount,
-      estimatedBytes: currentBytes,
-    });
-    currentRows = [];
-    currentGroupCount = 0;
-    currentBytes = 0;
-  };
-
-  for (const groupRows of grouped.values()) {
-    const groupBytes = estimateJsonBytes(groupRows);
-    if (groupBytes > ggCleaningTargetChunkBytes) {
-      flushCurrent();
-      chunks.push({
-        rows: groupRows,
-        groupCount: 1,
-        estimatedBytes: groupBytes,
-      });
-      oversizedGroupCount += 1;
-      continue;
-    }
-
-    if (currentRows.length > 0 && currentBytes + groupBytes > ggCleaningTargetChunkBytes) {
-      flushCurrent();
-    }
-
-    currentRows = currentRows.concat(groupRows);
-    currentGroupCount += 1;
-    currentBytes += groupBytes;
-  }
-
-  flushCurrent();
-
-  return {
-    chunks,
-    groupCount: grouped.size,
-    oversizedGroupCount,
-  };
-}
-
-async function parseCsvFile(file: File) {
-  const rows: CollectedRow[] = [];
-  const reader = file.stream().pipeThrough(new TextDecoderStream()).getReader();
-  let headers: string[] | null = null;
-  let field = "";
-  let record: string[] = [];
-  let inQuotes = false;
-  let quotePending = false;
-  let isFirstField = true;
-
-  const commitField = () => {
-    const value = isFirstField ? field.replace(/^\uFEFF/, "") : field;
-    record.push(value.trim());
-    field = "";
-    isFirstField = false;
-  };
-
-  const commitRecord = () => {
-    commitField();
-    if (!headers) {
-      headers = record.map((item) => item.trim());
-    } else if (record.some((item) => item.trim() !== "")) {
-      const row: CollectedRow = {};
-      headers.forEach((header, index) => {
-        row[header] = record[index] ?? "";
-      });
-      rows.push(row);
-    }
-    record = [];
-    field = "";
-    isFirstField = true;
-  };
-
-  const pushChar = (char: string) => {
-    if (quotePending) {
-      if (char === '"') {
-        field += '"';
-        quotePending = false;
-        return;
-      }
-      quotePending = false;
-      inQuotes = false;
-      pushChar(char);
-      return;
-    }
-
-    if (inQuotes) {
-      if (char === '"') {
-        quotePending = true;
-      } else {
-        field += char;
-      }
-      return;
-    }
-
-    if (char === '"') {
-      inQuotes = true;
-      return;
-    }
-    if (char === ",") {
-      commitField();
-      return;
-    }
-    if (char === "\n") {
-      commitRecord();
-      return;
-    }
-    if (char !== "\r") {
-      field += char;
-    }
-  };
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    for (const char of value) pushChar(char);
-  }
-
-  if (quotePending) {
-    inQuotes = false;
-    quotePending = false;
-  }
-  if (field !== "" || record.length > 0) {
-    commitRecord();
-  }
-
-  return rows;
-}
-
-async function parseJsonlFile(file: File) {
-  const rows: CollectedRow[] = [];
-  const reader = file.stream().pipeThrough(new TextDecoderStream()).getReader();
-  let buffer = "";
-
-  const flushLine = (line: string) => {
-    const trimmed = line.trim();
-    if (!trimmed) return;
-    const parsed = JSON.parse(trimmed);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new Error("JSONL 每一行都必须是对象。");
-    }
-    rows.push(parsed as CollectedRow);
-  };
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += value;
-    const parts = buffer.split(/\r?\n/);
-    buffer = parts.pop() || "";
-    for (const line of parts) flushLine(line);
-  }
-  flushLine(buffer);
-  return rows;
-}
-
-async function parseJsonFile(file: File) {
-  const parsed = JSON.parse(await file.text());
-  if (!Array.isArray(parsed)) throw new Error("JSON 文件必须是对象数组。");
-  return parsed as CollectedRow[];
-}
-
-async function parseXlsxFile(file: File) {
-  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
-  const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-  return XLSX.utils.sheet_to_json<CollectedRow>(firstSheet, { defval: "" });
-}
-
-async function parseCollectedRows(file: File) {
-  const lowerName = file.name.toLowerCase();
-  let rows: CollectedRow[];
-  let highMemoryNotice = "";
-
-  if ((lowerName.endsWith(".json") || lowerName.endsWith(".xlsx") || lowerName.endsWith(".xlsm")) && file.size > ggCleaningBrowserHighMemoryLimitBytes) {
-    throw new Error("JSON / XLSX / XLSM 文件会在浏览器内整文件解析。超过 12MB 时请先转成 CSV 或 JSONL 后再上传。");
-  }
-
-  if (lowerName.endsWith(".csv")) {
-    rows = await parseCsvFile(file);
-  } else if (lowerName.endsWith(".jsonl")) {
-    rows = await parseJsonlFile(file);
-  } else if (lowerName.endsWith(".json")) {
-    rows = await parseJsonFile(file);
-    highMemoryNotice = "JSON 会走浏览器高内存解析路径。";
-  } else if (lowerName.endsWith(".xlsx") || lowerName.endsWith(".xlsm")) {
-    rows = await parseXlsxFile(file);
-    highMemoryNotice = "XLSX/XLSM 会走浏览器高内存解析路径。";
-  } else {
-    throw new Error("仅支持 .csv、.xlsx、.xlsm、.json、.jsonl 文件。");
-  }
-
-  if (!rows.length) throw new Error("上传文件为空。");
-  ensureRequiredColumns(rows);
-
-  const validRows = rows.filter((row) => isSupportedCollectedRow(row));
-  if (!validRows.length) {
-    throw new Error("文件中没有可用于 GG 清洗的有效输入行，请检查 content、采集数据源、term_id、country、subclass。");
-  }
-  if (validRows.length > ggCleaningUploadMaxRows) {
-    throw new Error(`GG 清洗单次最多支持 ${ggCleaningUploadMaxRows} 行有效输入。`);
-  }
-
-  return {
-    rows: validRows,
-    highMemoryNotice,
-  };
-}
-
-async function uploadGroupedFile(file: File, onProgress?: (progressPercent: number, text: string) => void) {
-  onProgress?.(5, "正在解析采集结果表并按分组聚合...");
-  const parsed = await parseCollectedRows(file);
-  const packing = packGroupedChunks(parsed.rows);
-
-  if (!packing.chunks.length) {
-    throw new Error("没有可上传的分组 chunk。");
-  }
+async function uploadRawFile(file: File, onProgress?: (progressPercent: number, text: string) => void) {
+  onProgress?.(5, "正在上传原始文件，系统会在服务端自动解析为最合适的处理格式...");
 
   const initResponse = await fetch(`${ggCleaningUploadApiBase}/gg-cleaning/uploads/init`, {
     method: "POST",
@@ -330,33 +32,27 @@ async function uploadGroupedFile(file: File, onProgress?: (progressPercent: numb
   const initPayload = (await initResponse.json()) as { uploadId?: string; error?: string };
   if (!initPayload.uploadId) throw new Error(initPayload.error || "初始化大文件上传失败。");
 
-  for (let chunkIndex = 0; chunkIndex < packing.chunks.length; chunkIndex += 1) {
-    const chunk = packing.chunks[chunkIndex];
-    const chunkResponse = await fetch(`${ggCleaningUploadApiBase}/gg-cleaning/uploads/${initPayload.uploadId}/chunk`, {
+  const chunkCount = Math.max(1, Math.ceil(file.size / ggCleaningFileChunkBytes));
+  for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+    const start = chunkIndex * ggCleaningFileChunkBytes;
+    const end = Math.min(file.size, start + ggCleaningFileChunkBytes);
+    const response = await fetch(`${ggCleaningUploadApiBase}/gg-cleaning/uploads/${initPayload.uploadId}/file-chunk/${chunkIndex}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chunkIndex,
-        rows: chunk.rows,
-        groupCount: chunk.groupCount,
-      }),
+      headers: { "Content-Type": "application/octet-stream" },
+      body: file.slice(start, end),
     });
-    if (!chunkResponse.ok) {
-      const payload = (await chunkResponse.json().catch(() => ({}))) as { error?: string };
-      throw new Error(payload.error || `上传分组 chunk ${chunkIndex + 1} 失败。`);
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      throw new Error(payload.error || `上传文件分片 ${chunkIndex + 1} 失败。`);
     }
-    const progress = 10 + Math.round(((chunkIndex + 1) / packing.chunks.length) * 80);
-    onProgress?.(progress, `正在上传分组 chunk ${chunkIndex + 1}/${packing.chunks.length}...`);
+    const progress = 10 + Math.round(((chunkIndex + 1) / chunkCount) * 80);
+    onProgress?.(progress, `正在上传文件分片 ${chunkIndex + 1}/${chunkCount}...`);
   }
 
   const completeResponse = await fetch(`${ggCleaningUploadApiBase}/gg-cleaning/uploads/${initPayload.uploadId}/complete`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chunkCount: packing.chunks.length,
-      groupCount: packing.groupCount,
-      oversizedGroupCount: packing.oversizedGroupCount,
-    }),
+    body: JSON.stringify({ chunkCount }),
   });
   if (!completeResponse.ok) {
     const payload = (await completeResponse.json().catch(() => ({}))) as { error?: string };
@@ -364,21 +60,12 @@ async function uploadGroupedFile(file: File, onProgress?: (progressPercent: numb
   }
 
   onProgress?.(100, "上传完成，正在生成预览...");
-  return {
-    uploadId: initPayload.uploadId,
-    totalRows: parsed.rows.length,
-    chunkCount: packing.chunks.length,
-    groupCount: packing.groupCount,
-    oversizedGroupCount: packing.oversizedGroupCount,
-    highMemoryNotice: parsed.highMemoryNotice,
-  };
+  return { uploadId: initPayload.uploadId, chunkCount };
 }
 
 function downloadBase64File(fileName: string, base64: string) {
   const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
-  const blob = new Blob([bytes], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
+  const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -445,6 +132,7 @@ export function GgCleaningPage() {
   const [note, setNote] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadedFileId, setUploadedFileId] = useState("");
+  const [uploadedChunkCount, setUploadedChunkCount] = useState(0);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [currentJobId, setCurrentJobId] = useState("");
   const [queuePage, setQueuePage] = useState(1);
@@ -458,9 +146,7 @@ export function GgCleaningPage() {
       await queueQuery.refetch();
     },
   });
-
   const queueQuery = trpc.ggCleaning.queue.useQuery({ page: queuePage, pageSize: queuePageSize }, { refetchInterval: 4000 });
-
   const statusQuery = trpc.ggCleaning.status.useQuery(
     { jobId: currentJobId },
     {
@@ -480,7 +166,6 @@ export function GgCleaningPage() {
     if (!currentStatus || !currentJobId) return rows;
     return rows.map((item) => (item.id === currentJobId ? { ...item, ...currentStatus } : item));
   }, [queueQuery.data?.rows, currentJobId, currentStatus]);
-
   const queueTotalPages = useMemo(() => {
     const total = queueQuery.data?.total ?? 0;
     return Math.max(1, Math.ceil(total / queuePageSize));
@@ -490,30 +175,29 @@ export function GgCleaningPage() {
     setError("");
     setNotice("");
     setUploadedFileId("");
+    setUploadedChunkCount(0);
     setSelectedFile(nextFile);
     if (!nextFile) return;
     if (nextFile.size > ggCleaningUploadMaxFileBytes) {
       setError(`上传文件不能超过 ${uploadLimitMb}MB。`);
-      setUploadedFileId("");
       setSelectedFile(null);
       return;
     }
+
     try {
       setIsUploadingFile(true);
-      const upload = await uploadGroupedFile(nextFile, (_progress, text) => {
+      const upload = await uploadRawFile(nextFile, (_progress, text) => {
         setNotice(text);
       });
       setUploadedFileId(upload.uploadId);
+      setUploadedChunkCount(upload.chunkCount);
       const preview = await previewMutation.mutateAsync({ fileName: nextFile.name, uploadId: upload.uploadId });
-      const extras: string[] = [`已按完整分组切成 ${upload.chunkCount} 个 chunk`];
-      if (upload.oversizedGroupCount > 0) extras.push(`${upload.oversizedGroupCount} 个超大分组独占 chunk`);
-      if (upload.highMemoryNotice) extras.push(upload.highMemoryNotice);
-      extras.push(`预览有效输入 ${preview.totalRows} 行 / ${preview.groupedRows} 组`);
-      setNotice(`文件上传完成，${extras.join("；")}。`);
+      setNotice(`文件上传完成，系统已在服务端自动解析。预览有效输入 ${preview.totalRows} 行 / ${preview.groupedRows} 组，上传分片 ${upload.chunkCount} 个。`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "文件解析失败");
-      setUploadedFileId("");
+      setError(err instanceof Error ? err.message : "文件上传失败");
       setSelectedFile(null);
+      setUploadedFileId("");
+      setUploadedChunkCount(0);
     } finally {
       setIsUploadingFile(false);
     }
@@ -559,7 +243,7 @@ export function GgCleaningPage() {
     <div className="grid translation-page">
       <section className="section-header">
         <h2>GG 采集数据清洗工具</h2>
-        <p>上传采集结果表后会先按 `term_id + country + subclass` 分组，再按完整分组切 chunk，最终输出仍然只有 `merchant_output` 和 `debug_output`。</p>
+        <p>上传采集结果表后，系统会自动按文件类型和大小选择最合适的解析方式，并继续输出 `merchant_output` 与 `debug_output`。</p>
       </section>
 
       <div className="card translation-main-card">
@@ -589,8 +273,8 @@ export function GgCleaningPage() {
             </div>
             <div className="upload-limit-banner" role="note">
               <span className="upload-limit-banner-kicker">上传上限</span>
-              <p>支持最高 {uploadLimitMb}MB / 约 {ggCleaningUploadMaxRows} 行有效输入；chunk 会按完整分组切分，不再按原始字节切片。</p>
-              <p>`.json` / `.xlsx` / `.xlsm` 会先在浏览器解析；超过 12MB 时请优先转成 `.csv` 或 `.jsonl`，避免浏览器内存占用过高。</p>
+              <p>支持最高 {uploadLimitMb}MB / 约 {ggCleaningUploadMaxRows} 行有效输入。大文件会自动走服务端解析，不再要求你手动转成 CSV 或 JSONL。</p>
+              <p>系统会优先保留原始文件，再在服务端统一做编码处理和格式转换，避免 `xlsx` 转 `csv` 后体积膨胀或中文乱码。</p>
             </div>
           </div>
 
@@ -612,12 +296,10 @@ export function GgCleaningPage() {
                 <span>分组数</span>
                 <strong>{previewData.groupedRows}</strong>
               </div>
-              {"chunkCount" in previewData && previewData.chunkCount ? (
-                <div className="output-status-chip">
-                  <span>Chunk 数</span>
-                  <strong>{previewData.chunkCount}</strong>
-                </div>
-              ) : null}
+              <div className="output-status-chip">
+                <span>上传分片</span>
+                <strong>{uploadedChunkCount || "-"}</strong>
+              </div>
             </div>
           ) : null}
         </div>
@@ -726,7 +408,9 @@ export function GgCleaningPage() {
                         <div className="progress-track" style={{ marginBottom: 6 }}>
                           <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
                         </div>
-                        <div className="muted gg-cleaning-summary-meta">{formatSummaryMeta(row.summary as Record<string, unknown> | undefined, row.inputMode, row.totalRows, row.groupedRows)}</div>
+                        <div className="muted gg-cleaning-summary-meta">
+                          {formatSummaryMeta(row.summary as Record<string, unknown> | undefined, row.inputMode, row.totalRows, row.groupedRows)}
+                        </div>
                         {row.errorReason ? (
                           <div className="muted" style={{ fontSize: 12, color: "#b42318", marginTop: 6 }}>
                             {row.errorReason}
