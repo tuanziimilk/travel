@@ -3811,6 +3811,136 @@ pre {
   display: none;
 }
 
+.gg-cleaning-queue-table th:nth-child(1),
+.gg-cleaning-queue-table td:nth-child(1) {
+  width: 7%;
+}
+
+.gg-cleaning-queue-table th:nth-child(2),
+.gg-cleaning-queue-table td:nth-child(2) {
+  width: 12%;
+}
+
+.gg-cleaning-queue-table th:nth-child(3),
+.gg-cleaning-queue-table td:nth-child(3) {
+  width: 7%;
+}
+
+.gg-cleaning-queue-table th:nth-child(4),
+.gg-cleaning-queue-table td:nth-child(4) {
+  width: 38%;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: normal;
+  line-height: 1.35;
+}
+
+.gg-cleaning-queue-table th:nth-child(5),
+.gg-cleaning-queue-table td:nth-child(5) {
+  width: 18%;
+}
+
+.gg-cleaning-queue-table th:nth-child(6),
+.gg-cleaning-queue-table td:nth-child(6) {
+  width: 8%;
+}
+
+.gg-cleaning-queue-table th:nth-child(7),
+.gg-cleaning-queue-table td:nth-child(7) {
+  width: 17%;
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.gg-cleaning-queue-table th:nth-child(8),
+.gg-cleaning-queue-table td:nth-child(8) {
+  width: 6%;
+}
+
+.gg-cleaning-queue-table th:nth-child(9),
+.gg-cleaning-queue-table td:nth-child(9) {
+  width: 5%;
+}
+
+.gg-cleaning-queue-table th,
+.gg-cleaning-queue-table td {
+  font-size: 11px;
+  padding: 6px 4px;
+}
+
+.gg-cleaning-queue-table th:nth-child(1),
+.gg-cleaning-queue-table td:nth-child(1),
+.gg-cleaning-queue-table th:nth-child(2),
+.gg-cleaning-queue-table td:nth-child(2),
+.gg-cleaning-queue-table th:nth-child(3),
+.gg-cleaning-queue-table td:nth-child(3),
+.gg-cleaning-queue-table th:nth-child(5),
+.gg-cleaning-queue-table td:nth-child(5),
+.gg-cleaning-queue-table th:nth-child(6),
+.gg-cleaning-queue-table td:nth-child(6),
+.gg-cleaning-queue-table th:nth-child(8),
+.gg-cleaning-queue-table td:nth-child(8),
+.gg-cleaning-queue-table th:nth-child(9),
+.gg-cleaning-queue-table td:nth-child(9) {
+  white-space: nowrap;
+}
+
+.gg-cleaning-summary-cell {
+  min-width: 0;
+}
+
+.gg-cleaning-summary-cell .progress-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.gg-cleaning-summary-cell .progress-label span,
+.gg-cleaning-summary-cell .progress-label strong {
+  min-width: 0;
+}
+
+.gg-cleaning-summary-cell .progress-label span {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gg-cleaning-summary-cell .progress-label strong {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.gg-cleaning-summary-meta {
+  font-size: 12px;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.45;
+}
+
+.gg-cleaning-summary-meta + .muted {
+  display: block;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.gg-cleaning-summary-reason {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #b42318;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
 .output-summary-head {
   display: flex;
   justify-content: space-between;

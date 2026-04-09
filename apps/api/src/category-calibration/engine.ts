@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import * as XLSX from "xlsx";
 import { z } from "zod";
 import { categoryCalibrationUploadMaxRows } from "@about-demo/trpc";
-import { env } from "../env";
+import { env, getAiUnitCostForModel } from "../env";
 import { aiExecutor } from "../skills/aiExecutor";
 import type { CategoryCalibrationUploadRow } from "./uploadStore";
 import { sha256 } from "../utils/hash";
@@ -15,6 +15,7 @@ const RESULT_CURRENT_CATEGORY = "\u5f53\u524d\u5206\u7c7b";
 const RESULT_JUDGEMENT = "\u5224\u65ad";
 const RESULT_PARENT = "\u5efa\u8bae\u7236\u7c7b";
 const RESULT_CHILD = "\u5efa\u8bae\u5b50\u7c7b";
+const ROW_MARKER_VALUES = new Set(["\u5fc5\u586b", "\u9009\u586b", "\u793a\u4f8b", "example", "required", "optional"]);
 const CATEGORY_CALIBRATION_ROW_CONCURRENCY = Math.max(1, Number(process.env.CATEGORY_CALIBRATION_ROW_CONCURRENCY || 3));
 const CATEGORY_CALIBRATION_SUB_BATCH_SIZE = Math.max(200, Number(process.env.CATEGORY_CALIBRATION_SUB_BATCH_SIZE || 2000));
 const REQUIRED_COLUMNS = [
@@ -143,15 +144,153 @@ function estimateCost(promptTokens: number, completionTokens: number) {
   );
 }
 
+function estimateCategoryCost(promptTokens: number, completionTokens: number, aiModel: string) {
+  const cost = getAiUnitCostForModel(aiModel);
+  return (
+    (promptTokens / 1_000_000) * cost.inputPer1M +
+    (completionTokens / 1_000_000) * cost.outputPer1M
+  );
+}
+
+function normalizeJsonCandidate(candidate: string) {
+  const text = String(candidate || "").trim();
+  if (!text) return text;
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenced?.[1]) return fenced[1].trim();
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start >= 0 && end > start) return text.slice(start, end + 1).trim();
+  return text;
+}
+
+function extractFirstMatch(text: string, patterns: RegExp[]) {
+  for (const pattern of patterns) {
+    const matched = text.match(pattern);
+    const value = matched?.[1]?.trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+function normalizeJudgementValue(value: string) {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return "";
+  if (normalized.includes("正确") || normalized === "yes" || normalized === "correct" || normalized === "right") {
+    return "正确";
+  }
+  if (normalized.includes("有误") || normalized.includes("错误") || normalized === "no" || normalized === "wrong" || normalized === "incorrect") {
+    return "有误";
+  }
+  return "";
+}
+
+function salvageStructuredCandidate(candidate: string) {
+  const text = String(candidate || "");
+  if (!text.trim()) return null;
+
+  const suggestedParentId = extractFirstMatch(text, [
+    /"suggestedParentId"\s*:\s*"?(\\?\d+)"?/i,
+    /suggestedParentId\s*[:=]\s*"?(\\?\d+)"?/i,
+    /parent(?:\s+category)?\s*id\s*[:=]\s*"?(\\?\d+)"?/i,
+  ]).replace(/\\/g, "");
+  const suggestedChildId = extractFirstMatch(text, [
+    /"suggestedChildId"\s*:\s*"?(\\?\d+)"?/i,
+    /suggestedChildId\s*[:=]\s*"?(\\?\d+)"?/i,
+    /child(?:\s+category)?\s*id\s*[:=]\s*"?(\\?\d+)"?/i,
+  ]).replace(/\\/g, "");
+  const judgement = normalizeJudgementValue(
+    extractFirstMatch(text, [
+      /"judgement"\s*:\s*"([^"]+)"/i,
+      /judgement\s*[:=]\s*"?(正确|有误|correct|incorrect|wrong|right|yes|no)"?/i,
+      /判断\s*[:：]\s*"?(正确|有误)"?/i,
+    ]),
+  );
+
+  if (!suggestedParentId || !suggestedChildId) return null;
+
+  return {
+    judgement: judgement || "有误",
+    suggestedParentId,
+    suggestedChildId,
+  };
+}
+
+function isMarkerLike(value: string) {
+  return ROW_MARKER_VALUES.has(value.trim().toLowerCase());
+}
+
+function isInstructionRow(row: NormalizedInputRow) {
+  return [
+    row.termId,
+    row.termName,
+    row.domain,
+    row.landingPage,
+    row.country,
+    row.language,
+    row.currentCategoryId,
+    row.currentCategoryName,
+  ].every((value) => !value || isMarkerLike(value));
+}
+
+function filterProcessableRows(rows: NormalizedInputRow[]) {
+  return rows.filter((row) => !isInstructionRow(row));
+}
+
+function humanizeRowError(message: string) {
+  const normalized = String(message || "").trim();
+  if (!normalized) return "模型未返回有效结果。";
+  if (normalized.includes("suggestedParentId: Required") || normalized.includes("suggestedChildId: Required")) {
+    return "模型返回了不完整的分类结果，缺少建议父类或建议子类。";
+  }
+  if (normalized.includes("not a valid parent category id")) {
+    return "模型给出的建议父类不在分类字典中。";
+  }
+  if (normalized.includes("not a valid child category id")) {
+    return "模型给出的建议子类不在分类字典中。";
+  }
+  if (normalized.includes("does not belong to parent")) {
+    return "模型给出的父子类组合不符合分类字典。";
+  }
+  if (normalized.toLowerCase().includes("timeout")) {
+    return "调用模型超时，请稍后重试。";
+  }
+  if (normalized.startsWith("LLM")) {
+    return "调用模型失败，未拿到可用分类结果。";
+  }
+  if (normalized.startsWith("AI 执行校验失败")) {
+    return "模型返回结果不符合要求，无法生成有效分类。";
+  }
+  return normalized;
+}
+
+function summarizeFailureReasons(rowResults: RowDebugResult[]) {
+  const distinct = new Map<string, number>();
+  for (const item of rowResults) {
+    if (!item.error) continue;
+    const reason = humanizeRowError(item.error);
+    distinct.set(reason, (distinct.get(reason) || 0) + 1);
+  }
+  return Array.from(distinct.entries())
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 3)
+    .map(([reason, count]) => `${reason}（${count}条）`);
+}
+
 function parseCandidate(candidate: string, dictionary: CategoryDictionary) {
+  const normalizedCandidate = normalizeJsonCandidate(candidate);
   let parsed: unknown;
   try {
-    parsed = JSON.parse(candidate);
+    parsed = JSON.parse(normalizedCandidate);
   } catch (error) {
-    return {
-      ok: false as const,
-      errors: [error instanceof Error ? error.message : "Invalid JSON output."],
-    };
+    const salvaged = salvageStructuredCandidate(candidate);
+    if (salvaged) {
+      parsed = salvaged;
+    } else {
+      return {
+        ok: false as const,
+        errors: [error instanceof Error ? error.message : "Invalid JSON output."],
+      };
+    }
   }
 
   const normalized = aiOutputSchema.safeParse(parsed);
@@ -286,6 +425,10 @@ function normalizeRows(rawRows: CategoryCalibrationUploadRow[], rowOffset: numbe
   }));
 }
 
+export function countProcessableCategoryCalibrationRows(rawRows: CategoryCalibrationUploadRow[], rowOffset = 0) {
+  return filterProcessableRows(normalizeRows(rawRows, rowOffset)).length;
+}
+
 async function mapWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
@@ -308,7 +451,7 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
-async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictionary) {
+async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictionary, aiModel: string) {
   const currentAsChild = dictionary.childrenById.get(row.currentCategoryId);
   const currentAsParent = dictionary.parentsById.get(row.currentCategoryId);
 
@@ -351,15 +494,61 @@ async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictiona
     ),
   });
 
-  const executed = await aiExecutor.execute({
-    buildMessages: messages,
-    validate: (candidate) => parseCandidate(candidate, dictionary),
-    buildRepairMessages: async (candidate, errors) => ({
-      system: "Repair the previous JSON so it matches the required schema and taxonomy. Return JSON only.",
-      user: JSON.stringify({ previousOutput: candidate, errors }, null, 2),
-    }),
-    requestTimeoutMs: env.aiRequestTimeoutMsBatch,
-  });
+  const executeStrictPass = async (strictMode: boolean) =>
+    aiExecutor.execute({
+      buildMessages: () => {
+        const built = messages();
+        if (!strictMode) return built;
+        return {
+          system: [
+            built.system,
+            'Output must be a single JSON object only. Example: {"judgement":"有误","suggestedParentId":"32","suggestedChildId":"212"}',
+            "Do not wrap the JSON in markdown.",
+            "Do not omit any field.",
+            "suggestedParentId and suggestedChildId must be strings containing valid taxonomy ids.",
+          ].join("\n\n"),
+          user: built.user,
+        };
+      },
+      validate: (candidate) => parseCandidate(candidate, dictionary),
+      buildRepairMessages: async (candidate, errors) => ({
+        system: strictMode
+          ? 'Repair the output into exactly one JSON object with keys judgement, suggestedParentId, suggestedChildId. No markdown, no explanation.'
+          : "Repair the previous JSON so it matches the required schema and taxonomy. Return JSON only.",
+        user: JSON.stringify(
+          strictMode
+            ? {
+                previousOutput: candidate,
+                errors,
+                requiredFormat: {
+                  judgement: "正确|有误",
+                  suggestedParentId: "valid parent id as string",
+                  suggestedChildId: "valid child id as string",
+                },
+              }
+            : { previousOutput: candidate, errors },
+          null,
+          2,
+        ),
+      }),
+      requestTimeoutMs: env.aiRequestTimeoutMsBatch,
+      aiModel,
+      maxRetries: strictMode ? 3 : undefined,
+    });
+
+  let executed;
+  try {
+    executed = await executeStrictPass(false);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const shouldRetryStrict =
+      message.includes("AI 执行校验失败") ||
+      message.includes("Required") ||
+      message.includes("Invalid JSON output") ||
+      message.includes("not a valid");
+    if (!shouldRetryStrict) throw error;
+    executed = await executeStrictPass(true);
+  }
 
   const parent = dictionary.parentsById.get(executed.result.suggestedParentId);
   const child = dictionary.childrenById.get(executed.result.suggestedChildId);
@@ -434,6 +623,7 @@ export async function executeCategoryCalibrationChunkRows(input: {
   columns: string[];
   sampleRawRows: CategoryCalibrationUploadRow[];
   totalRows: number;
+  aiModel: string;
   csvOutputPath: string;
   onProgress?: (progress: {
     processedRows: number;
@@ -471,7 +661,7 @@ export async function executeCategoryCalibrationChunkRows(input: {
   const rowResults: RowDebugResult[] = [];
   const csvStream = createWriteStream(input.csvOutputPath, { encoding: "utf8" });
   await new Promise<void>((resolve, reject) => {
-    csvStream.write(`${RESULT_HEADERS.map((header) => csvEscape(header)).join(",")}\n`, (error) => {
+    csvStream.write(`\uFEFF${RESULT_HEADERS.map((header) => csvEscape(header)).join(",")}\n`, (error) => {
       if (error) reject(error);
       else resolve();
     });
@@ -479,7 +669,7 @@ export async function executeCategoryCalibrationChunkRows(input: {
 
   try {
     for await (const rawChunkRows of input.rawRowChunks) {
-      const normalizedChunk = normalizeRows(rawChunkRows, rowOffset);
+      const normalizedChunk = filterProcessableRows(normalizeRows(rawChunkRows, rowOffset));
       const subBatches = chunkItems(normalizedChunk, CATEGORY_CALIBRATION_SUB_BATCH_SIZE);
       rowOffset += rawChunkRows.length;
 
@@ -504,7 +694,7 @@ export async function executeCategoryCalibrationChunkRows(input: {
           }
 
           try {
-            const classified = await classifyRow(row, dictionary);
+            const classified = await classifyRow(row, dictionary, input.aiModel);
             dedupeCache.set(fingerprint, { ok: true, classified });
             return {
               ok: true as const,
@@ -577,7 +767,7 @@ export async function executeCategoryCalibrationChunkRows(input: {
           promptTokens,
           completionTokens,
           totalTokens: promptTokens + completionTokens,
-          estimatedCostUsd: Math.round(estimateCost(promptTokens, completionTokens) * 1_000_000) / 1_000_000,
+          estimatedCostUsd: Math.round(estimateCategoryCost(promptTokens, completionTokens, input.aiModel) * 1_000_000) / 1_000_000,
           completedSubBatches,
           totalSubBatches,
         });
@@ -592,7 +782,7 @@ export async function executeCategoryCalibrationChunkRows(input: {
     });
   }
 
-  const estimatedCostUsd = estimateCost(promptTokens, completionTokens);
+  const estimatedCostUsd = estimateCategoryCost(promptTokens, completionTokens, input.aiModel);
 
   return {
     rowResults,
@@ -602,7 +792,7 @@ export async function executeCategoryCalibrationChunkRows(input: {
       processedRows,
       successRows,
       failedRows,
-      aiModel: env.aiModel,
+      aiModel: input.aiModel,
       dictionaryPath: CATEGORY_DICTIONARY_PATH,
       promptTokens,
       completionTokens,
@@ -611,6 +801,7 @@ export async function executeCategoryCalibrationChunkRows(input: {
       completedSubBatches,
       totalSubBatches,
       dedupeCacheSize: dedupeCache.size,
+      failureReasonSamples: summarizeFailureReasons(rowResults),
     },
   } as CalibrationResult & {
     summary: CalibrationResult["summary"] & {
@@ -621,6 +812,7 @@ export async function executeCategoryCalibrationChunkRows(input: {
       completedSubBatches: number;
       totalSubBatches: number;
       dedupeCacheSize: number;
+      failureReasonSamples: string[];
     };
   };
 }

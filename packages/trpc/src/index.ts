@@ -431,6 +431,7 @@ export const categoryCalibrationRunInputSchema = z
     note: z.string().optional().default(""),
     fileName: z.string().min(1),
     uploadId: z.string().min(1).optional(),
+    aiModel: aiModelSchema.optional().default(categoryCalibrationDefaultAiModel),
   })
   .refine((value) => Boolean(value.uploadId), "uploadId is required");
 

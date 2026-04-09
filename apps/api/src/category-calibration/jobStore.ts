@@ -3,7 +3,6 @@ import { sql } from "drizzle-orm";
 import { readFile } from "node:fs/promises";
 import { db } from "../db/client";
 import { categoryCalibrationJobs } from "../db/schema";
-import { env } from "../env";
 import { makeId } from "../utils/id";
 import { formatChinaIsoOffset } from "../utils/time";
 
@@ -61,6 +60,7 @@ export async function createCategoryCalibrationJob(input: {
   filePath?: string | null;
   inputMode: string;
   totalRows: number;
+  aiModel: string;
 }) {
   await ensureCategoryCalibrationJobsTable();
   const id = makeId();
@@ -73,7 +73,7 @@ export async function createCategoryCalibrationJob(input: {
     inputFileName: input.fileName,
     inputFilePath: input.filePath ?? null,
     totalRows: input.totalRows,
-    aiModel: env.aiModel,
+    aiModel: input.aiModel,
     createdAt: new Date(),
     updatedAt: new Date(),
   });
@@ -95,7 +95,6 @@ export async function markCategoryCalibrationJobRunning(jobId: string) {
       processedRows: 0,
       successRows: 0,
       failedRows: 0,
-      aiModel: env.aiModel,
       resultFileName: "",
       resultFilePath: null,
       rowResultsJson: null,
@@ -112,6 +111,7 @@ export async function updateCategoryCalibrationJobProgress(input: {
   successRows: number;
   failedRows: number;
   summary?: Record<string, unknown>;
+  aiModel?: string;
 }) {
   await ensureCategoryCalibrationJobsTable();
   await db
@@ -122,7 +122,7 @@ export async function updateCategoryCalibrationJobProgress(input: {
       successRows: input.successRows,
       failedRows: input.failedRows,
       summaryJson: input.summary ?? undefined,
-      aiModel: env.aiModel,
+      aiModel: input.aiModel ?? undefined,
     })
     .where(eq(categoryCalibrationJobs.id, input.jobId));
 }
@@ -136,6 +136,7 @@ export async function completeCategoryCalibrationJob(input: {
   resultFilePath: string;
   rowResults?: Array<Record<string, unknown>> | null;
   summary?: Record<string, unknown> | null;
+  aiModel?: string;
 }) {
   await ensureCategoryCalibrationJobsTable();
   await db
@@ -149,7 +150,7 @@ export async function completeCategoryCalibrationJob(input: {
       resultFilePath: input.resultFilePath,
       rowResultsJson: input.rowResults ?? null,
       summaryJson: input.summary ?? null,
-      aiModel: env.aiModel,
+      aiModel: input.aiModel ?? undefined,
       errorReason: null,
       finishedAt: new Date(),
     })

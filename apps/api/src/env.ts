@@ -52,6 +52,10 @@ function resolveAiUnitCost(aiModel: string) {
   };
 }
 
+export function getAiUnitCostForModel(aiModel: string) {
+  return resolveAiUnitCost(aiModel);
+}
+
 export function getAiRuntimeConfig() {
   const cost = resolveAiUnitCost(runtimeAiModel);
   return {

@@ -2,6 +2,8 @@ import * as Select from "@radix-ui/react-select";
 import * as XLSX from "xlsx";
 import { useMemo, useState } from "react";
 import {
+  type AiModel,
+  categoryCalibrationDefaultAiModel,
   categoryCalibrationUploadMaxFileBytes,
   categoryCalibrationUploadMaxRows,
   uploaderOptions,
@@ -180,7 +182,7 @@ function formatSummaryHeadline(processedRows: number, totalRows: number, success
 
 function formatSummaryMeta(summary: Record<string, unknown> | undefined, inputMode: string, totalRows: number) {
   const aiModel = normalizeText(summary?.aiModel);
-  const cost = Number(summary?.estimatedCostUsd || 0);
+  const cost = 0;
   const metaParts = [`模式 ${inputMode}`, `输入 ${totalRows} 行`];
   if (aiModel) metaParts.push(`模型 ${aiModel}`);
   if (Number.isFinite(cost) && cost > 0) metaParts.push(`预估成本 $${cost.toFixed(4)}`);
@@ -197,6 +199,35 @@ function formatEstimatedCost(summary: Record<string, unknown> | undefined) {
   const cost = Number(summary?.estimatedCostUsd || 0);
   if (!Number.isFinite(cost) || cost <= 0) return "-";
   return `$${cost.toFixed(4)}`;
+}
+
+function formatSummaryMetaText(summary: Record<string, unknown> | undefined, inputMode: string, totalRows: number) {
+  const aiModel = normalizeText(summary?.aiModel);
+  const cost = Number(summary?.estimatedCostUsd || 0);
+  const rawRows = Number(summary?.rawRows || 0);
+  const skippedRows = Number(summary?.skippedRows || 0);
+  const metaParts = [`模式 ${inputMode}`, `输入 ${totalRows} 行`];
+  if (rawRows > totalRows) metaParts.push(`原始 ${rawRows} 行`);
+  if (skippedRows > 0) metaParts.push(`已跳过说明行 ${skippedRows} 行`);
+  if (aiModel) metaParts.push(`模型 ${aiModel}`);
+  if (Number.isFinite(cost) && cost > 0) metaParts.push(`预计花费 $${cost.toFixed(4)}`);
+  return metaParts.join(" | ");
+}
+
+function formatFailureReasonList(summary: Record<string, unknown> | undefined) {
+  const reasons = Array.isArray(summary?.failureReasonSamples) ? summary.failureReasonSamples : [];
+  return reasons.map((item) => normalizeText(item)).filter(Boolean);
+}
+
+function formatQueueSummaryMeta(summary: Record<string, unknown> | undefined, _inputMode: string, totalRows: number) {
+  const aiModel = normalizeText(summary?.aiModel);
+  const rawRows = Number(summary?.rawRows || 0);
+  const skippedRows = Number(summary?.skippedRows || 0);
+  const metaParts: string[] = [];
+  if (skippedRows > 0) metaParts.push(`已跳过说明行 ${skippedRows} 行`);
+  if (aiModel) metaParts.push(`模型 ${aiModel}`);
+  if (rawRows > totalRows && skippedRows <= 0) metaParts.push(`原始 ${rawRows} 行`);
+  return metaParts.join(" | ");
 }
 
 const queueStatusText: Record<string, string> = {
@@ -218,6 +249,7 @@ export function CategoryCalibrationPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const utils = trpc.useUtils();
+  const aiConfigQuery = trpc.runtime.aiConfig.get.useQuery();
 
   const previewMutation = trpc.categoryCalibration.preview.useMutation();
   const runMutation = trpc.categoryCalibration.run.useMutation({
@@ -299,6 +331,7 @@ export function CategoryCalibrationPage() {
         note,
         fileName: selectedFile.name,
         uploadId: uploadedFileId,
+        aiModel: (aiConfigQuery.data?.aiModel || categoryCalibrationDefaultAiModel) as AiModel,
       });
       setCurrentJobId(result.jobId);
       setQueuePage(1);
@@ -482,12 +515,12 @@ export function CategoryCalibrationPage() {
               <col style={{ width: "10%" }} />
               <col style={{ width: "12%" }} />
               <col style={{ width: "8%" }} />
-              <col style={{ width: "28%" }} />
+              <col style={{ width: "27%" }} />
               <col style={{ width: "10%" }} />
-              <col style={{ width: "10%" }} />
-              <col style={{ width: "14%" }} />
+              <col style={{ width: "8%" }} />
+              <col style={{ width: "18%" }} />
               <col style={{ width: "6%" }} />
-              <col style={{ width: "6%" }} />
+              <col style={{ width: "5%" }} />
             </colgroup>
             <thead>
               <tr>
@@ -520,7 +553,12 @@ export function CategoryCalibrationPage() {
                         <div className="progress-track" style={{ marginBottom: 6 }}>
                           <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
                         </div>
-                        <div className="muted gg-cleaning-summary-meta">{formatSummaryMeta(row.summary as Record<string, unknown> | undefined, row.inputMode, row.totalRows)}</div>
+                        <div className="muted gg-cleaning-summary-meta">{formatQueueSummaryMeta(row.summary as Record<string, unknown> | undefined, row.inputMode, row.totalRows)}</div>
+                        {formatFailureReasonList(row.summary as Record<string, unknown> | undefined).map((reason) => (
+                          <div key={`${row.id}-${reason}`} className="gg-cleaning-summary-reason">
+                            {reason}
+                          </div>
+                        ))}
                         {row.errorReason ? (
                           <div className="muted" style={{ fontSize: 12, color: "#b42318", marginTop: 6 }}>
                             {row.errorReason}
