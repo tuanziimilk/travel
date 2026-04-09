@@ -36,6 +36,9 @@ const REQUIRED_COLUMNS = [
 ] as const;
 
 const RESULT_HEADERS = ["domain", RESULT_CURRENT_CATEGORY, RESULT_JUDGEMENT, RESULT_PARENT, RESULT_CHILD, RESULT_NOTE] as const;
+const JUDGEMENT_CORRECT = "\u6b63\u786e";
+const JUDGEMENT_INCORRECT = "\u6709\u8bef";
+const JUDGEMENT_NEW = "\u65e0\u5206\u7c7b\u65b0\u589e";
 
 type DictionaryParent = {
   id: string;
@@ -113,7 +116,7 @@ type CalibrationResult = {
 };
 
 const aiOutputSchema = z.object({
-  judgement: z.enum(["???", "???"]).optional().default("???"),
+  judgement: z.enum([JUDGEMENT_CORRECT, JUDGEMENT_INCORRECT]).optional().default(JUDGEMENT_INCORRECT),
   suggestedParentId: z.string().trim().min(1),
   suggestedChildId: z.string().trim().min(1),
   verificationNote: z.string().trim().min(1).max(60).optional().default(""),
@@ -184,10 +187,10 @@ function buildVerificationNote(input: {
   error?: string;
 }) {
   if (input.error) return "\u7ed3\u679c\u672a\u751f\u6210";
-  if (input.judgement === "\u65e0\u5206\u7c7b\u65b0\u589e") {
+  if (input.judgement === JUDGEMENT_NEW) {
     return `\u539f\u65e0\u5206\u7c7b\uff0c\u8865\u5145\u4e3a ${input.suggestedChildName || input.suggestedParentName || "\u5efa\u8bae\u7c7b\u76ee"}`;
   }
-  if (input.judgement === "\u6b63\u786e") {
+  if (input.judgement === JUDGEMENT_CORRECT) {
     return "\u5f53\u524d\u5206\u7c7b\u53ef\u7528";
   }
   const target = input.suggestedChildName || input.suggestedParentName || "\u5efa\u8bae\u7c7b\u76ee";
@@ -233,7 +236,7 @@ function normalizeJudgementValue(value: string) {
   const normalized = value.trim().toLowerCase();
   if (!normalized) return "";
   if (normalized.includes("\u6b63\u786e") || normalized === "yes" || normalized === "correct" || normalized === "right") {
-    return "\u6b63\u786e";
+    return JUDGEMENT_CORRECT;
   }
   if (
     normalized.includes("\u6709\u8bef") ||
@@ -242,7 +245,7 @@ function normalizeJudgementValue(value: string) {
     normalized === "wrong" ||
     normalized === "incorrect"
   ) {
-    return "\u6709\u8bef";
+    return JUDGEMENT_INCORRECT;
   }
   return "";
 }
@@ -272,7 +275,7 @@ function salvageStructuredCandidate(candidate: string) {
   if (!suggestedParentId || !suggestedChildId) return null;
 
   return {
-    judgement: judgement || "\u6709\u8bef",
+    judgement: judgement || JUDGEMENT_INCORRECT,
     suggestedParentId,
     suggestedChildId,
     verificationNote: sanitizeVerificationNote(
@@ -538,7 +541,7 @@ async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictiona
       "Choose the single best parent category and child category for the merchant based on Meta, About, TermName, Domain, and Country.",
       "Use only category ids from the provided taxonomy.",
       "Return JSON only with keys judgement, suggestedParentId, suggestedChildId, verificationNote.",
-      "Judgement means whether the CURRENT category is acceptable. Use exact Chinese values: \u6b63\u786e or \u6709\u8bef.",
+      `Judgement means whether the CURRENT category is acceptable. Use exact Chinese values: ${JUDGEMENT_CORRECT} or ${JUDGEMENT_INCORRECT}.`,
       "verificationNote must be short Chinese text for humans, ideally within 8-20 characters, with no line breaks and no markdown.",
       "If current category is empty, verificationNote should reflect that this is a new category addition.",
       "Taxonomy:",
@@ -581,7 +584,7 @@ async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictiona
         return {
           system: [
             built.system,
-            'Output must be a single JSON object only. Example: {"judgement":"\u6709\u8bef","suggestedParentId":"32","suggestedChildId":"212","verificationNote":"更适合运动服饰"}',
+            `Output must be a single JSON object only. Example: {"judgement":"${JUDGEMENT_INCORRECT}","suggestedParentId":"32","suggestedChildId":"212","verificationNote":"\u66f4\u9002\u5408\u8fd0\u52a8\u670d\u9970"}`,
             "Do not wrap the JSON in markdown.",
             "Do not omit any field.",
             "suggestedParentId and suggestedChildId must be strings containing valid taxonomy ids.",
@@ -601,7 +604,7 @@ async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictiona
                 previousOutput: candidate,
                 errors,
                 requiredFormat: {
-                  judgement: "\u6b63\u786e|\u6709\u8bef",
+                  judgement: `${JUDGEMENT_CORRECT}|${JUDGEMENT_INCORRECT}`,
                   suggestedParentId: "valid parent id as string",
                   suggestedChildId: "valid child id as string",
                   verificationNote: "short Chinese note for humans",
@@ -728,8 +731,8 @@ async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictiona
   }
 
   const computedJudgement =
-    row.currentCategoryId === parent.id || row.currentCategoryId === child.id ? "\u6b63\u786e" : "\u6709\u8bef";
-  const finalJudgement = !hasCurrentCategory(row) ? "\u65e0\u5206\u7c7b\u65b0\u589e" : computedJudgement;
+    row.currentCategoryId === parent.id || row.currentCategoryId === child.id ? JUDGEMENT_CORRECT : JUDGEMENT_INCORRECT;
+  const finalJudgement = !hasCurrentCategory(row) ? JUDGEMENT_NEW : computedJudgement;
   let verificationNote = sanitizeVerificationNote(executed.result.verificationNote || "");
   let usage = executed.usage;
 
@@ -927,7 +930,7 @@ export async function executeCategoryCalibrationChunkRows(input: {
             });
           } else {
             failedRows += 1;
-            const failedJudgementText = hasCurrentCategory(item.row) ? "\u6709\u8bef" : "\u65e0\u5206\u7c7b\u65b0\u589e";
+            const failedJudgementText = hasCurrentCategory(item.row) ? JUDGEMENT_INCORRECT : JUDGEMENT_NEW;
             const outputRow: RowOutput = {
               domain: item.row.domain,
               [RESULT_CURRENT_CATEGORY]: formatCurrentCategoryDisplay(item.row),

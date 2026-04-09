@@ -24,8 +24,8 @@ import {
 
 let loopStarted = false;
 let activeJobId = "";
-const RESULT_DIR = path.resolve(process.cwd(), ".runtime", "category-calibration-results");
-const RESULT_TMP_DIR = path.resolve(process.cwd(), ".runtime", "category-calibration-results-tmp");
+const RESULT_DIR = path.resolve(process.cwd(), "apps", "api", ".runtime", "category-calibration-results");
+const RESULT_TMP_DIR = path.resolve(process.cwd(), "apps", "api", ".runtime", "category-calibration-results-tmp");
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));

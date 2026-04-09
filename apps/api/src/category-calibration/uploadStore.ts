@@ -28,7 +28,7 @@ type StoredChunkFile = {
   rows: CategoryCalibrationUploadRow[];
 };
 
-const UPLOAD_DIR = path.resolve(process.cwd(), ".runtime", "category-calibration-uploads");
+const UPLOAD_DIR = path.resolve(process.cwd(), "apps", "api", ".runtime", "category-calibration-uploads");
 
 function uploadDirOf(uploadId: string) {
   return path.join(UPLOAD_DIR, uploadId);
