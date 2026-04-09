@@ -88,6 +88,29 @@ function downloadTextFile(fileName: string, content: string, mimeType = "text/cs
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+async function downloadFileFromResponse(response: Response, fallbackFileName: string) {
+  if (!response.ok) {
+    let message = `Download failed with status ${response.status}.`;
+    try {
+      const payload = (await response.json()) as { error?: string };
+      if (payload?.error) message = payload.error;
+    } catch {
+      // keep default message
+    }
+    throw new Error(message);
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const encodedNameMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  const plainNameMatch = disposition.match(/filename=\"?([^\";]+)\"?/i);
+  const fileName = encodedNameMatch?.[1]
+    ? decodeURIComponent(encodedNameMatch[1])
+    : plainNameMatch?.[1] || fallbackFileName;
+  const url = URL.createObjectURL(blob);
+  triggerBrowserDownload(url, fileName);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function formatDuration(startedAt?: string | null, finishedAt?: string | null) {
   if (!startedAt) return "-";
   const start = new Date(startedAt);
@@ -231,7 +254,15 @@ export function GgCleaningPage() {
 
   async function downloadJobResult(jobId: string) {
     setError("");
-    triggerBrowserDownload(`${ggCleaningUploadApiBase}/gg-cleaning/jobs/${encodeURIComponent(jobId)}/download`);
+    try {
+      const response = await fetch(`${ggCleaningUploadApiBase}/gg-cleaning/jobs/${encodeURIComponent(jobId)}/download`, {
+        method: "GET",
+        credentials: "include",
+      });
+      await downloadFileFromResponse(response, `gg-cleaning-${jobId}.xlsx`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "下载结果失败，请稍后重试。");
+    }
     return;
     const data = await utils.client.ggCleaning.result.query({ jobId });
     if (!data.xlsxBase64) {
