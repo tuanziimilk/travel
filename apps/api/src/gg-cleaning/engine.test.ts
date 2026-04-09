@@ -3064,6 +3064,102 @@ describe("gg cleaning engine", () => {
     expect(result.debugRows[0].final_value).toBe("");
   });
 
+  it("does not extract birthday values from welcome discounts when the birthday perk has no numeric value", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "20g-birthday",
+        query: "Does linzi.com offer birthday discounts?",
+        country: "UK",
+        language: "en",
+        domain: "linzi.com",
+        term_id: "1646",
+        term_name: "Linzi",
+        subclass: "birthday",
+        bu: "hd",
+        [GG_COLLECTED_STATUS_COLUMN]: "done",
+        [GG_COLLECTED_SOURCE_COLUMN]: "ai_mode",
+        content: [
+          "Linzi Rewards members receive birthday treats and bonus points during their birthday month. New email subscribers can get 10% off their first order with a welcome code.",
+        ],
+        product_urls: ["https://www.linzi.com/pages/rewards"],
+      },
+    ]);
+
+    expect(result.debugRows[0].final_value).toBe("");
+  });
+
+  it("does not extract family values from general member discounts", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "20g-family",
+        query: "Does fc-fanshop.de offer family discounts?",
+        country: "DE",
+        language: "de",
+        domain: "fc-fanshop.de",
+        term_id: "1646a",
+        term_name: "1. FC Koln Fanshop",
+        subclass: "family",
+        bu: "hd",
+        [GG_COLLECTED_STATUS_COLUMN]: "done",
+        [GG_COLLECTED_SOURCE_COLUMN]: "ai_mode",
+        content: [
+          "Der 1. FC Koln bietet keinen spezifischen, pauschalen Familienrabatt im Fanshop an. Als registriertes Mitglied erhalt man jedoch dauerhaft 10% Rabatt auf viele Fanartikel.",
+        ],
+        product_urls: ["https://fc-fanshop.de/"],
+      },
+    ]);
+
+    expect(result.debugRows[0].final_value).toBe("");
+  });
+
+  it("does not extract unrelated senior values when the snippet says no senior discount exists", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "20g-senior-no",
+        query: "Does linksys.com offer senior discounts?",
+        country: "US",
+        language: "en",
+        domain: "linksys.com",
+        term_id: "1646b",
+        term_name: "Linksys",
+        subclass: "senior",
+        bu: "hd",
+        [GG_COLLECTED_STATUS_COLUMN]: "done",
+        [GG_COLLECTED_SOURCE_COLUMN]: "ai_mode",
+        content: [
+          "Linksys does not offer a public senior discount. Some third-party recycle programs mention 15% off at Best Buy, but that is unrelated to Linksys senior pricing.",
+        ],
+        product_urls: ["https://www.linksys.com/"],
+      },
+    ]);
+
+    expect(result.debugRows[0].final_value).toBe("");
+  });
+
+  it("extracts senior percentage ranges when the range is the explicit benefit", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "20g-senior-range",
+        query: "Does monument offer senior discounts?",
+        country: "PL",
+        language: "pl",
+        domain: "monument.example",
+        term_id: "1646c",
+        term_name: "monument",
+        subclass: "senior",
+        bu: "hd",
+        [GG_COLLECTED_STATUS_COLUMN]: "done",
+        [GG_COLLECTED_SOURCE_COLUMN]: "ai_mode",
+        content: [
+          "Senior customers receive a senior discount that typically ranges from 30-50% off ticket prices. Additional travel notes do not change the main senior discount range.",
+        ],
+        product_urls: ["https://www.monument.example/senior"],
+      },
+    ]);
+
+    expect(result.debugRows[0].final_value).toBe("30%-50%");
+  });
+
   it("parses JSON string arrays for content and product_urls in JSON uploads", () => {
     const result = runEvalWithCollectedRows([
       {

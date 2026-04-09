@@ -2361,6 +2361,7 @@ const VALUE_SKIP_FACT_TYPES = new Set(["return", "price guarantee"]);
 const VALUE_REQUIRE_FACT_SIGNAL = new Set([
   "aaa",
   "app",
+  "birthday",
   "employee",
   "existing customer",
   "family",
@@ -2369,6 +2370,7 @@ const VALUE_REQUIRE_FACT_SIGNAL = new Set([
   "military",
   "newsletter/first order/sign up/",
   "referral",
+  "senior",
 ]);
 
 const VALUE_CONTEXT_PATTERNS = [
@@ -2422,6 +2424,29 @@ const VALUE_POINTS_ONLY_SKIP_PATTERNS = [
   /\bpoints?\b.{0,20}\bper\b.{0,10}(?:\$|USD|GBP|EUR|PLN|KRW)?\s*[0-9]/i,
   /\b(?:birthday|loyalty)\b.{0,30}\bpoints?\b/i,
   /\bpoints?\b.{0,30}\b(?:earned|earn|redeem(?:able)?)\b/i,
+];
+
+const VALUE_FACT_SPECIFIC_SKIP_PATTERNS: Partial<Record<string, RegExp[]>> = {
+  birthday: [
+    /\b(?:newsletter|welcome|sign[ -]?up|signup|first order|first purchase|subscriber)\b/i,
+    /\b(?:member|membership|loyalty|club)\b.{0,30}\b(?:discount|benefit|perk|reward)\b/i,
+  ],
+  family: [
+    /\bikea family\b/i,
+    /\b(?:member|membership|loyalty|club|mitglied(?:er)?|mitgliedschaft)\b.{0,35}\b(?:discount|benefit|perk|offer|rabatt|vorteil)\b/i,
+    /\bmitgliederrabatt\b/i,
+    /\bkeinen?\b.{0,35}\b(?:spezifischen|pauschalen)\b.{0,20}\bfamilienrabatt\b/i,
+    /\bkein(?:en|e|er|em)?\b.{0,80}\bfamilienrabatt\b/i,
+  ],
+  senior: [
+    /\b(?:newsletter|welcome|sign[ -]?up|signup|first order|first purchase)\b/i,
+    /\b(?:best buy|trade-in|recycle|recycling)\b/i,
+  ],
+};
+
+const SENIOR_RANGE_VALUE_PATTERNS = [
+  /\b(?:senior|senioren\w*|seniora\w*|seniorzy|older adults?|personas mayores)\b[^.!?]{0,160}?([0-9]{1,2})\s*(?:-|to|–|—)\s*([0-9]{1,2})\s*%/i,
+  /([0-9]{1,2})\s*(?:-|to|–|—)\s*([0-9]{1,2})\s*%[^.!?]{0,160}\b(?:senior|senioren\w*|seniora\w*|seniorzy|older adults?|personas mayores)\b/i,
 ];
 
 const APP_VALUE_POSITIVE_PATTERNS = [
@@ -2484,6 +2509,21 @@ function extractValue(factType: string, existence: GgCleaningExistence, snippet:
   const text = cleanSnippetText(snippet);
   if (!text) return "";
   if (hasPattern(text, VALUE_HARD_EMPTY_PATTERNS[factType] || [])) return "";
+  if (
+    factType === "senior" &&
+    (hasExplicitFactTerm(text, factType) || includesFallback(text, FACT_FALLBACK_CLUES[factType]?.positive))
+  ) {
+    const seniorRangeInText = SENIOR_RANGE_VALUE_PATTERNS
+      .map((pattern) => {
+        const match = pattern.exec(text);
+        if (match) pattern.lastIndex = 0;
+        return match;
+      })
+      .find(Boolean);
+    if (seniorRangeInText?.[1] && seniorRangeInText?.[2]) {
+      return normalizeValue(`${seniorRangeInText[1]}%-${seniorRangeInText[2]}%`);
+    }
+  }
   for (const candidate of buildValueCandidateTexts(factType, text)) {
     if (!candidate) continue;
     if (!hasPattern(candidate, VALUE_CONTEXT_PATTERNS)) continue;
@@ -2496,6 +2536,20 @@ function extractValue(factType: string, existence: GgCleaningExistence, snippet:
       !hasExplicitFactTerm(candidate, factType) &&
       !includesFallback(candidate, FACT_FALLBACK_CLUES[factType]?.positive)
     ) continue;
+    if (hasPattern(candidate, VALUE_FACT_SPECIFIC_SKIP_PATTERNS[factType] || [])) continue;
+
+    if (factType === "senior") {
+      const seniorRangeMatch = SENIOR_RANGE_VALUE_PATTERNS
+        .map((pattern) => {
+          const match = pattern.exec(candidate);
+          if (match) pattern.lastIndex = 0;
+          return match;
+        })
+        .find(Boolean);
+      if (seniorRangeMatch?.[1] && seniorRangeMatch?.[2]) {
+        return normalizeValue(`${seniorRangeMatch[1]}%-${seniorRangeMatch[2]}%`);
+      }
+    }
 
     if (factType === "app") {
       const appMatch = APP_VALUE_POSITIVE_PATTERNS
