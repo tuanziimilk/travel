@@ -1,8 +1,8 @@
 import * as Accordion from "@radix-ui/react-accordion";
 import * as Select from "@radix-ui/react-select";
-import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { translationDefaultAiModel, type AiModel, type ModuleId } from "@about-demo/trpc";
+import { categoryCalibrationDefaultAiModel, translationDefaultAiModel, type AiModel, type ModuleId } from "@about-demo/trpc";
 import { trpc } from "./lib/trpc";
 
 const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage").then((module) => ({ default: module.AnalyticsPage })));
@@ -12,23 +12,45 @@ const FaqManualPage = lazy(() => import("./pages/FaqManualPage").then((module) =
 const FaqOutputHistoryPage = lazy(() => import("./pages/FaqOutputHistoryPage").then((module) => ({ default: module.FaqOutputHistoryPage })));
 const FaqOutputPage = lazy(() => import("./pages/FaqOutputPage").then((module) => ({ default: module.FaqOutputPage })));
 const FaqUploadPage = lazy(() => import("./pages/FaqUploadPage").then((module) => ({ default: module.FaqUploadPage })));
+const GgCleaningPage = lazy(() => import("./pages/GgCleaningPage").then((module) => ({ default: module.GgCleaningPage })));
+const CategoryCalibrationPage = lazy(() =>
+  import("./pages/CategoryCalibrationPage").then((module) => ({ default: module.CategoryCalibrationPage })),
+);
 const HistoryPage = lazy(() => import("./pages/HistoryPage").then((module) => ({ default: module.HistoryPage })));
 const ManualPage = lazy(() => import("./pages/ManualPage").then((module) => ({ default: module.ManualPage })));
-const PostlaunchSamplingPage = lazy(() => import("./pages/PostlaunchSamplingPage").then((module) => ({ default: module.PostlaunchSamplingPage })));
-const PrelaunchSamplingPage = lazy(() => import("./pages/PrelaunchSamplingPage").then((module) => ({ default: module.PrelaunchSamplingPage })));
+const PostlaunchSamplingPage = lazy(() =>
+  import("./pages/PostlaunchSamplingPage").then((module) => ({ default: module.PostlaunchSamplingPage })),
+);
+const PrelaunchSamplingPage = lazy(() =>
+  import("./pages/PrelaunchSamplingPage").then((module) => ({ default: module.PrelaunchSamplingPage })),
+);
 const SkillConfigPage = lazy(() => import("./pages/SkillConfigPage").then((module) => ({ default: module.SkillConfigPage })));
-const TranslationBatchPage = lazy(() => import("./pages/TranslationBatchPage").then((module) => ({ default: module.TranslationBatchPage })));
-const TranslationTextPage = lazy(() => import("./pages/TranslationTextPage").then((module) => ({ default: module.TranslationTextPage })));
+const TranslationBatchPage = lazy(() =>
+  import("./pages/TranslationBatchPage").then((module) => ({ default: module.TranslationBatchPage })),
+);
+const TranslationTextPage = lazy(() =>
+  import("./pages/TranslationTextPage").then((module) => ({ default: module.TranslationTextPage })),
+);
 const UploadPage = lazy(() => import("./pages/UploadPage").then((module) => ({ default: module.UploadPage })));
 
-type WorkspaceId = "quality" | "output" | "sampling-pre" | "sampling-post" | "skills" | "translation";
+type WorkspaceId =
+  | "quality"
+  | "output"
+  | "sampling-pre"
+  | "sampling-post"
+  | "skills"
+  | "translation"
+  | "gg-cleaning"
+  | "category-calibration";
 type QualityPageId = "manual" | "upload" | "history" | "analytics";
 type OutputPageId = "faq" | "history";
 type TranslationPageId = "batch" | "text";
-type AppPageId = QualityPageId | OutputPageId | TranslationPageId;
+type AppPageId = QualityPageId | OutputPageId | TranslationPageId | "batch";
 
 function sectionForWorkspace(workspaceId: WorkspaceId) {
   if (workspaceId === "sampling-pre" || workspaceId === "sampling-post") return "sampling";
+  if (workspaceId === "category-calibration") return "other-tools";
+  if (workspaceId === "gg-cleaning") return "other-tools";
   return workspaceId;
 }
 
@@ -85,15 +107,21 @@ function parseLocation(path: string): {
     return { workspaceId, moduleId: "faq", pageId };
   }
 
-  return { workspaceId, moduleId: "faq", pageId: "manual" };
+  if (workspaceId === "gg-cleaning" || workspaceId === "category-calibration") {
+    return { workspaceId, moduleId: "faq", pageId: "batch" };
+  }
+
+  return { workspaceId: "quality", moduleId: "faq", pageId: "manual" };
 }
 
-function workspaceLabel(workspaceId: WorkspaceId) {
+function workspaceLabelNext(workspaceId: WorkspaceId) {
   if (workspaceId === "quality") return "内容质检";
   if (workspaceId === "output") return "内容输出";
   if (workspaceId === "sampling-pre") return "上线前抽检";
   if (workspaceId === "sampling-post") return "上线后抽检";
   if (workspaceId === "translation") return "翻译工具";
+  if (workspaceId === "gg-cleaning") return "GG采集数据清洗工具";
+  if (workspaceId === "category-calibration") return "Category 校准工具";
   return "Skills 配置";
 }
 
@@ -148,8 +176,21 @@ export default function App() {
     },
   });
   const isTranslationWorkspace = workspaceId === "translation";
-  const currentModelValue = isTranslationWorkspace ? translationDefaultAiModel : aiConfigQuery.data?.aiModel || "";
-  const modelOptions = isTranslationWorkspace ? [translationDefaultAiModel] : aiConfigQuery.data?.availableModels || [];
+  const isGgCleaningWorkspace = workspaceId === "gg-cleaning";
+  const isCategoryCalibrationWorkspace = workspaceId === "category-calibration";
+  const categoryDefaultAppliedRef = useRef(false);
+  const currentModelValue = isGgCleaningWorkspace
+    ? "无需AI"
+    : isTranslationWorkspace
+      ? translationDefaultAiModel
+      : isCategoryCalibrationWorkspace
+        ? aiConfigQuery.data?.aiModel || categoryCalibrationDefaultAiModel
+      : aiConfigQuery.data?.aiModel || "";
+  const modelOptions = isGgCleaningWorkspace
+    ? ["无需AI"]
+    : isTranslationWorkspace
+      ? [translationDefaultAiModel]
+      : aiConfigQuery.data?.availableModels || [];
 
   const handleModelChange = (value: string) => {
     if (!value || aiConfigSetMutation.isPending) return;
@@ -161,15 +202,41 @@ export default function App() {
     setOpenSections((current) => (current.includes(activeSection) ? current : [...current, activeSection]));
   }, [workspaceId]);
 
+  useEffect(() => {
+    if (!isCategoryCalibrationWorkspace) {
+      categoryDefaultAppliedRef.current = false;
+      return;
+    }
+    if (categoryDefaultAppliedRef.current) return;
+    if (aiConfigQuery.isLoading || aiConfigSetMutation.isPending) return;
+    const current = aiConfigQuery.data?.aiModel || "";
+    if (current === categoryCalibrationDefaultAiModel) {
+      categoryDefaultAppliedRef.current = true;
+      return;
+    }
+    categoryDefaultAppliedRef.current = true;
+    aiConfigSetMutation.mutate({ aiModel: categoryCalibrationDefaultAiModel as AiModel });
+  }, [
+    aiConfigQuery.data?.aiModel,
+    aiConfigQuery.isLoading,
+    aiConfigSetMutation,
+    aiConfigSetMutation.isPending,
+    isCategoryCalibrationWorkspace,
+  ]);
+
   const renderPage = () => {
     if (workspaceId === "output") {
       if (pageId === "history") return <FaqOutputHistoryPage />;
       return <FaqOutputPage />;
     }
+
     if (workspaceId === "translation") {
       if (pageId === "text") return <TranslationTextPage />;
       return <TranslationBatchPage />;
     }
+
+    if (workspaceId === "gg-cleaning") return <GgCleaningPage />;
+    if (workspaceId === "category-calibration") return <CategoryCalibrationPage />;
     if (workspaceId === "sampling-pre") return <PrelaunchSamplingPage />;
     if (workspaceId === "sampling-post") return <PostlaunchSamplingPage />;
     if (workspaceId === "skills") return <SkillConfigPage moduleId={moduleId} />;
@@ -236,6 +303,13 @@ export default function App() {
                 <NavLink href="/skills/faq" label="Skills 管理面板" activePrefix="/skills/" />
               </div>
             </SidebarGroup>
+
+            <SidebarGroup value="other-tools" title="其他工具">
+              <div className="sidebar-subnav">
+                <NavLink href="/gg-cleaning" label="GG采集数据清洗工具" activePrefix="/gg-cleaning" />
+                <NavLink href="/category-calibration" label="Category校准工具" activePrefix="/category-calibration" />
+              </div>
+            </SidebarGroup>
           </Accordion.Root>
         </div>
       </aside>
@@ -250,7 +324,7 @@ export default function App() {
                 <Select.Root
                   value={currentModelValue}
                   onValueChange={handleModelChange}
-                  disabled={isTranslationWorkspace || aiConfigQuery.isLoading || aiConfigSetMutation.isPending}
+                  disabled={isTranslationWorkspace || isGgCleaningWorkspace || aiConfigQuery.isLoading || aiConfigSetMutation.isPending}
                 >
                   <Select.Trigger className="select-trigger model-switch-trigger" aria-label="runtime-ai-model-select">
                     <Select.Value placeholder="选择模型" />
@@ -268,7 +342,7 @@ export default function App() {
                   </Select.Portal>
                 </Select.Root>
               </div>
-              <span className="module-chip">{workspaceLabel(workspaceId)}</span>
+              <span className="module-chip">{workspaceLabelNext(workspaceId)}</span>
             </div>
           </section>
 

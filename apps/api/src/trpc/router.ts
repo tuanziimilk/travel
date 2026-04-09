@@ -9,6 +9,11 @@ import {
   batchResultInputSchema,
   batchRetryInputSchema,
   batchStartInputSchema,
+  categoryCalibrationPreviewInputSchema,
+  categoryCalibrationQueueInputSchema,
+  categoryCalibrationResultInputSchema,
+  categoryCalibrationRunInputSchema,
+  categoryCalibrationStatusInputSchema,
   batchStatusInputSchema,
   generationFrameworkGetInputSchema,
   generationHistoryExportInputSchema,
@@ -18,6 +23,11 @@ import {
   generationRetryInputSchema,
   generationStatusInputSchema,
   generationRunInputSchema,
+  ggCleaningPreviewInputSchema,
+  ggCleaningQueueInputSchema,
+  ggCleaningResultInputSchema,
+  ggCleaningRunInputSchema,
+  ggCleaningStatusInputSchema,
   manualScoreInputSchema,
   manualFaqScoreInputSchema,
   runtimeAiConfigSetInputSchema,
@@ -58,7 +68,15 @@ import {
   toCsv,
 } from "../jobs/ingestWorker";
 import { env, getAiRuntimeConfig, setAiRuntimeModel } from "../env";
+import {
+  getCategoryCalibrationJobResult,
+  getCategoryCalibrationJobStatus,
+  listCategoryCalibrationJobs,
+} from "../category-calibration/jobStore";
+import { previewCategoryCalibration, startCategoryCalibrationJob } from "../category-calibration/worker";
 import { retryFaqOutputGeneration, startFaqOutputGeneration } from "../generation/faqOutputGenerator";
+import { getGgCleaningJobResult, getGgCleaningJobStatus, listGgCleaningJobs } from "../gg-cleaning/jobStore";
+import { previewGgCleaning, startGgCleaningJob } from "../gg-cleaning/worker";
 import {
   exportGenerationHistory,
   getGenerationHistorySummary,
@@ -381,6 +399,40 @@ export const appRouter = t.router({
     }),
     result: t.procedure.input(translationResultInputSchema).query(({ input }) => {
       return getTranslationJobResult(input.jobId);
+    }),
+  }),
+  ggCleaning: t.router({
+    preview: t.procedure.input(ggCleaningPreviewInputSchema).mutation(({ input }) => {
+      return previewGgCleaning(input);
+    }),
+    run: t.procedure.input(ggCleaningRunInputSchema).mutation(({ input }) => {
+      return startGgCleaningJob(input);
+    }),
+    queue: t.procedure.input(ggCleaningQueueInputSchema).query(({ input }) => {
+      return listGgCleaningJobs(input.page, input.pageSize);
+    }),
+    status: t.procedure.input(ggCleaningStatusInputSchema).query(({ input }) => {
+      return getGgCleaningJobStatus(input.jobId);
+    }),
+    result: t.procedure.input(ggCleaningResultInputSchema).query(({ input }) => {
+      return getGgCleaningJobResult(input.jobId);
+    }),
+  }),
+  categoryCalibration: t.router({
+    preview: t.procedure.input(categoryCalibrationPreviewInputSchema).mutation(({ input }) => {
+      return previewCategoryCalibration(input);
+    }),
+    run: t.procedure.input(categoryCalibrationRunInputSchema).mutation(({ input }) => {
+      return startCategoryCalibrationJob(input);
+    }),
+    queue: t.procedure.input(categoryCalibrationQueueInputSchema).query(({ input }) => {
+      return listCategoryCalibrationJobs(input.page, input.pageSize);
+    }),
+    status: t.procedure.input(categoryCalibrationStatusInputSchema).query(({ input }) => {
+      return getCategoryCalibrationJobStatus(input.jobId);
+    }),
+    result: t.procedure.input(categoryCalibrationResultInputSchema).query(({ input }) => {
+      return getCategoryCalibrationJobResult(input.jobId);
     }),
   }),
 });

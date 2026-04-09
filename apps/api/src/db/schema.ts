@@ -188,6 +188,62 @@ export const translationJobs = mysqlTable("translation_jobs", {
     .$onUpdateFn(() => new Date()),
 });
 
+export const ggCleaningJobs = mysqlTable("gg_cleaning_jobs", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  uploader: varchar("uploader", { length: 32 }).notNull(),
+  note: varchar("note", { length: 255 }).notNull().default(""),
+  status: varchar("status", { length: 32 }).notNull().default("queued"),
+  inputMode: varchar("input_mode", { length: 32 }).notNull().default("raw"),
+  inputFileName: varchar("input_file_name", { length: 255 }).notNull().default(""),
+  inputFileBase64: longtext("input_file_base64"),
+  inputFilePath: varchar("input_file_path", { length: 512 }),
+  totalRows: int("total_rows").notNull().default(0),
+  groupedRows: int("grouped_rows").notNull().default(0),
+  processedRows: int("processed_rows").notNull().default(0),
+  successRows: int("success_rows").notNull().default(0),
+  failedRows: int("failed_rows").notNull().default(0),
+  summaryJson: json("summary_json"),
+  errorReason: varchar("error_reason", { length: 512 }),
+  resultFileName: varchar("result_file_name", { length: 255 }).notNull().default(""),
+  resultFilePath: varchar("result_file_path", { length: 512 }),
+  resultFileBase64: longtext("result_file_base64"),
+  rowResultsJson: json("row_results_json"),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  finishedAt: timestamp("finished_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .notNull()
+    .$onUpdateFn(() => new Date()),
+});
+
+export const categoryCalibrationJobs = mysqlTable("category_calibration_jobs", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  uploader: varchar("uploader", { length: 32 }).notNull(),
+  note: varchar("note", { length: 255 }).notNull().default(""),
+  status: varchar("status", { length: 32 }).notNull().default("queued"),
+  inputMode: varchar("input_mode", { length: 32 }).notNull().default("xlsx"),
+  inputFileName: varchar("input_file_name", { length: 255 }).notNull().default(""),
+  inputFilePath: varchar("input_file_path", { length: 512 }),
+  totalRows: int("total_rows").notNull().default(0),
+  processedRows: int("processed_rows").notNull().default(0),
+  successRows: int("success_rows").notNull().default(0),
+  failedRows: int("failed_rows").notNull().default(0),
+  aiModel: varchar("ai_model", { length: 100 }).notNull().default(""),
+  summaryJson: json("summary_json"),
+  errorReason: varchar("error_reason", { length: 512 }),
+  resultFileName: varchar("result_file_name", { length: 255 }).notNull().default(""),
+  resultFilePath: varchar("result_file_path", { length: 512 }),
+  rowResultsJson: json("row_results_json"),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  finishedAt: timestamp("finished_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .notNull()
+    .$onUpdateFn(() => new Date()),
+});
+
 export const prelaunchSamplingBatches = mysqlTable("prelaunch_sampling_batches", {
   id: varchar("id", { length: 36 }).primaryKey(),
   sourceBatchId: varchar("source_batch_id", { length: 36 }),
