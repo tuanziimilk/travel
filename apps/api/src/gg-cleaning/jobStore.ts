@@ -1,6 +1,7 @@
 import { desc, eq, gte } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { readFile } from "node:fs/promises";
+import * as XLSX from "xlsx";
 import { db } from "../db/client";
 import { ggCleaningJobs } from "../db/schema";
 import { makeId } from "../utils/id";
@@ -301,5 +302,35 @@ export async function getGgCleaningJobDownloadMeta(jobId: string) {
     fileName: row.resultFileName || `gg-cleaning-${row.id}.xlsx`,
     resultFilePath: row.resultFilePath || "",
     resultFileBase64: row.resultFileBase64 || "",
+  };
+}
+
+function buildMerchantOnlyWorkbookBuffer(fileBuffer: Buffer) {
+  const workbook = XLSX.read(fileBuffer, { type: "buffer" });
+  const merchantSheet = workbook.Sheets.merchant_output || workbook.Sheets[workbook.SheetNames[0] || ""];
+  if (!merchantSheet) throw new Error("GG result workbook does not contain merchant_output.");
+  const trimmedWorkbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(trimmedWorkbook, merchantSheet, "merchant_output");
+  return XLSX.write(trimmedWorkbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+}
+
+export async function getGgCleaningJobDownloadPayload(jobId: string, options?: { includeDebug?: boolean }) {
+  const row = await getGgCleaningJobById(jobId);
+  const includeDebug = Boolean(options?.includeDebug);
+  const fileNameBase = (row.resultFileName || `gg-cleaning-${row.id}.xlsx`).replace(/\.xlsx$/i, "");
+  const preferredFileName = includeDebug ? `${fileNameBase}.xlsx` : `${fileNameBase}-merchant-only.xlsx`;
+  let fileBuffer: Buffer | null = null;
+  if (row.resultFilePath) {
+    fileBuffer = await readFile(row.resultFilePath);
+  } else if (row.resultFileBase64) {
+    fileBuffer = Buffer.from(row.resultFileBase64, "base64");
+  }
+  if (!fileBuffer) {
+    throw new Error(row.errorReason || "Current task has no downloadable result yet.");
+  }
+  return {
+    fileName: preferredFileName,
+    contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: includeDebug ? fileBuffer : buildMerchantOnlyWorkbookBuffer(fileBuffer),
   };
 }

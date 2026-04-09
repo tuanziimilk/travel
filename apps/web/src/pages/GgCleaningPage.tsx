@@ -161,6 +161,7 @@ export function GgCleaningPage() {
   const queuePageSize = 8;
   const [uploader, setUploader] = useState<(typeof uploaderOptions)[number]>("Ella");
   const [note, setNote] = useState("");
+  const [includeDebugSheet, setIncludeDebugSheet] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadedFileId, setUploadedFileId] = useState("");
   const [uploadedChunkCount, setUploadedChunkCount] = useState(0);
@@ -259,7 +260,9 @@ export function GgCleaningPage() {
   async function downloadJobResult(jobId: string) {
     setError("");
     try {
-      const response = await fetch(`${ggCleaningUploadApiBase}/gg-cleaning/jobs/${encodeURIComponent(jobId)}/download`, {
+      const url = new URL(`${ggCleaningUploadApiBase}/gg-cleaning/jobs/${encodeURIComponent(jobId)}/download`);
+      if (includeDebugSheet) url.searchParams.set("includeDebug", "1");
+      const response = await fetch(url.toString(), {
         method: "GET",
         credentials: "include",
       });
@@ -404,11 +407,17 @@ export function GgCleaningPage() {
               <p className="muted">支持查看最近两周的 GG 清洗任务，并实时查看进度与下载结果。</p>
             </div>
           </div>
-          <button className="btn-ghost output-inline-btn" type="button" onClick={() => void queueQuery.refetch()}>
+          <div className="upload-actions" style={{ gap: 12, alignItems: "center" }}>
+            <label className="muted" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <input type="checkbox" checked={includeDebugSheet} onChange={(event) => setIncludeDebugSheet(event.target.checked)} />
+              Include `debug_output` (sheet2)
+            </label>
+            <button className="btn-ghost output-inline-btn" type="button" onClick={() => void queueQuery.refetch()}>
             刷新列表
           </button>
         </div>
 
+        </div>
         <div className="table-scroll faq-output-table-scroll translation-queue-scroll">
           <table className="history-table queue-table gg-cleaning-queue-table">
             <colgroup>

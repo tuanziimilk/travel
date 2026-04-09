@@ -10,7 +10,7 @@ import {
   completeCategoryCalibrationUpload,
   initCategoryCalibrationUpload,
 } from "./category-calibration/uploadStore";
-import { getGgCleaningJobDownloadMeta } from "./gg-cleaning/jobStore";
+import { getGgCleaningJobDownloadPayload } from "./gg-cleaning/jobStore";
 import { appendGgCleaningUploadChunk, appendGgCleaningUploadFileChunk, completeGgCleaningUpload, initGgCleaningUpload } from "./gg-cleaning/uploadStore";
 
 const app = express();
@@ -74,18 +74,12 @@ app.get("/gg-cleaning/jobs/:jobId/download", async (req, res) => {
   try {
     const jobId = String(req.params.jobId || "").trim();
     if (!jobId) throw new Error("jobId is required.");
-    const result = await getGgCleaningJobDownloadMeta(jobId);
-    if (!result.resultFilePath && !result.resultFileBase64) {
-      throw new Error(result.errorReason || "Current task has no downloadable result yet.");
-    }
+    const includeDebug = String(req.query.includeDebug || "").trim() === "1";
+    const result = await getGgCleaningJobDownloadPayload(jobId, { includeDebug });
     const safeFileName = path.basename(result.fileName || `gg-cleaning-${jobId}.xlsx`);
-    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Type", result.contentType);
     res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(safeFileName)}`);
-    if (result.resultFilePath) {
-      res.sendFile(path.resolve(result.resultFilePath));
-      return;
-    }
-    res.send(Buffer.from(result.resultFileBase64, "base64"));
+    res.send(result.buffer);
   } catch (error) {
     res.status(404).json({ error: error instanceof Error ? error.message : String(error) });
   }

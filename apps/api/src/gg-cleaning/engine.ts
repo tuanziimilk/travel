@@ -1632,7 +1632,8 @@ function cleanSnippetText(value: string) {
     .replace(/"\s*\]$/, "")
     .replace(/\\n/g, "\n")
     .replace(/\\+"/g, "\"")
-    .replace(/<[^>]+>/g, " ")
+    // Strip actual HTML tags without deleting business text like <ID.me> or <10%>.
+    .replace(/<\/?(?:[a-z][a-z0-9-]*)(?:\s+[^<>]*)?>/gi, " ")
     .replace(/\{Link:\s*/gi, "")
     .replace(/\s*(All anzeigen|Alle anzeigen|View all|Mostrar todo|Mostrar mais|모두 표시|了解详情|Mehr anzeigen).*$/i, "")
     .replace(/\s*(Would you like|Do you have|Are you looking for|Se recomienda revisar|AI answers can|AI 回答可能包含错误|AI 답변에 오류가 있을 수 있습니다).*$/i, "")
@@ -3354,15 +3355,21 @@ type RawRowsSummary = {
   groups?: Map<string, GroupAccumulator>;
 };
 
+type RawRowsProgressCallback = (progress: {
+  processedInputRows: number;
+  discoveredGroups: number;
+}) => void | Promise<void>;
+
 async function summarizeRawRows(
   rawRows: AsyncIterable<Record<string, unknown>>,
-  options?: { includeGroups?: boolean },
+  options?: { includeGroups?: boolean; onProgress?: RawRowsProgressCallback },
 ): Promise<RawRowsSummary> {
   const columnsSet = new Set<string>();
   const sampleRawRows: Array<Record<string, unknown>> = [];
   const groupKeys = new Set<string>();
   const groups = options?.includeGroups ? new Map<string, GroupAccumulator>() : undefined;
   let totalRows = 0;
+  let lastProgressReportedAt = 0;
 
   for await (const rawRow of rawRows) {
     for (const key of Object.keys(rawRow)) {
@@ -3378,6 +3385,16 @@ async function summarizeRawRows(
     }
     groupKeys.add(groupKeyOf(inputRow));
     if (groups) addInputRowToGroups(groups, inputRow);
+    if (options?.onProgress) {
+      const now = Date.now();
+      if (totalRows <= 20 || totalRows % 500 === 0 || now - lastProgressReportedAt >= 800) {
+        lastProgressReportedAt = now;
+        await options.onProgress({
+          processedInputRows: totalRows,
+          discoveredGroups: groupKeys.size,
+        });
+      }
+    }
   }
 
   return {
@@ -3398,8 +3415,16 @@ export async function previewGgCleaningFileByPath(input: { fileName: string; fil
   return buildPreviewFromFile(input.filePath, input.fileName);
 }
 
-export async function executeGgCleaningByPath(input: { fileName: string; filePath: string }) {
-  const summary = await summarizeRawRows(iterateRawRowsFromFile(input.filePath, input.fileName), { includeGroups: true });
+export async function executeGgCleaningByPath(
+  input: { fileName: string; filePath: string },
+  options?: {
+    onProgress?: RawRowsProgressCallback;
+  },
+) {
+  const summary = await summarizeRawRows(iterateRawRowsFromFile(input.filePath, input.fileName), {
+    includeGroups: true,
+    onProgress: options?.onProgress,
+  });
   const preview = buildGgCleaningPreviewFromMetadata(summary);
   const decisions = buildDecisionRowsFromGroups(summary.groups || new Map<string, GroupAccumulator>());
   const merchantRows = toMerchantRows(decisions);
@@ -3440,9 +3465,11 @@ export async function executeGgCleaningChunkRows(input: {
   groupedRows: number;
   chunkCount: number;
   oversizedGroupCount?: number;
+  onProgress?: RawRowsProgressCallback;
 }) {
   const groups = new Map<string, GroupAccumulator>();
   let processedRows = 0;
+  let lastProgressReportedAt = 0;
 
   for await (const rawRows of input.rawRowChunks) {
     for (const rawRow of rawRows) {
@@ -3450,6 +3477,16 @@ export async function executeGgCleaningChunkRows(input: {
       if (!inputRow) continue;
       processedRows += 1;
       addInputRowToGroups(groups, inputRow);
+      if (input.onProgress) {
+        const now = Date.now();
+        if (processedRows <= 20 || processedRows % 500 === 0 || now - lastProgressReportedAt >= 800) {
+          lastProgressReportedAt = now;
+          await input.onProgress({
+            processedInputRows: processedRows,
+            discoveredGroups: groups.size,
+          });
+        }
+      }
     }
   }
 

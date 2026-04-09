@@ -1,7 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { categoryCalibrationUploadMaxFileBytes } from "@about-demo/trpc";
 import { makeId } from "../utils/id";
+import { resolveApiRuntimeDir } from "../utils/runtimePath";
 
 export type CategoryCalibrationUploadRow = Record<string, unknown>;
 
@@ -28,10 +30,15 @@ type StoredChunkFile = {
   rows: CategoryCalibrationUploadRow[];
 };
 
-const UPLOAD_DIR = path.resolve(process.cwd(), "apps", "api", ".runtime", "category-calibration-uploads");
+const UPLOAD_DIR = path.join(resolveApiRuntimeDir(), "category-calibration-uploads");
+const LEGACY_UPLOAD_DIR = path.resolve(process.cwd(), ".runtime", "category-calibration-uploads");
 
 function uploadDirOf(uploadId: string) {
-  return path.join(UPLOAD_DIR, uploadId);
+  const primary = path.join(UPLOAD_DIR, uploadId);
+  if (existsSync(primary)) return primary;
+  const legacy = path.join(LEGACY_UPLOAD_DIR, uploadId);
+  if (existsSync(legacy)) return legacy;
+  return primary;
 }
 
 function metaPathOf(uploadId: string) {

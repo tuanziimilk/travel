@@ -1419,6 +1419,25 @@ describe("gg cleaning engine", () => {
     expect(result.debugRows[0].final_supported).toBe("no");
   });
 
+  it("preserves angle-bracketed business text in snippets instead of treating it as html", () => {
+    const result = runEval([
+      {
+        term_id: "11a3",
+        country: "UK",
+        term_name: "Inwild",
+        domain: "inwild.co.uk",
+        subclass: "military",
+        source_type: "aimode",
+        snippet:
+          "Inwild does not offer a standing military discount, but verified members can sometimes receive up to <10%> off through <ID.me> or similar partner verification flows.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_snippet).toContain("<10%>");
+    expect(result.debugRows[0].final_snippet).toContain("<ID.me>");
+    expect(result.debugRows[0].aimode_snippet).toContain("<10%>");
+  });
+
   it("keeps military unknown when the snippet talks about other military shops rather than the merchant", () => {
     const result = runEval([
       {
