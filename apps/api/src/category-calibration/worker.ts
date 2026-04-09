@@ -2,7 +2,6 @@ import { categoryCalibrationDefaultAiModel, type AiModel, type Uploader } from "
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import * as XLSX from "xlsx";
-import { resolveApiRuntimeDir } from "../utils/runtimePath";
 import {
   countProcessableCategoryCalibrationRows,
   executeCategoryCalibrationChunkRows,
@@ -25,9 +24,8 @@ import {
 
 let loopStarted = false;
 let activeJobId = "";
-const API_RUNTIME_DIR = resolveApiRuntimeDir();
-const RESULT_DIR = path.join(API_RUNTIME_DIR, "category-calibration-results");
-const RESULT_TMP_DIR = path.join(API_RUNTIME_DIR, "category-calibration-results-tmp");
+const RESULT_DIR = path.resolve(process.cwd(), "apps", "api", ".runtime", "category-calibration-results");
+const RESULT_TMP_DIR = path.resolve(process.cwd(), "apps", "api", ".runtime", "category-calibration-results-tmp");
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
