@@ -1,5 +1,6 @@
 import { createWriteStream, type WriteStream } from "node:fs";
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 import * as XLSX from "xlsx";
 import { z } from "zod";
 import { categoryCalibrationUploadMaxRows } from "@about-demo/trpc";
@@ -7,8 +8,10 @@ import { env, getAiUnitCostForModel } from "../env";
 import { aiExecutor } from "../skills/aiExecutor";
 import type { CategoryCalibrationUploadRow } from "./uploadStore";
 import { sha256 } from "../utils/hash";
+import categoryDictionaryRows from "./categoryDictionary.json";
 
-const CATEGORY_DICTIONARY_PATH = "D:\\工作文件\\临时任务\\category判断相关附件\\分类信息.xlsx";
+const CATEGORY_DICTIONARY_FALLBACK_LABEL = "bundled:apps/api/src/category-calibration/categoryDictionary.json";
+const CATEGORY_DICTIONARY_PATH = process.env.CATEGORY_CALIBRATION_DICTIONARY_PATH?.trim() || "";
 const CURRENT_CATEGORY_ID_COLUMN = "\u5f53\u524d-category id";
 const CURRENT_CATEGORY_NAME_COLUMN = "\u5f53\u524d-categoryName";
 const RESULT_CURRENT_CATEGORY = "\u5f53\u524d\u5206\u7c7b";
@@ -51,6 +54,7 @@ type CategoryDictionary = {
   parentsById: Map<string, DictionaryParent>;
   childrenById: Map<string, DictionaryChild>;
   promptText: string;
+  dictionaryPath: string;
 };
 
 type NormalizedInputRow = {
@@ -340,10 +344,15 @@ function parseCandidate(candidate: string, dictionary: CategoryDictionary) {
 async function loadCategoryDictionary(): Promise<CategoryDictionary> {
   if (!dictionaryCache) {
     dictionaryCache = (async () => {
-      const buffer = await readFile(CATEGORY_DICTIONARY_PATH);
-      const workbook = XLSX.read(buffer, { type: "buffer" });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+      const rawRows = CATEGORY_DICTIONARY_PATH
+        ? await (async () => {
+            const resolvedPath = path.resolve(CATEGORY_DICTIONARY_PATH);
+            const buffer = await readFile(resolvedPath);
+            const workbook = XLSX.read(buffer, { type: "buffer" });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            return XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+          })()
+        : (categoryDictionaryRows as Array<Record<string, unknown>>);
 
       const parents: DictionaryParent[] = [];
       const parentsById = new Map<string, DictionaryParent>();
@@ -384,7 +393,7 @@ async function loadCategoryDictionary(): Promise<CategoryDictionary> {
 
       const promptText = parents
         .map((parent) => {
-          const childText = parent.children.map((child) => `${child.id} ${child.name}`).join("；");
+          const childText = parent.children.map((child) => `${child.id} ${child.name}`).join(", ");
           return `${parent.id} ${parent.name}: ${childText}`;
         })
         .join("\n");
@@ -394,6 +403,7 @@ async function loadCategoryDictionary(): Promise<CategoryDictionary> {
         parentsById,
         childrenById,
         promptText,
+        dictionaryPath: CATEGORY_DICTIONARY_PATH || CATEGORY_DICTIONARY_FALLBACK_LABEL,
       };
     })();
   }
@@ -793,7 +803,7 @@ export async function executeCategoryCalibrationChunkRows(input: {
       successRows,
       failedRows,
       aiModel: input.aiModel,
-      dictionaryPath: CATEGORY_DICTIONARY_PATH,
+      dictionaryPath: dictionary.dictionaryPath,
       promptTokens,
       completionTokens,
       totalTokens: promptTokens + completionTokens,
