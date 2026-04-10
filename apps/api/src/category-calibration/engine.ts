@@ -169,6 +169,7 @@ type FinalClassification = {
     usedRecoveryRequest: boolean;
     programmaticallyRecovered: boolean;
     noteRewritten: boolean;
+    noteRewriteReason: string;
   };
 };
 
@@ -522,6 +523,19 @@ function noteNeedsRewriteLite(input: {
   if (!/[\u4e00-\u9fa5]/u.test(note)) return true;
   if (note.length < 8) return true;
   return false;
+}
+
+function explainVerificationNoteIssue(note: string) {
+  const sanitized = sanitizeVerificationNote(note)
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!sanitized) return "模型未返回核验说明";
+  if (/请重试|校验失败|暂无法判断/u.test(sanitized)) return "模型返回了失败提示";
+  if (looksTooAsciiHeavy(sanitized)) return "模型返回了英文或乱码说明";
+  if (!/[\u4e00-\u9fa5]/u.test(sanitized)) return "模型返回的说明缺少有效中文";
+  if (isGenericNote(sanitized)) return "模型返回的说明过于笼统";
+  if (sanitized.length < 8) return "模型返回的说明过短";
+  return "模型返回的核验说明格式异常";
 }
 
 function normalizePrimaryVerificationNote(value: string) {
@@ -1643,6 +1657,7 @@ async function classifyRowV2(row: NormalizedInputRow, dictionary: CategoryDictio
   }
   let verificationNote = normalizePrimaryVerificationNote(parsed.verificationNote || "");
   let noteRewritten = false;
+  let noteRewriteReason = "";
 
   const modelDrivenNote = buildProgrammaticVerificationNote({
     row,
@@ -1654,37 +1669,40 @@ async function classifyRowV2(row: NormalizedInputRow, dictionary: CategoryDictio
     classificationReason,
   });
 
-  if (
+  const noteIsBad = (candidate: string) =>
     noteNeedsRewriteLite({
       judgement: finalJudgement,
       currentCategoryDisplay,
       suggestedParentName: suggestedParent.name,
       suggestedChildName: finalSuggestedChild?.name || "",
-      verificationNote,
-    })
-  ) {
-    const noteGenerated = await rewriteVerificationNote({
-      finalJudgement,
-      suggestedParentName: suggestedParent.name,
-      suggestedChildName: finalSuggestedChild?.name || "",
-      merchantBusiness,
-      classificationReason,
+      verificationNote: candidate,
     });
-    verificationNote = normalizePrimaryVerificationNote(noteGenerated.result.verificationNote);
-    usage = addUsage(usage, noteGenerated.usage);
-    noteRewritten = true;
+
+  if (noteIsBad(verificationNote)) {
+    noteRewriteReason = explainVerificationNoteIssue(verificationNote);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const noteGenerated = await rewriteVerificationNote({
+        finalJudgement,
+        suggestedParentName: suggestedParent.name,
+        suggestedChildName: finalSuggestedChild?.name || "",
+        merchantBusiness,
+        classificationReason,
+      });
+      verificationNote = normalizePrimaryVerificationNote(noteGenerated.result.verificationNote);
+      usage = addUsage(usage, noteGenerated.usage);
+      noteRewritten = true;
+      if (!noteIsBad(verificationNote)) {
+        noteRewriteReason = "";
+        break;
+      }
+      noteRewriteReason = explainVerificationNoteIssue(verificationNote);
+    }
   }
 
-  if (
-    noteNeedsRewriteLite({
-      judgement: finalJudgement,
-      currentCategoryDisplay,
-      suggestedParentName: suggestedParent.name,
-      suggestedChildName: finalSuggestedChild?.name || "",
-      verificationNote,
-    })
-  ) {
-    verificationNote = cleanupAiVerificationNote(modelDrivenNote);
+  if (noteIsBad(verificationNote)) {
+    const fallbackReason = noteRewriteReason || explainVerificationNoteIssue(verificationNote);
+    verificationNote = cleanupAiVerificationNote(`${modelDrivenNote}（兜底：${fallbackReason}）`);
+    noteRewriteReason = fallbackReason;
   }
 
   return {
@@ -1699,6 +1717,7 @@ async function classifyRowV2(row: NormalizedInputRow, dictionary: CategoryDictio
       usedRecoveryRequest,
       programmaticallyRecovered: parsed.programmaticallyRecovered || !parsed.suggestedChildId || parsed.parseMode === "salvaged",
       noteRewritten,
+      noteRewriteReason,
     },
   };
 }
