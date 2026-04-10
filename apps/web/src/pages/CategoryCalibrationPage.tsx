@@ -296,7 +296,7 @@ export function CategoryCalibrationPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const utils = trpc.useUtils();
-  const aiConfigQuery = trpc.runtime.aiConfig.get.useQuery();
+  const aiConfigQuery = trpc.runtime.categoryCalibrationAiConfig.get.useQuery();
 
   const previewMutation = trpc.categoryCalibration.preview.useMutation();
   const runMutation = trpc.categoryCalibration.run.useMutation({

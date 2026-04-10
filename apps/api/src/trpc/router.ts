@@ -65,7 +65,13 @@ import {
   toXlsxByModule,
   toCsv,
 } from "../jobs/ingestWorker";
-import { env, getAiRuntimeConfig, setAiRuntimeModel } from "../env";
+import {
+  env,
+  getAiRuntimeConfig,
+  getCategoryCalibrationAiRuntimeConfig,
+  setAiRuntimeModel,
+  setCategoryCalibrationAiRuntimeModel,
+} from "../env";
 import {
   getCategoryCalibrationJobResult,
   getCategoryCalibrationJobStatus,
@@ -375,6 +381,14 @@ export const appRouter = t.router({
       }),
       set: t.procedure.input(runtimeAiConfigSetInputSchema).mutation(({ input }) => {
         return setAiRuntimeModel(input.aiModel);
+      }),
+    }),
+    categoryCalibrationAiConfig: t.router({
+      get: t.procedure.query(() => {
+        return getCategoryCalibrationAiRuntimeConfig();
+      }),
+      set: t.procedure.input(runtimeAiConfigSetInputSchema).mutation(({ input }) => {
+        return setCategoryCalibrationAiRuntimeModel(input.aiModel);
       }),
     }),
   }),

@@ -170,9 +170,15 @@ export default function App() {
   const [openSections, setOpenSections] = useState<string[]>([sectionForWorkspace(workspaceId)]);
   const utils = trpc.useUtils();
   const aiConfigQuery = trpc.runtime.aiConfig.get.useQuery();
+  const categoryAiConfigQuery = trpc.runtime.categoryCalibrationAiConfig.get.useQuery();
   const aiConfigSetMutation = trpc.runtime.aiConfig.set.useMutation({
     onSuccess: () => {
       void utils.runtime.aiConfig.get.invalidate();
+    },
+  });
+  const categoryAiConfigSetMutation = trpc.runtime.categoryCalibrationAiConfig.set.useMutation({
+    onSuccess: () => {
+      void utils.runtime.categoryCalibrationAiConfig.get.invalidate();
     },
   });
   const isTranslationWorkspace = workspaceId === "translation";
@@ -184,16 +190,24 @@ export default function App() {
     : isTranslationWorkspace
       ? translationDefaultAiModel
       : isCategoryCalibrationWorkspace
-        ? aiConfigQuery.data?.aiModel || categoryCalibrationDefaultAiModel
-      : aiConfigQuery.data?.aiModel || "";
+        ? categoryAiConfigQuery.data?.aiModel || categoryCalibrationDefaultAiModel
+        : aiConfigQuery.data?.aiModel || "";
   const modelOptions = isGgCleaningWorkspace
     ? ["无需AI"]
     : isTranslationWorkspace
       ? [translationDefaultAiModel]
-      : aiConfigQuery.data?.availableModels || [];
+      : isCategoryCalibrationWorkspace
+        ? categoryAiConfigQuery.data?.availableModels || []
+        : aiConfigQuery.data?.availableModels || [];
 
   const handleModelChange = (value: string) => {
-    if (!value || aiConfigSetMutation.isPending) return;
+    if (!value) return;
+    if (isCategoryCalibrationWorkspace) {
+      if (categoryAiConfigSetMutation.isPending) return;
+      categoryAiConfigSetMutation.mutate({ aiModel: value as AiModel });
+      return;
+    }
+    if (aiConfigSetMutation.isPending) return;
     aiConfigSetMutation.mutate({ aiModel: value as AiModel });
   };
 
@@ -208,19 +222,19 @@ export default function App() {
       return;
     }
     if (categoryDefaultAppliedRef.current) return;
-    if (aiConfigQuery.isLoading || aiConfigSetMutation.isPending) return;
-    const current = aiConfigQuery.data?.aiModel || "";
+    if (categoryAiConfigQuery.isLoading || categoryAiConfigSetMutation.isPending) return;
+    const current = categoryAiConfigQuery.data?.aiModel || "";
     if (current === categoryCalibrationDefaultAiModel) {
       categoryDefaultAppliedRef.current = true;
       return;
     }
     categoryDefaultAppliedRef.current = true;
-    aiConfigSetMutation.mutate({ aiModel: categoryCalibrationDefaultAiModel as AiModel });
+    categoryAiConfigSetMutation.mutate({ aiModel: categoryCalibrationDefaultAiModel as AiModel });
   }, [
-    aiConfigQuery.data?.aiModel,
-    aiConfigQuery.isLoading,
-    aiConfigSetMutation,
-    aiConfigSetMutation.isPending,
+    categoryAiConfigQuery.data?.aiModel,
+    categoryAiConfigQuery.isLoading,
+    categoryAiConfigSetMutation,
+    categoryAiConfigSetMutation.isPending,
     isCategoryCalibrationWorkspace,
   ]);
 
@@ -324,7 +338,13 @@ export default function App() {
                 <Select.Root
                   value={currentModelValue}
                   onValueChange={handleModelChange}
-                  disabled={isTranslationWorkspace || isGgCleaningWorkspace || aiConfigQuery.isLoading || aiConfigSetMutation.isPending}
+                  disabled={
+                    isTranslationWorkspace ||
+                    isGgCleaningWorkspace ||
+                    (isCategoryCalibrationWorkspace
+                      ? categoryAiConfigQuery.isLoading || categoryAiConfigSetMutation.isPending
+                      : aiConfigQuery.isLoading || aiConfigSetMutation.isPending)
+                  }
                 >
                   <Select.Trigger className="select-trigger model-switch-trigger" aria-label="runtime-ai-model-select">
                     <Select.Value placeholder="选择模型" />
