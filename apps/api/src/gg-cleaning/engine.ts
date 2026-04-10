@@ -254,6 +254,7 @@ const FACT_TYPE_ALIASES: Array<[string, string]> = [
   ["blue light", "blue light card"],
   ["first responder", "first responder"],
   ["price guarantee", "price guarantee"],
+  ["price guanrantee", "price guarantee"],
   ["price match", "price guarantee"],
   ["gift card", "gift card"],
   ["giftcard", "gift card"],
@@ -318,6 +319,7 @@ const NEGATIVE_PREFIX = /^(?:no|nein|nie|non|아니|없습니다|없다|없음)\
 const GENERIC_NEGATIVE_PATTERNS = [
   /\b(?:no|not|does not|do not|cannot|can't)\b.{0,40}\b(?:evidence|information|mention|specific|direct|official)\b/i,
   /\b(?:there is no|there are no)\b.{0,40}\b(?:evidence|information|discount|program|offer)\b/i,
+  /\b(?:there is|there are)(?: currently)?\b.{0,20}\bno\b.{0,20}\bindication\b.{0,20}\b(?:that|of)\b/i,
   /\bnot explicitly\b/i,
   /\bnot publicly\b/i,
   /\bnot currently\b/i,
@@ -325,6 +327,7 @@ const GENERIC_NEGATIVE_PATTERNS = [
   /\bno direct indication\b/i,
   /\bno public information\b/i,
   /\bcannot confirm\b/i,
+  /\b(?:official|brand|merchant|company)\b.{0,30}\b(?:website|site|store|faq|page)\b.{0,35}\bdoes not\b.{0,20}\b(?:list|mention|show|include|feature)\b/i,
   /\bkeine(?:n|m|)?\b.{0,40}\b(?:hinweise|informationen|rabatt|programm|preisgarantie|geschenkkarten|familienrabatt)\b/i,
   /\bkein(?:en|em|e)?\b.{0,40}\b(?:rabatt|programm|angebot|preisgarantie)\b/i,
   /\bnicht\b.{0,25}\b(?:verfugbar|verfuegbar|bestatigt|bestätigt|explizit|direkt)\b/i,
@@ -1039,6 +1042,10 @@ const MILITARY_HARD_NEGATIVE_PATTERNS = [
   /\bdoes not currently offer a dedicated military discount or promotional program\b/i,
   /\bdoes not\b.{0,25}\bhave\b.{0,20}\b(?:a )?(?:specific|standing|dedicated)\b.{0,20}\bmilitary\b.{0,20}\bdiscount\b/i,
   /\bdoes not currently offer\b.{0,25}\b(?:a )?dedicated\b.{0,20}\bmilitary\b.{0,20}\bdiscount\b/i,
+  /\bdoes not\b.{0,25}\bspecifically list\b.{0,20}\b(?:a )?(?:year-?round|standing|dedicated|specific)?\b.{0,20}\bmilitary\b.{0,20}\bdiscount\b/i,
+  /\bno\b.{0,25}\b(?:specific|standing|year-?round|dedicated)\b.{0,20}\bmilitary\b.{0,20}\bdiscount\b/i,
+  /\bdoes not\b.{0,25}\boffer\b.{0,20}\b(?:a )?(?:standing|year-?round|dedicated)\b.{0,20}\bmilitary\b.{0,20}\bdiscount\b/i,
+  /\bno\b.{0,30}\b(?:public|official|direct)\b.{0,20}\bevidence\b.{0,30}\bmilitary\b.{0,20}\bdiscount\b/i,
   /没有公开信息表明.{0,40}(?:退伍军人|现役军人|军人|军事).{0,20}(?:折扣|优惠)/,
   /不提供常年性的军事折扣/,
   /并不提供专门的军事折扣/,
@@ -1075,7 +1082,11 @@ const REFERRAL_NON_CONSUMER_PATTERNS = [
 const REFERRAL_HARD_NEGATIVE_PATTERNS = [
   /\bdoes not\b.{0,25}\b(?:provide|offer)\b.{0,25}\b(?:a )?(?:formal|standard|public|consumer)\b.{0,20}\b(?:refer(?:-a-friend)?|referral)\b.{0,20}\b(?:discount|program|offer)\b/i,
   /\bno\b.{0,25}\bformal\b.{0,20}\b(?:refer(?:-a-friend)?|referral)\b.{0,20}\b(?:program|offer)\b/i,
+  /\bno\b.{0,25}\b(?:direct|public)\b.{0,20}\bevidence\b.{0,20}\b(?:of|for)\b.{0,20}\b(?:a )?(?:refer(?:-a-friend)?|referral)\b.{0,20}\b(?:discount|program|offer)\b/i,
+  /\bno\b.{0,25}\b(?:public|consumer)\b.{0,20}\b(?:refer(?:-a-friend)?|referral)\b.{0,20}\b(?:program|offer)\b/i,
+  /\bno\b.{0,25}\bdirect\b.{0,20}\bevidence\b.{0,25}\b(?:regular|normal)\b.{0,20}\b(?:friend referral|referral)\b.{0,20}\bprogram\b/i,
   /\b별도의\b.{0,20}\b친구 추천\b.{0,20}\b(?:할인|혜택)\b.{0,12}\b명시되어 있지 않\S*/i,
+  /目前没有直接证据表明.{0,20}(?:常规|正式|普通消费者).{0,20}(?:好友推荐|推荐折扣|推荐计划)/,
   /不提供正式的.{0,20}(?:推荐好友|推荐折扣|推荐计划|Referral Discount)/,
   /并未提供针对普通消费者的.{0,20}(?:推荐折扣|推荐计划|Referral Discount)/,
 ];
@@ -1121,6 +1132,56 @@ const SHIPPING_INFERENCE_ONLY_PATTERNS = [
   /\bsuelen realizarse\b/i,
   /\bpart of specific promotions or past incentives\b/i,
 ];
+
+const SHIPPING_HARD_NEGATIVE_PATTERNS = [
+  /\bdoes not\b.{0,25}\b(?:currently )?offer\b.{0,20}\bfree (?:shipping|delivery)\b/i,
+  /\bno\b.{0,25}\b(?:standing|standard|regular|current)\b.{0,20}\bfree (?:shipping|delivery)\b/i,
+  /\bfree (?:shipping|delivery)\b.{0,50}\b(?:only )?(?:through|via)\b.{0,25}\b(?:third-?party|marketplaces?|retailers?)\b/i,
+  /\boccasional\b.{0,20}\bfree (?:shipping|delivery)\b.{0,35}\b(?:promotion|promotions|campaigns?)\b.{0,35}\b(?:rather than|not)\b.{0,20}\b(?:a )?(?:standard|regular|standing)\b/i,
+];
+
+const CROSS_ENTITY_CONTRAST_PATTERNS = [
+  /\bother brands?\b/i,
+  /\balternative brands?\b/i,
+  /\bother retailers?\b/i,
+  /\bother merchants?\b/i,
+  /\bretail partners?\b/i,
+  /\bauthorized retailers?\b/i,
+  /\bthird-?party (?:dental )?retailers?\b/i,
+  /\bunrelated brands?\b/i,
+  /\bother companies\b/i,
+  /\bseparate company\b/i,
+  /\bseparate entities\b/i,
+  /\bshould not be confused with\b/i,
+  /\bthere are two distinct entities\b/i,
+  /\bthere are two distinct entities mentioned\b/i,
+  /\bcomparison with other brands\b/i,
+  /\bif you are looking specifically for\b/i,
+  /\bif you are referring to\b/i,
+  /\bwhile .* other brands?\b/i,
+  /\bOctopus Energy\b/i,
+  /\bother .* may offer\b/i,
+];
+
+const CROSS_ENTITY_SENSITIVE_FACT_TYPES = new Set([
+  "app",
+  "birthday",
+  "employee",
+  "existing customer",
+  "first responder",
+  "military",
+  "price guarantee",
+  "referral",
+]);
+
+const CROSS_ENTITY_UNKNOWN_FACT_TYPES = new Set([
+  "existing customer",
+  "price guarantee",
+  "referral",
+  "first responder",
+  "military",
+  "employee",
+]);
 
 const TEACHER_PLATFORM_AMBIGUOUS_PATTERNS = [
   /\bit is (?:best|recommended) to check\b.{0,40}\b(?:official|teacher discount|partner)\b/i,
@@ -1213,6 +1274,8 @@ const SENIOR_HARD_NEGATIVE_PATTERNS = [
   /\bkeinen?\b.{0,35}\b(?:spezifischen|dauerhaften|offiziellen)?\b.{0,20}\bseniorenrabatt\b/i,
   /\bno senior rate\b/i,
   /\bdoes not offer a specific senior discount\b/i,
+  /\bno\b.{0,25}\b(?:specific|dedicated|public)\b.{0,20}\bsenior\b.{0,20}\b(?:discount|rate|fare|offer)\b/i,
+  /\bno\b.{0,30}\b(?:direct|public)\b.{0,20}\bevidence\b.{0,25}\b(?:of|for)\b.{0,20}\b(?:a )?senior\b.{0,20}\b(?:discount|rate|fare|offer)\b/i,
   /\bkeinen?\b.{0,30}\bsenior(?:en)?\b.{0,20}\b(?:tarif|rabatt)\b/i,
   /\bbezeichnung\b.{0,25}\bsenior\b.{0,25}\bbezieht sich\b.{0,25}\b(?:auf )?(?:die )?gr[oö]sse\b/i,
   /\bsenior\b.{0,30}\brefers to\b.{0,20}\badult sizing\b/i,
@@ -1235,12 +1298,21 @@ const EMPLOYEE_HARD_NEGATIVE_PATTERNS = [
 const EXISTING_CUSTOMER_AMBIGUOUS_PATTERNS = [
   /不提供传统意义上的[“"]?现有客户永久折扣[”"]?或正式的忠诚度计划/,
   /通过特定的参与式项目和定期促销活动为老客户提供/,
+  /本身没有统一的[“"]?官方现有客户折扣[”"]?.{0,40}(?:在线)?零售商.{0,30}为回头客提供折扣/,
+  /品牌本身没有统一的[“"]?官方现有客户折扣[”"]?.{0,40}(?:在线)?零售商.{0,30}(?:回头客|现有客户).{0,20}(?:折扣|优惠)/,
   /\bdoes not offer\b.{0,25}\b(?:a )?(?:traditional|permanent|formal)\b.{0,25}\b(?:existing customer|loyalty)\b.{0,20}\b(?:discount|program)\b/i,
   /\bthrough\b.{0,20}\b(?:specific|participatory)\b.{0,20}\bprojects?\b.{0,30}\bperiodic promotions\b/i,
+  /\bonly\b.{0,20}\b(?:occasional|ad hoc)\b.{0,20}\bproject-?based\b.{0,20}\boffers?\b/i,
 ];
 
 const EXISTING_CUSTOMER_HARD_NEGATIVE_PATTERNS = [
   /\bdoes not offer a permanent\b.{0,20}\bexisting customer\b.{0,20}\bdiscount\b/i,
+  /\bno\b.{0,25}\bformal\b.{0,20}\bexisting-?customer\b.{0,20}\b(?:discount|program)\b/i,
+  /\bno\b.{0,25}\b(?:standard|standing|permanent)\b.{0,20}\bexisting customer\b.{0,20}\b(?:discount|program)\b/i,
+  /\bno\b.{0,25}\b(?:formal|permanent|fixed)\b.{0,20}\b(?:loyalty program|existing customer discount)\b/i,
+  /\bdoes not\b.{0,25}\boffer\b.{0,20}\b(?:a )?(?:formal|permanent|standard)\b.{0,20}\b(?:existing customer|loyalty)\b.{0,20}\b(?:discount|program)\b/i,
+  /\bdoes not\b.{0,25}\boffer\b.{0,20}\b(?:a )?formal\b.{0,20}\bexisting customer\b.{0,20}\brewards?\b.{0,20}\bprogram\b/i,
+  /\bno\b.{0,25}\bformal\b.{0,20}\bexisting customer\b.{0,20}\brewards?\b.{0,20}\bprogram\b/i,
 ];
 
 const AAA_HARD_NEGATIVE_EXTRA_PATTERNS = [
@@ -1261,6 +1333,9 @@ const BIRTHDAY_HARD_NEGATIVE_PATTERNS = [
   /\bkeine?\b.{0,45}\bpers[oö]nlichen?\b.{0,20}\bgeburtstagsrabatt\b/i,
   /\bkeinen?\b.{0,35}\bspezifischen?\b.{0,20}\brabatt\b.{0,30}\b(?:am|zum)\b.{0,20}\bpers[oö]nlichen?\b.{0,20}\bgeburtstag\b/i,
   /\bdoes not currently offer a specific birthday discount\b/i,
+  /\bdoes not explicitly list\b.{0,20}\b(?:a )?(?:standard|automatic)\b.{0,20}\bbirthday\b.{0,20}\bdiscount\b/i,
+  /\bspecific,\s*standard\b.{0,20}\bbirthday\b.{0,20}\bdiscount\b.{0,20}\bprogram\b.{0,20}\bis not mentioned\b/i,
+  /\bno information indicating\b.{0,25}\b(?:a )?specific\b.{0,20}\bbirthday\b.{0,20}\bdiscount\b/i,
   /\binstead of a direct birthday coupon\b.{0,40}\bprize draw\b/i,
   /没有专属的生日折扣/,
   /没有专门的生日优惠券/,
@@ -1299,6 +1374,15 @@ const PRICE_GUARANTEE_HARD_NEGATIVE_PATTERNS = [
   /\bno hay indicios\b.{0,80}\b(?:garant|igualaci)\w*/i,
   /\bnie wynika\b.{0,25}\b(?:aby )?(?:firma|marka)\b.{0,35}\boferowa[łl]a\b.{0,25}\bformaln\w*\b.{0,25}\bgwarancj\w*\b(?: najlepszej ceny)?\b/i,
   /\bbrak\b.{0,35}\bformalnej\b.{0,20}\bgwarancji\b.{0,20}\bnajlepszej ceny\b/i,
+  /\bno\b.{0,25}\b(?:official|public|direct|traditional)\b.{0,20}\b(?:price match|price guarantee|best price guarantee)\b/i,
+  /\bdoes not\b.{0,25}\b(?:offer|have|provide|list)\b.{0,25}\b(?:an? )?(?:official|public|traditional)?\b.{0,20}\b(?:price match|price guarantee|best price guarantee)\b/i,
+  /\bofficial\b.{0,20}(?:store|site|website)\b.{0,25}\bdoes not\b.{0,25}\b(?:clearly )?list\b.{0,25}\b(?:a )?(?:price match|price guarantee)\b/i,
+  /\bnot\b.{0,20}\b(?:a )?(?:traditional|formal)\b.{0,20}\b(?:price match|price guarantee)\b/i,
+  /\bdoes not\b.{0,25}\bclearly list\b.{0,25}\b(?:a )?(?:price match|price guarantee)\b.{0,20}\bpolicy\b/i,
+  /并未明确列出任何形式的.{0,20}(?:价格保证|价格匹配).{0,20}政策/,
+  /并未明确列出.{0,40}(?:价格保证|价格匹配)/,
+  /没有公开信息表明.{0,20}(?:价格保证|价格匹配).{0,20}(?:政策|承诺)/,
+  /官方(?:在线)?商店.{0,20}并未明确列出.{0,20}(?:价格保证|价格匹配).{0,20}政策/,
 ];
 
 const APP_CROSS_ENTITY_NEGATIVE_PATTERNS = [
@@ -1321,6 +1405,9 @@ const FAMILY_HARD_NEGATIVE_PATTERNS = [
   /\bdoes not offer\b.{0,25}\b(?:a )?(?:specific|dedicated)\b.{0,20}\bfamily\b.{0,15}\bdiscount\b/i,
   /\bkeine?\b.{0,15}\b(?:speziellen?|dedizierten?)\b.{0,20}\bfamilienrabatte?\b/i,
   /\bfamily(?:-size| size)\b.{0,40}\b(?:packs?|products?|bags?)\b.{0,50}\b(?:rather than|instead of|not)\b.{0,25}\b(?:a )?(?:dedicated )?family discount\b/i,
+  /\b(?:for|to)\b.{0,12}\bindividuals? and families\b/i,
+  /\bgood for families\b/i,
+  /\b(?:\d+\s*for\s*[£$€]?\d+|buy \d+ get \d+|multi-?buy|bundle deal|bulk savings?)\b.{0,50}\b(?:famil(?:y|ies)|family)\b/i,
   /不提供专门的[“"]?家庭折扣[”"]?/,
   /(?:家庭装|Family Size).{0,30}(?:而非|不是).{0,20}(?:家庭折扣|专属优惠)/,
 ];
@@ -1692,6 +1779,9 @@ function scoreSentence(sentence: string, factType: string, index: number): Sente
   const returnCostAmbiguous = factType === "return" && hasPattern(sentence, RETURN_COST_AMBIGUOUS_PATTERNS);
   const matchedFactNegative = hasPattern(sentence, rule.negative) && !returnCostAmbiguous;
   const matchedGenericNegative = hasPattern(sentence, GENERIC_NEGATIVE_PATTERNS) && explicit && !returnCostAmbiguous;
+  const crossEntityContrast =
+    CROSS_ENTITY_SENSITIVE_FACT_TYPES.has(factType) &&
+    hasPattern(sentence, CROSS_ENTITY_CONTRAST_PATTERNS);
 
   if (rule.ignore?.some((pattern) => pattern.test(sentence)) && (!explicit || factType === "app")) {
     return {
@@ -1951,6 +2041,35 @@ function scoreSentence(sentence: string, factType: string, index: number): Sente
     };
   }
 
+  if (factType === "shipping" && hasPattern(sentence, SHIPPING_HARD_NEGATIVE_PATTERNS)) {
+    return {
+      existence: "no",
+      reasonCn: index < 2 ? "前两句出现明确否定证据" : "正文出现明确否定证据",
+      matchedRule: "shipping_hard_negative",
+      evidenceSentence: sentence,
+      confidenceBucket: "strong",
+      score: 7 + leadBoost,
+    };
+  }
+
+  if (
+    crossEntityContrast &&
+    (
+      matchedFactNegative ||
+      matchedGenericNegative ||
+      includesFallback(sentence, fallback?.negative)
+    )
+  ) {
+    return {
+      existence: "no",
+      reasonCn: index < 2 ? "前两句出现跨主体否定证据" : "正文出现跨主体否定证据",
+      matchedRule: "cross_entity_negative",
+      evidenceSentence: sentence,
+      confidenceBucket: "strong",
+      score: 7 + leadBoost,
+    };
+  }
+
   if (factType === "teacher" && hasPattern(sentence, TEACHER_PLATFORM_AMBIGUOUS_PATTERNS)) {
     return {
       existence: "unknown",
@@ -2057,7 +2176,7 @@ function scoreSentence(sentence: string, factType: string, index: number): Sente
     matchedRule = "child_non_discount_context";
   }
 
-  if (AFFIRMATIVE_PREFIX.test(sentence) && explicit) {
+  if (AFFIRMATIVE_PREFIX.test(sentence) && explicit && !crossEntityContrast) {
     positiveScore += 3 + leadBoost;
     matchedRule = "affirmative_prefix";
   }
@@ -2084,11 +2203,11 @@ function scoreSentence(sentence: string, factType: string, index: number): Sente
     if (!newsletterContrastPositive) positiveScore = 0;
     matchedRule = matchedRule === "no_match" ? "fallback_negative" : matchedRule;
   }
-  if (includesFallback(sentence, fallback?.positive) && !matchedFactNegative && !matchedGenericNegative) {
+  if (includesFallback(sentence, fallback?.positive) && !matchedFactNegative && !matchedGenericNegative && !crossEntityContrast) {
     positiveScore += 3 + leadBoost;
     matchedRule = matchedRule === "no_match" ? "fallback_positive" : matchedRule;
   }
-  if (!matchedFactNegative && !matchedGenericNegative && explicit && !STRICT_FACT_TYPES_FOR_GENERIC_BENEFIT.has(factType) && hasPattern(sentence, GENERIC_BENEFIT_PATTERNS)) {
+  if (!matchedFactNegative && !matchedGenericNegative && explicit && !STRICT_FACT_TYPES_FOR_GENERIC_BENEFIT.has(factType) && hasPattern(sentence, GENERIC_BENEFIT_PATTERNS) && !crossEntityContrast) {
     positiveScore += 2 + leadBoost;
     matchedRule = matchedRule === "no_match" ? "explicit_benefit" : matchedRule;
   }
@@ -2138,6 +2257,8 @@ function parseProductUrlsCell(value: unknown) {
 
 function explainExistence(factType: string, snippet: string): SentenceEvidence {
   const text = cleanSnippetText(snippet);
+  const rule = FACT_RULES[factType] || { positive: [], negative: [] };
+  const fallback = FACT_FALLBACK_CLUES[factType];
   if (!text) {
     return {
       existence: "unknown",
@@ -2260,6 +2381,7 @@ function explainExistence(factType: string, snippet: string): SentenceEvidence {
   if (
     factType === "existing customer" &&
     hasPattern(text, EXISTING_CUSTOMER_HARD_NEGATIVE_PATTERNS) &&
+    !hasPattern(text, EXISTING_CUSTOMER_AMBIGUOUS_PATTERNS) &&
     !hasPattern(text, EXISTING_CUSTOMER_HARD_POSITIVE_PATTERNS)
   ) {
     return {
@@ -2349,6 +2471,36 @@ function explainExistence(factType: string, snippet: string): SentenceEvidence {
     };
   }
 
+  if (factType === "shipping" && hasPattern(text, SHIPPING_HARD_NEGATIVE_PATTERNS)) {
+    return {
+      existence: "no",
+      reasonCn: "全文存在明确否定证据",
+      matchedRule: "shipping_hard_negative",
+      evidenceSentence: getLeadSentences(text, 2).join(" "),
+      confidenceBucket: "strong",
+      score: 7,
+    };
+  }
+
+  if (
+    CROSS_ENTITY_SENSITIVE_FACT_TYPES.has(factType) &&
+    hasPattern(text, CROSS_ENTITY_CONTRAST_PATTERNS) &&
+    (
+      hasPattern(text, rule.negative) ||
+      includesFallback(text, fallback?.negative) ||
+      hasPattern(text, GENERIC_NEGATIVE_PATTERNS)
+    )
+  ) {
+    return {
+      existence: "no",
+      reasonCn: "全文显示优惠主体不是当前商家",
+      matchedRule: "cross_entity_negative",
+      evidenceSentence: getLeadSentences(text, 2).join(" "),
+      confidenceBucket: "strong",
+      score: 7,
+    };
+  }
+
   const sentences = splitIntoSentences(text);
   if (!sentences.length) {
     return {
@@ -2362,6 +2514,9 @@ function explainExistence(factType: string, snippet: string): SentenceEvidence {
   }
 
   const scored = sentences.map((sentence, index) => scoreSentence(sentence, factType, index));
+  const hasCrossEntityContrastText =
+    CROSS_ENTITY_UNKNOWN_FACT_TYPES.has(factType) &&
+    hasPattern(text, CROSS_ENTITY_CONTRAST_PATTERNS);
   const leadScored = scored.slice(0, 2);
   const leadBestYes = leadScored
     .filter((item) => item.existence === "yes")
@@ -2375,6 +2530,21 @@ function explainExistence(factType: string, snippet: string): SentenceEvidence {
   const bestNo = scored
     .filter((item) => item.existence === "no")
     .sort((left, right) => right.score - left.score)[0];
+  const leadNoOverridesLaterYes =
+    Boolean(leadBestNo) &&
+    leadBestNo.confidenceBucket === "strong" &&
+    (
+      leadBestNo.matchedRule.includes("hard_negative") ||
+      leadBestNo.matchedRule === "fact_negative" ||
+      leadBestNo.matchedRule === "generic_negative" ||
+      leadBestNo.matchedRule === "fallback_negative" ||
+      leadBestNo.matchedRule === "cross_entity_negative"
+    ) &&
+    (!leadBestYes || leadBestNo.score >= leadBestYes.score);
+
+  if (leadNoOverridesLaterYes) {
+    return leadBestNo!;
+  }
 
   if (leadBestNo && leadBestNo.score >= (bestYes?.score ?? -1) && (!leadBestYes || leadBestNo.score > leadBestYes.score)) {
     return leadBestNo;
@@ -2384,6 +2554,16 @@ function explainExistence(factType: string, snippet: string): SentenceEvidence {
   }
 
   if (bestNo && (!bestYes || bestNo.score >= bestYes.score + 2)) return bestNo;
+  if (hasCrossEntityContrastText && bestYes && !bestNo) {
+    return {
+      existence: "unknown",
+      reasonCn: "全文存在跨主体污染，无法确认 yes 是否属于当前商家",
+      matchedRule: "cross_entity_unknown",
+      evidenceSentence: bestYes.evidenceSentence || getLeadSentences(text, 2).join(" "),
+      confidenceBucket: "none",
+      score: bestYes.score,
+    };
+  }
   if (bestYes && (!bestNo || bestYes.score > bestNo.score)) return bestYes;
 
   if (bestYes && bestNo) {

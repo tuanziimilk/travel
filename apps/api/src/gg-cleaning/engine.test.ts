@@ -876,6 +876,32 @@ describe("gg cleaning engine", () => {
     expect(result.debugRows[0].final_supported).toBe("unknown");
   });
 
+  it("keeps shipping no when only occasional promotion-based free delivery is mentioned", () => {
+    const result = runEval([
+      {
+        term_id: "ship-no-promo",
+        country: "UK",
+        term_name: "Store Promo",
+        domain: "storepromo.co.uk",
+        subclass: "shipping",
+        source_type: "aimode",
+        snippet:
+          "Store Promo does not currently offer free delivery as a standard policy. Occasional free shipping promotions may appear during campaigns.",
+      },
+      {
+        term_id: "ship-no-promo",
+        country: "UK",
+        term_name: "Store Promo",
+        domain: "storepromo.co.uk",
+        subclass: "shipping",
+        source_type: "searchlab",
+        snippet: "No regular free shipping is listed for this merchant.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
   it("keeps teacher as unknown when the snippet only points to third-party educator platforms", () => {
     const result = runEval([
       {
@@ -1402,6 +1428,31 @@ describe("gg cleaning engine", () => {
     expect(result.debugRows[0].final_supported).toBe("no");
   });
 
+  it("keeps military no when the first sentence says there is no year-round military discount", () => {
+    const result = runEval([
+      {
+        term_id: "11a1b",
+        country: "UK",
+        term_name: "Socktopus",
+        domain: "socktopus.co.uk",
+        subclass: "military",
+        source_type: "aimode",
+        snippet: "Socktopus has no specific year-round military discount. Customers may still save through newsletters or seasonal promotions.",
+      },
+      {
+        term_id: "11a1b",
+        country: "UK",
+        term_name: "Socktopus",
+        domain: "socktopus.co.uk",
+        subclass: "military",
+        source_type: "searchlab",
+        snippet: "No standing military discount is listed for the merchant itself.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
   it("keeps military no when the lead sentence denies a military program and later text only lists general savings", () => {
     const result = runEval([
       {
@@ -1565,6 +1616,110 @@ describe("gg cleaning engine", () => {
     expect(result.debugRows[0].final_supported).toBe("yes");
   });
 
+  it("treats typo subclass price guanrantee the same as price guarantee", () => {
+    const result = runEval([
+      {
+        term_id: "13e-typo",
+        country: "UK",
+        term_name: "Polanight",
+        domain: "polanight.com",
+        subclass: "price guanrantee",
+        source_type: "aimode",
+        snippet: "There is no official price guarantee or price-match policy listed on the merchant website.",
+      },
+      {
+        term_id: "13e-typo",
+        country: "UK",
+        term_name: "Polanight",
+        domain: "polanight.com",
+        subclass: "price guanrantee",
+        source_type: "searchlab",
+        snippet: "No public price guarantee is listed for this merchant.",
+      },
+    ]);
+
+    expect(result.debugRows[0].fact_type).toBe("price guarantee");
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps price guarantee no when the merchant lacks it and another company is the one with the guarantee", () => {
+    const result = runEval([
+      {
+        term_id: "13e-cross-entity",
+        country: "UK",
+        term_name: "Socktopus",
+        domain: "socktopus.co.uk",
+        subclass: "price guarantee",
+        source_type: "aimode",
+        snippet:
+          "Socktopus does not provide a price guarantee or price-match promise. Octopus Energy or partner retailers may mention price promises in separate contexts, but those do not apply to this merchant.",
+      },
+      {
+        term_id: "13e-cross-entity",
+        country: "UK",
+        term_name: "Socktopus",
+        domain: "socktopus.co.uk",
+        subclass: "price guarantee",
+        source_type: "searchlab",
+        snippet: "No public price guarantee is listed for this merchant.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("downgrades price guarantee to unknown when only third-party retailers mention price promises", () => {
+    const result = runEval([
+      {
+        term_id: "13e-cross-entity-unknown",
+        country: "UK",
+        term_name: "Polanight Online Store",
+        domain: "polanight.co.uk",
+        subclass: "price guarantee",
+        source_type: "aimode",
+        snippet:
+          "The official Polanight store does not clearly list a price guarantee policy. Some authorized retailers and third-party dental sellers may mention lowest-price guarantees for their own stores.",
+      },
+      {
+        term_id: "13e-cross-entity-unknown",
+        country: "UK",
+        term_name: "Polanight Online Store",
+        domain: "polanight.co.uk",
+        subclass: "price guarantee",
+        source_type: "searchlab",
+        snippet: "No official price guarantee is confirmed for the merchant itself.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).not.toBe("yes");
+  });
+
+  it("keeps price guarantee no when the lead sentence clearly denies the merchant policy and later third-party retailers mention guarantees", () => {
+    const result = runEval([
+      {
+        term_id: "13e-lead-no",
+        country: "UK",
+        term_name: "Polanight Online Store",
+        domain: "polanight.co.uk",
+        subclass: "price guarantee",
+        source_type: "aimode",
+        snippet:
+          "The official Polanight store does not clearly list a price guarantee or price-match policy. Some authorized retailers and third-party dental sellers may mention lowest-price guarantees for their own stores.",
+      },
+      {
+        term_id: "13e-lead-no",
+        country: "UK",
+        term_name: "Polanight Online Store",
+        domain: "polanight.co.uk",
+        subclass: "price guarantee",
+        source_type: "searchlab",
+        snippet: "No official price guarantee is confirmed for the merchant itself.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
   it("keeps family no when the text is only about friends and family sale events", () => {
     const result = runEval([
       {
@@ -1584,6 +1739,31 @@ describe("gg cleaning engine", () => {
         subclass: "family",
         source_type: "searchlab",
         snippet: "Friends and Family promotions are temporary sales rather than a dedicated family discount.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps family no when the text is only about multibuy deals for families", () => {
+    const result = runEval([
+      {
+        term_id: "13-family-bulk",
+        country: "UK",
+        term_name: "Socktopus",
+        domain: "socktopus.co.uk",
+        subclass: "family",
+        source_type: "aimode",
+        snippet: "Customers can save with 3 for GBP 20 multibuy bundle deals that are good for families, but there is no dedicated family discount.",
+      },
+      {
+        term_id: "13-family-bulk",
+        country: "UK",
+        term_name: "Socktopus",
+        domain: "socktopus.co.uk",
+        subclass: "family",
+        source_type: "searchlab",
+        snippet: "The offer is a multibuy bundle rather than a specific family discount.",
       },
     ]);
 
@@ -1838,6 +2018,31 @@ describe("gg cleaning engine", () => {
         subclass: "senior",
         source_type: "searchlab",
         snippet: "The monorail has no senior rate, even though other local transport services may have one.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps senior no when the merchant lacks a senior discount but another retailer is mentioned later", () => {
+    const result = runEval([
+      {
+        term_id: "22-senior-cross",
+        country: "UK",
+        term_name: "Luxe Perfumes",
+        domain: "luxeperfumes.com",
+        subclass: "senior",
+        source_type: "aimode",
+        snippet: "There is no direct evidence of a senior discount for Luxe Perfumes. Some other retailers such as The Fragrance Shop may run separate senior offers.",
+      },
+      {
+        term_id: "22-senior-cross",
+        country: "UK",
+        term_name: "Luxe Perfumes",
+        domain: "luxeperfumes.com",
+        subclass: "senior",
+        source_type: "searchlab",
+        snippet: "No public senior rate is listed for this merchant.",
       },
     ]);
 
@@ -2278,6 +2483,83 @@ describe("gg cleaning engine", () => {
     expect(result.debugRows[0].final_supported).toBe("no");
   });
 
+  it("keeps referral no when there is no direct evidence for the merchant and later text mentions another brand", () => {
+    const result = runEval([
+      {
+        term_id: "30c3",
+        country: "UK",
+        term_name: "Socktopus",
+        domain: "socktopus.co.uk",
+        subclass: "referral",
+        source_type: "aimode",
+        snippet: "There is no direct evidence of a referral program for Socktopus. The text later mentions Octopus Energy, which has a separate refer-a-friend reward.",
+      },
+      {
+        term_id: "30c3",
+        country: "UK",
+        term_name: "Socktopus",
+        domain: "socktopus.co.uk",
+        subclass: "referral",
+        source_type: "searchlab",
+        snippet: "No public consumer referral program is listed for this merchant.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps first responder no when same-name cross-entity text later mentions other brands with responder programs", () => {
+    const result = runEval([
+      {
+        term_id: "cross-fr-1",
+        country: "UK",
+        term_name: "Socktopus",
+        domain: "socktopus.co.uk",
+        subclass: "first responder",
+        source_type: "aimode",
+        snippet:
+          "There is no evidence that Socktopus offers a dedicated first responder discount. Alternative brands may offer verified responder programs, but those do not apply to this merchant.",
+      },
+      {
+        term_id: "cross-fr-1",
+        country: "UK",
+        term_name: "Socktopus",
+        domain: "socktopus.co.uk",
+        subclass: "first responder",
+        source_type: "searchlab",
+        snippet: "No specific first responder discount is listed for this merchant.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps military no when the merchant has no military program and another brand is mentioned later", () => {
+    const result = runEval([
+      {
+        term_id: "cross-mil-1",
+        country: "UK",
+        term_name: "Socktopus",
+        domain: "socktopus.co.uk",
+        subclass: "military",
+        source_type: "aimode",
+        snippet:
+          "Socktopus does not specifically list a year-round military discount. Octopus Energy and other brands may run separate verified military offers, but that is unrelated to this merchant.",
+      },
+      {
+        term_id: "cross-mil-1",
+        country: "UK",
+        term_name: "Socktopus",
+        domain: "socktopus.co.uk",
+        subclass: "military",
+        source_type: "searchlab",
+        snippet: "No standing military discount is listed for Socktopus itself.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
   it("keeps referral no for member-get-member club recruitment rather than retail referral discount", () => {
     const result = runEval([
       {
@@ -2511,6 +2793,84 @@ describe("gg cleaning engine", () => {
     ]);
 
     expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps existing customer no when the snippet says there is no formal program and only seasonal offers remain", () => {
+    const result = runEval([
+      {
+        term_id: "30j1b",
+        country: "UK",
+        term_name: "Residual Shop",
+        domain: "residualshop.co.uk",
+        subclass: "existing customer",
+        source_type: "aimode",
+        snippet:
+          "Residual Shop does not offer a formal existing customer discount program. Returning buyers may still see seasonal promotions from time to time.",
+      },
+      {
+        term_id: "30j1b",
+        country: "UK",
+        term_name: "Residual Shop",
+        domain: "residualshop.co.uk",
+        subclass: "existing customer",
+        source_type: "searchlab",
+        snippet: "No formal existing-customer program is listed.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps existing customer no when another same-name company has the program instead", () => {
+    const result = runEval([
+      {
+        term_id: "30j1c",
+        country: "UK",
+        term_name: "Socktopus",
+        domain: "socktopus.co.uk",
+        subclass: "existing customer",
+        source_type: "aimode",
+        snippet:
+          "Socktopus does not offer a formal existing customer rewards program. Octopus Energy has Octoplus rewards for its own customers, but that is a separate company and should not be confused with Socktopus.",
+      },
+      {
+        term_id: "30j1c",
+        country: "UK",
+        term_name: "Socktopus",
+        domain: "socktopus.co.uk",
+        subclass: "existing customer",
+        source_type: "searchlab",
+        snippet: "No formal existing-customer discount program is listed for this merchant.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("downgrades existing customer to unknown when a same-name company has the benefit but the merchant itself is unclear", () => {
+    const result = runEval([
+      {
+        term_id: "30j1d",
+        country: "UK",
+        term_name: "Socktopus",
+        domain: "socktopus.co.uk",
+        subclass: "existing customer",
+        source_type: "aimode",
+        snippet:
+          "There are two distinct entities mentioned: Socktopus and Octopus Energy. Octoplus rewards provide perks for Octopus Energy customers, but that is a separate company.",
+      },
+      {
+        term_id: "30j1d",
+        country: "UK",
+        term_name: "Socktopus",
+        domain: "socktopus.co.uk",
+        subclass: "existing customer",
+        source_type: "searchlab",
+        snippet: "The search results mix same-name entities, so an existing-customer program for Socktopus itself is not confirmed.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("unknown");
   });
 
   it("detects new customer no from German no-general-neukundenrabatt wording", () => {
@@ -3034,6 +3394,58 @@ describe("gg cleaning engine", () => {
     ]);
 
     expect(result.debugRows[0].final_value).toBe("");
+  });
+
+  it("keeps first responder no when the lead sentence says there is no indication and later text lists other retailers", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "20i",
+        query: "Does soctopus.co.uk offer first responder discounts?",
+        country: "UK",
+        language: "en",
+        domain: "soctopus.co.uk",
+        term_id: "1650",
+        term_name: "SOCTOPUS",
+        subclass: "first responder",
+        bu: "hd",
+        [GG_COLLECTED_STATUS_COLUMN]: "done",
+        [GG_COLLECTED_SOURCE_COLUMN]: "ai_mode",
+        content: [
+          "There is currently no indication that Soctopus offers a dedicated first responder discount. Their official website does not list specific discounts for emergency services.",
+          "Other retailers and alternative sock brands may offer verified first responder discounts through third-party programs.",
+        ],
+        product_urls: ["https://www.soctopus.co.uk"],
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+    expect(result.debugRows[0].final_matched_rule).toMatch(/generic_negative|cross_entity_negative/);
+  });
+
+  it("keeps blue light card no when the official site does not list it and later text only mentions another retailer", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "20j",
+        query: "Does sheetmaterialswholesale.co.uk offer blue light card discounts?",
+        country: "UK",
+        language: "en",
+        domain: "sheetmaterialswholesale.co.uk",
+        term_id: "1651",
+        term_name: "Sheet Materials Wholesale",
+        subclass: "blue light card",
+        bu: "hd",
+        [GG_COLLECTED_STATUS_COLUMN]: "done",
+        [GG_COLLECTED_SOURCE_COLUMN]: "ai_mode",
+        content: [
+          "Based on the available information, there is no indication that Sheet Materials Wholesale offers a specific Blue Light Card discount. The official website FAQ does not list Blue Light Card or emergency services discounts.",
+          "Other DIY retailers may offer Blue Light Card savings.",
+        ],
+        product_urls: ["https://www.sheetmaterialswholesale.co.uk"],
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+    expect(result.debugRows[0].final_matched_rule).toMatch(/generic_negative|cross_entity_negative/);
   });
 
   it("does not extract return fee percentages as discount values", () => {
