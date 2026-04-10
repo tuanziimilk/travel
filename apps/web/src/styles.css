@@ -2222,6 +2222,11 @@ button {
   color: #fff;
 }
 
+.winner-chip.none {
+  background: #f0f0f0;
+  color: var(--black);
+}
+
 .history-action-btn {
   width: auto;
   min-width: 72px;

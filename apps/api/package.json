@@ -13,6 +13,7 @@
     "backfill:china-timezone": "tsx scripts/backfillChinaTimezone.ts",
     "repair:content-generation-job-timezone": "tsx scripts/repairContentGenerationJobTimezone.ts",
     "repair:ingest-job-timezone": "tsx scripts/repairIngestJobTimezone.ts",
+    "repair:upload-batch-timezone": "tsx scripts/repairUploadBatchTimezone.ts",
     "bootstrap:skill-history": "tsx scripts/bootstrapSkillHistory.ts",
     "repair:bootstrap-skill-history-notes": "tsx scripts/repairBootstrapSkillHistoryNotes.ts"
   },

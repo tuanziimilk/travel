@@ -1096,6 +1096,26 @@ function toChinaIsoFromDbTimestamp(value?: string | null) {
   return `${String(value).replace(" ", "T")}+08:00`;
 }
 
+async function getUploadBatchRawTimeMap(batchIds: string[]) {
+  const ids = Array.from(new Set(batchIds.filter(Boolean)));
+  const map = new Map<string, { createdAt?: string }>();
+  if (!ids.length) return map;
+
+  const placeholders = ids.map(() => "?").join(",");
+  const [rows] = await pool.query(
+    `select id, cast(created_at as char) as created_at_raw from upload_batches where id in (${placeholders})`,
+    ids,
+  );
+
+  for (const row of rows as Array<Record<string, unknown>>) {
+    map.set(String(row.id || ""), {
+      createdAt: toChinaIsoFromDbTimestamp(row.created_at_raw as string | null),
+    });
+  }
+
+  return map;
+}
+
 async function getIngestJobRawTimeMap(jobIds: string[]) {
   const ids = Array.from(new Set(jobIds.filter(Boolean)));
   const map = new Map<string, { startedAt?: string; finishedAt?: string; updatedAt?: string }>();
@@ -1809,19 +1829,15 @@ export async function listBatches(filters: {
   await ensureIngestJobsColumns();
   await ensureAboutScoreRowsColumns();
   const all = await db.select().from(uploadBatches).orderBy(desc(uploadBatches.createdAt));
-  const allJobs = await db.select().from(ingestJobs).orderBy(desc(ingestJobs.startedAt));
-  const latestJobByBatch = new Map<string, (typeof allJobs)[number]>();
-  for (const job of allJobs) {
-    if (!latestJobByBatch.has(job.batchId)) latestJobByBatch.set(job.batchId, job);
-  }
+  const rawBatchTimeMap = await getUploadBatchRawTimeMap(all.map((item) => item.id));
 
   const matched = all.filter((item) => {
-    const latestJob = latestJobByBatch.get(item.id);
+    const createdAt = rawBatchTimeMap.get(item.id)?.createdAt || formatChinaIsoOffset(item.createdAt);
     if (filters.moduleId && String(item.moduleId || "about") !== filters.moduleId) return false;
     if (filters.uploader && item.uploader !== filters.uploader) return false;
     if (filters.batchId && item.id !== filters.batchId) return false;
-    if (filters.startDate && new Date(item.createdAt) < new Date(filters.startDate)) return false;
-    if (filters.endDate && new Date(item.createdAt) > new Date(filters.endDate)) return false;
+    if (filters.startDate && new Date(createdAt) < new Date(filters.startDate)) return false;
+    if (filters.endDate && new Date(createdAt) > new Date(filters.endDate)) return false;
     return true;
   });
 
@@ -1829,13 +1845,16 @@ export async function listBatches(filters: {
     id: string;
     uploader: string;
     note: string;
-    createdAt: Date;
+    createdAt: string;
     rowCount: number;
+    totalRowCount: number;
     validRowCount: number;
+    failedRowCount: number;
     opEligibleRowCount: number;
     hasOpData: boolean;
     publishPassCount: number;
     publishPassRate: number;
+    publishCandidateVersion: "ai" | "op" | null;
     avgOnline: number;
     avgAi: number;
     avgOp: number;
@@ -1868,6 +1887,7 @@ export async function listBatches(filters: {
   for (const batch of matched) {
     const rows = dedupeStoredRowsKeepLatest(rowsByBatch.get(batch.id) || []);
     const scopedRows = filters.country ? rows.filter((item) => item.country === filters.country) : rows;
+    const failedRows = scopedRows.filter((item) => Boolean(item.errorReason));
     const validRows = scopedRows.filter((item) => !item.errorReason);
     if (!validRows.length) continue;
 
@@ -1887,6 +1907,21 @@ export async function listBatches(filters: {
       moduleId === "about" ? { publishDecider: pickAboutPublishCandidate } : undefined,
     );
     const hasOpData = passMetrics.hasOpData;
+    let publishCandidateVersion: "ai" | "op" | null = null;
+
+    if (moduleId === "about") {
+      let aiPublishCount = 0;
+      let opPublishCount = 0;
+      for (const row of validRows) {
+        const publishDecision = pickAboutPublishCandidate(row);
+        if (publishDecision.selectedVersion === "ai") aiPublishCount += 1;
+        if (publishDecision.selectedVersion === "op") opPublishCount += 1;
+      }
+      if (opPublishCount > aiPublishCount) publishCandidateVersion = "op";
+      else if (aiPublishCount > opPublishCount) publishCandidateVersion = "ai";
+      else if (opPublishCount > 0) publishCandidateVersion = "op";
+      else if (aiPublishCount > 0) publishCandidateVersion = "ai";
+    }
 
     let merchantCount = 0;
     let merchantPublishPassCount = 0;
@@ -1932,13 +1967,16 @@ export async function listBatches(filters: {
       id: batch.id,
       uploader: batch.uploader,
       note: batch.note ?? "",
-      createdAt: batch.createdAt,
-      rowCount: validRows.length,
+      createdAt: rawBatchTimeMap.get(batch.id)?.createdAt || formatChinaIsoOffset(batch.createdAt),
+      rowCount: scopedRows.length,
+      totalRowCount: scopedRows.length,
       validRowCount: passMetrics.validRowCount,
+      failedRowCount: failedRows.length,
       opEligibleRowCount: passMetrics.opEligibleRowCount,
       hasOpData,
       publishPassCount: passMetrics.publishPassCount,
       publishPassRate: passMetrics.publishPassRate,
+      publishCandidateVersion,
       avgOnline,
       avgAi,
       avgOp,
@@ -1961,11 +1999,33 @@ export async function listBatches(filters: {
   const safePage = Math.max(1, filters.page || 1);
   const safePageSize = filters.unpaged ? Math.max(1, result.length || 1) : Math.max(1, Math.min(20, filters.pageSize || 20));
   const offset = (safePage - 1) * safePageSize;
+  const summary = result.reduce(
+    (acc, item) => {
+      acc.batchCount += 1;
+      acc.totalRowCount += Number(item.totalRowCount || 0);
+      acc.validRowCount += Number(item.validRowCount || 0);
+      acc.failedRowCount += Number(item.failedRowCount || 0);
+      acc.publishPassCount += Number(item.publishPassCount || 0);
+      return acc;
+    },
+    {
+      batchCount: 0,
+      totalRowCount: 0,
+      validRowCount: 0,
+      failedRowCount: 0,
+      publishPassCount: 0,
+      publishPassRate: 0,
+    },
+  );
+  summary.publishPassRate = summary.validRowCount
+    ? Math.round((summary.publishPassCount / summary.validRowCount) * 1000) / 10
+    : 0;
 
   return {
     total: result.length,
     page: safePage,
     pageSize: safePageSize,
+    summary,
     rows: result.slice(offset, offset + safePageSize),
   };
 }
