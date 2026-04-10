@@ -10,14 +10,20 @@ import {
   ScoreOutput,
   uploaderSchema,
 } from "@about-demo/trpc";
-import { db } from "../db/client";
+import { db, pool } from "../db/client";
 import { aboutScoreRows, ingestJobs, uploadBatches } from "../db/schema";
 import { makeId } from "../utils/id";
 import { scoreAboutByAiWithMeta, type ScoreIssueFlags } from "../scoring/aboutAiScorer";
 import { buildConsistentComparisonKeyDeltas } from "../scoring/validators/scoreValidator";
 import { env } from "../env";
 import { sha256 } from "../utils/hash";
-import { collectPassMetrics } from "./passMetrics";
+import { formatChinaIsoOffset } from "../utils/time";
+import {
+  collectPassMetrics,
+  pickAboutPublishCandidate,
+  type PublishCandidateDecision,
+  type PublishCandidateVersion,
+} from "./passMetrics";
 
 const headerAliases = {
   termId: ["TermID", "\uFEFFTermID"],
@@ -35,6 +41,7 @@ const headerOp = "About-OP复核";
 const requiredHeaders = ["TermID", "TermName", "Domain", "Country", headerOnline, headerAi, headerOp];
 
 export type ParsedUploadRow = {
+  sourceRowIndex: number;
   TermID: string;
   TermName: string;
   Domain: string;
@@ -54,6 +61,8 @@ type PendingIngestJob = {
   rows: ParsedUploadRow[];
   moduleId: ModuleId;
   outputMode: OutputMode;
+  retryScope: "all" | "failed_only";
+  retryOfJobId?: string;
 };
 const pendingIngestJobsByModule: Record<ModuleId, PendingIngestJob[]> = {
   about: [],
@@ -87,12 +96,49 @@ function rowSignatureFromStored(row: {
   return [row.termId || "", row.domain || "", row.hashOnline || "", row.hashAi || "", row.hashOp || ""].join("|");
 }
 
+function parsedUploadRowFromStoredRow(row: RowSelect): ParsedUploadRow {
+  return {
+    sourceRowIndex: Number(row.sourceRowIndex || 0),
+    TermID: String(row.termId || ""),
+    TermName: String(row.termName || ""),
+    Domain: String(row.domain || ""),
+    Country: String(row.country || ""),
+    About_online: String(row.snapshotOnline || ""),
+    About_ai: String(row.snapshotAi || ""),
+    About_op: String(row.snapshotOp || ""),
+  };
+}
+
+function buildFailureReasonStats(errors: Array<unknown>) {
+  return errors.reduce<Record<string, number>>(
+    (acc, error) => {
+      const category = classifyFailureReason(error instanceof Error ? error.message : String(error));
+      acc[category] = (acc[category] || 0) + 1;
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
+}
+
+function formatFailureReasonStats(statsRaw: unknown) {
+  if (!statsRaw || typeof statsRaw !== "object" || Array.isArray(statsRaw)) return "";
+  const stats = statsRaw as Record<string, unknown>;
+  return Object.entries(stats)
+    .filter(([, value]) => Number(value || 0) > 0)
+    .map(([key, value]) => `${key}:${value}`)
+    .join(", ");
+}
+
+function isRetryableFailureCategory(category: string) {
+  return category === "rate_limit" || category === "timeout" || category === "network" || category === "ai_service";
+}
+
 function toTimestampMs(value: unknown) {
   const ts = new Date(value as string | Date).getTime();
   return Number.isFinite(ts) ? ts : 0;
 }
 
-function dedupeStoredRowsKeepLatest(rows: RowSelect[]) {
+export function dedupeStoredRowsKeepLatest(rows: RowSelect[]) {
   const sorted = [...rows].sort((a, b) => toTimestampMs(a.createdAt) - toTimestampMs(b.createdAt));
   const latestBySignature = new Map<string, RowSelect>();
 
@@ -100,7 +146,11 @@ function dedupeStoredRowsKeepLatest(rows: RowSelect[]) {
     latestBySignature.set(rowSignatureFromStored(row), row);
   }
 
-  return Array.from(latestBySignature.values()).sort((a, b) => toTimestampMs(a.createdAt) - toTimestampMs(b.createdAt));
+  return Array.from(latestBySignature.values()).sort((a, b) => {
+    const indexDiff = Number(a.sourceRowIndex || 0) - Number(b.sourceRowIndex || 0);
+    if (indexDiff !== 0) return indexDiff;
+    return toTimestampMs(a.createdAt) - toTimestampMs(b.createdAt);
+  });
 }
 
 async function backfillMissingErrorRows(
@@ -160,14 +210,14 @@ export function parseUploadFile(fileName: string, base64: string): ParsedUploadR
       trim: true,
     }) as Record<string, unknown>[];
     validateHeadersCompat(Object.keys(records[0] || {}));
-    return records.map(normalizeUploadRowCompat);
+    return records.map((row, index) => normalizeUploadRowCompat(row, index));
   }
   if (fileName.toLowerCase().endsWith(".xlsx")) {
     const workbook = XLSX.read(buffer, { type: "buffer" });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
     validateHeadersCompat(Object.keys(rows[0] || {}));
-    return rows.map(normalizeUploadRowCompat);
+    return rows.map((row, index) => normalizeUploadRowCompat(row, index));
   }
   throw new Error("仅支持 .csv 或 .xlsx");
 }
@@ -189,7 +239,7 @@ function parseFaqUploadFile(fileName: string, base64: string): ParsedUploadRow[]
     throw new Error("invalid file type");
   }
 
-  return records.map((row) => {
+  return records.map((row, index) => {
     const qOnline = String((row as any).Q_online ?? "");
     const aOnline = String((row as any).A_online ?? "");
     const subclassUnified = String((row as any).subclass ?? (row as any).subclass_online ?? "");
@@ -202,6 +252,7 @@ function parseFaqUploadFile(fileName: string, base64: string): ParsedUploadRow[]
     const hasOp = qOp.trim() || aOp.trim() || subclassOp.trim();
 
     return {
+      sourceRowIndex: index + 1,
       TermID: String((row as any).TermID ?? ""),
       TermName: String((row as any).TermName ?? ""),
       Domain: String((row as any).Domain ?? ""),
@@ -221,6 +272,7 @@ function validateHeaders(headers: string[]) {
 
 function normalizeUploadRow(row: Record<string, unknown>): ParsedUploadRow {
   return {
+    sourceRowIndex: 0,
     TermID: String((row as any).TermID || ""),
     TermName: String((row as any).TermName || ""),
     Domain: String((row as any).Domain || ""),
@@ -257,12 +309,13 @@ function validateHeadersCompat(headers: string[]) {
   if (!ok) throw new Error("表头不匹配，请先下载模板并按模板上传");
 }
 
-function normalizeUploadRowCompat(row: Record<string, unknown>): ParsedUploadRow {
+function normalizeUploadRowCompat(row: Record<string, unknown>, index = 0): ParsedUploadRow {
   const mapped = new Map<string, unknown>();
   for (const [key, value] of Object.entries(row)) {
     mapped.set(normalizeHeaderKeyCompat(key), value);
   }
   return {
+    sourceRowIndex: index + 1,
     TermID: pickCompat(mapped, ["termid"]),
     TermName: pickCompat(mapped, ["termname"]),
     Domain: pickCompat(mapped, ["domain"]),
@@ -370,6 +423,7 @@ export async function saveManualScoreToBatch(params: {
   await db.insert(aboutScoreRows).values({
     id: makeId(),
     batchId: params.batchId,
+    sourceRowIndex: 1,
     termId: params.input.TermID || "",
     termName: params.input.TermName || "",
     domain: params.input.Domain || "",
@@ -432,10 +486,15 @@ export async function startIngestJob(batchId: string, fileName: string, fileBase
     id: jobId,
     batchId,
     status: "pending",
+    retryScope: "all",
+    retryOfJobId: null,
     merchantTotal,
     totalRows: rows.length,
     doneRows: 0,
     failedRows: 0,
+    initialFailedRows: 0,
+    recoveredRows: 0,
+    finalFailedRows: 0,
     elapsedMs: 0,
     etaSeconds: 0,
     promptTokensSum: 0,
@@ -444,9 +503,17 @@ export async function startIngestJob(batchId: string, fileName: string, fileBase
     estimatedCostUsdSum: "0",
     predictedTotalTokens: 0,
     predictedCostUsd: "0",
+    failureReasonStatsJson: null,
     errorReason: null,
   });
-  pendingIngestJobsByModule[moduleId].push({ jobId, batchId, rows, moduleId, outputMode });
+  pendingIngestJobsByModule[moduleId].push({
+    jobId,
+    batchId,
+    rows,
+    moduleId,
+    outputMode,
+    retryScope: "all",
+  });
   void processPendingIngestJobs(moduleId);
   return { jobId, totalRows: rows.length };
 }
@@ -473,7 +540,7 @@ async function processPendingIngestJobs(moduleId: ModuleId) {
       const startedRows = await db.select().from(ingestJobs).where(eq(ingestJobs.id, next.jobId));
       if (startedRows[0]?.status !== "running") continue;
       try {
-        await runIngest(next.jobId, next.batchId, next.rows, next.outputMode);
+        await runIngest(next.jobId, next.batchId, next.rows, next.outputMode, next.retryScope);
       } catch (error) {
         const reason = `job failed: ${errorMessage(error)}`.slice(0, 512);
         await backfillMissingErrorRows(next.batchId, next.rows, reason, { since: startedRows[0]?.startedAt });
@@ -486,10 +553,14 @@ async function processPendingIngestJobs(moduleId: ModuleId) {
           .update(ingestJobs)
           .set({
             status: "failed",
-            finishedAt: new Date(),
+            finishedAt: sql`CURRENT_TIMESTAMP`,
             etaSeconds: 0,
             doneRows,
             failedRows,
+            initialFailedRows: failedRows,
+            recoveredRows: 0,
+            finalFailedRows: failedRows,
+            failureReasonStatsJson: buildFailureReasonStats([reason]),
             errorReason: reason,
           })
           .where(eq(ingestJobs.id, next.jobId));
@@ -540,7 +611,9 @@ async function scoreWithRetries(
   const maxMs = Math.max(baseMs, options?.maxMs ?? env.ingestRowRetryMaxMs);
   const errors: string[] = [];
   const hasOp = Boolean(input.About_op?.trim());
-  const requestTimeoutMs = hasOp ? Math.max(env.aiRequestTimeoutMsBatch, 120_000) : env.aiRequestTimeoutMsBatch;
+  const requestTimeoutMs = hasOp
+    ? Math.max(env.aiRequestTimeoutMsBatch, 120_000)
+    : Math.min(env.aiRequestTimeoutMsBatch, 60_000);
 
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     try {
@@ -555,7 +628,13 @@ async function scoreWithRetries(
   throw new Error(`row retries exhausted: ${errors.join(" | ")}`);
 }
 
-async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[], outputMode: OutputMode) {
+async function runIngest(
+  jobId: string,
+  batchId: string,
+  rows: ParsedUploadRow[],
+  outputMode: OutputMode,
+  retryScope: "all" | "failed_only",
+) {
   const batchRows = await db.select().from(uploadBatches).where(eq(uploadBatches.id, batchId));
   const moduleId = (batchRows[0]?.moduleId || "about") as "about" | "faq";
   let finalizedDone = 0;
@@ -567,7 +646,7 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
   let totalTokensSum = 0;
   let estimatedCostUsdSum = 0;
   const startedAtMs = Date.now();
-  const failedCandidates: Array<{ row: ParsedUploadRow; input: ManualScoreInput; error: unknown }> = [];
+  const failedCandidates: Array<{ row: ParsedUploadRow; input: ManualScoreInput; error: unknown; category: string }> = [];
   let transientFailureStreak = 0;
   let throttleUntilMs = 0;
   const adaptiveThrottleEnabled = env.ingestAdaptiveThrottleEnabled;
@@ -660,9 +739,14 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
         totalTokensSum += scored.runtime.totalTokens;
         estimatedCostUsdSum += scored.runtime.estimatedCostUsd;
         transientFailureStreak = 0;
-      } catch (error) {
+        } catch (error) {
         if (await isCancelled()) return;
-        failedCandidates.push({ row, input, error });
+        failedCandidates.push({
+          row,
+          input,
+          error,
+          category: classifyFailureReason(error instanceof Error ? error.message : String(error)),
+        });
 
         if (adaptiveThrottleEnabled) {
           const message = errorMessage(error);
@@ -685,31 +769,38 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
 
   await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(1, rows.length)) }, () => worker()));
 
+  const initialFailedRows = failedCandidates.length;
+  let recoveredRows = 0;
   let pendingFailures = failedCandidates;
   const finalRetryPasses = Math.max(0, env.ingestFinalRetryPasses);
 
   for (let pass = 1; pass <= finalRetryPasses && pendingFailures.length > 0; pass += 1) {
     if (await isCancelled()) break;
 
-    const nextFailures: typeof pendingFailures = [];
+    const immediateFailures = pendingFailures.filter(
+      (candidate) => !isRetryableFailureCategory(candidate.category) && candidate.category !== "validation",
+    );
+    const transportFailures = pendingFailures.filter((candidate) => isRetryableFailureCategory(candidate.category));
+    const validationFailures = pendingFailures.filter((candidate) => candidate.category === "validation");
+    const nextFailures: typeof pendingFailures = [...immediateFailures];
     const passBaseMs = env.ingestRowRetryBaseMs * (pass + 1);
     let passCursor = 0;
     const finalRetryConcurrency = Math.max(
       1,
-      Math.min(env.ingestFinalRetryConcurrency, concurrency, pendingFailures.length),
+      Math.min(env.ingestFinalRetryConcurrency, concurrency, transportFailures.length || 1),
     );
 
-    const retryWorker = async () => {
+    const retryWorker = async (items: typeof pendingFailures, workerConcurrency: number, maxRetries: number) => {
       while (true) {
         if (await isCancelled()) return;
         const index = passCursor;
         passCursor += 1;
-        if (index >= pendingFailures.length) return;
-        const candidate = pendingFailures[index];
+        if (index >= items.length) return;
+        const candidate = items[index];
 
         try {
           const scored = await scoreWithRetries(candidate.input, {
-            maxRetries: env.ingestRowMaxRetries + 1,
+            maxRetries,
             baseMs: passBaseMs,
             maxMs: env.ingestRowRetryMaxMs * 2,
             outputMode,
@@ -724,15 +815,35 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
           completionTokensSum += scored.runtime.completionTokens;
           totalTokensSum += scored.runtime.totalTokens;
           estimatedCostUsdSum += scored.runtime.estimatedCostUsd;
+          recoveredRows += 1;
         } catch (error) {
-          nextFailures.push({ row: candidate.row, input: candidate.input, error });
+          nextFailures.push({
+            row: candidate.row,
+            input: candidate.input,
+            error,
+            category: classifyFailureReason(error instanceof Error ? error.message : String(error)),
+          });
         }
 
         await flushProgress(false);
       }
     };
 
-    await Promise.all(Array.from({ length: finalRetryConcurrency }, () => retryWorker()));
+    passCursor = 0;
+    if (transportFailures.length > 0) {
+      await Promise.all(
+        Array.from({ length: Math.min(finalRetryConcurrency, transportFailures.length) }, () =>
+          retryWorker(transportFailures, finalRetryConcurrency, env.ingestRowMaxRetries + 1),
+        ),
+      );
+    }
+
+    passCursor = 0;
+    if (validationFailures.length > 0) {
+      await Promise.all(
+        Array.from({ length: 1 }, () => retryWorker(validationFailures, 1, Math.max(0, env.ingestRowMaxRetries))),
+      );
+    }
 
     pendingFailures = nextFailures;
     await flushProgress(true);
@@ -752,23 +863,30 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
   if (finalJobRows[0]?.status === "cancelled") {
     await db
       .update(ingestJobs)
-      .set({ finishedAt: new Date(), etaSeconds: 0 })
+      .set({ finishedAt: sql`CURRENT_TIMESTAMP`, etaSeconds: 0 })
       .where(eq(ingestJobs.id, jobId));
     return;
   }
 
-  await db.update(uploadBatches).set({ rowCount: success }).where(eq(uploadBatches.id, batchId));
+  const aggregate = await aggregateBatchRows(batchId);
   const finalStatus = "done";
   await db
     .update(ingestJobs)
     .set({
       status: finalStatus,
-      finishedAt: new Date(),
+      finishedAt: sql`CURRENT_TIMESTAMP`,
       etaSeconds: 0,
+      initialFailedRows,
+      recoveredRows,
+      finalFailedRows: pendingFailures.length,
+      failureReasonStatsJson: buildFailureReasonStats(pendingFailures.map((item) => item.error)),
+      doneRows: aggregate.doneRows,
+      failedRows: aggregate.failedRows,
       predictedTotalTokens: totalTokensSum,
       predictedCostUsd: String(Math.round(estimatedCostUsdSum * 1_000_000) / 1_000_000),
     })
     .where(eq(ingestJobs.id, jobId));
+  await db.update(uploadBatches).set({ rowCount: aggregate.successRows }).where(eq(uploadBatches.id, batchId));
   } finally {
     clearInterval(heartbeat);
   }
@@ -777,7 +895,12 @@ async function runIngest(jobId: string, batchId: string, rows: ParsedUploadRow[]
 async function ensureIngestJobsColumns() {
   const ddl = [
     "ALTER TABLE ingest_jobs ADD COLUMN merchant_total int NOT NULL DEFAULT 0",
+    "ALTER TABLE ingest_jobs ADD COLUMN retry_scope varchar(16) NOT NULL DEFAULT 'all'",
+    "ALTER TABLE ingest_jobs ADD COLUMN retry_of_job_id varchar(36) NULL",
     "ALTER TABLE ingest_jobs ADD COLUMN elapsed_ms int NOT NULL DEFAULT 0",
+    "ALTER TABLE ingest_jobs ADD COLUMN initial_failed_rows int NOT NULL DEFAULT 0",
+    "ALTER TABLE ingest_jobs ADD COLUMN recovered_rows int NOT NULL DEFAULT 0",
+    "ALTER TABLE ingest_jobs ADD COLUMN final_failed_rows int NOT NULL DEFAULT 0",
     "ALTER TABLE ingest_jobs ADD COLUMN eta_seconds int NOT NULL DEFAULT 0",
     "ALTER TABLE ingest_jobs ADD COLUMN prompt_tokens_sum int NOT NULL DEFAULT 0",
     "ALTER TABLE ingest_jobs ADD COLUMN completion_tokens_sum int NOT NULL DEFAULT 0",
@@ -785,6 +908,7 @@ async function ensureIngestJobsColumns() {
     "ALTER TABLE ingest_jobs ADD COLUMN estimated_cost_usd_sum decimal(12,6) NOT NULL DEFAULT 0",
     "ALTER TABLE ingest_jobs ADD COLUMN predicted_total_tokens int NOT NULL DEFAULT 0",
     "ALTER TABLE ingest_jobs ADD COLUMN predicted_cost_usd decimal(12,6) NOT NULL DEFAULT 0",
+    "ALTER TABLE ingest_jobs ADD COLUMN failure_reason_stats_json json NULL",
     "ALTER TABLE ingest_jobs ADD COLUMN error_reason varchar(512) NULL",
   ];
 
@@ -800,7 +924,10 @@ async function ensureIngestJobsColumns() {
 }
 
 async function ensureAboutScoreRowsColumns() {
-  const ddl = ["ALTER TABLE about_score_rows ADD COLUMN term_name varchar(255) NOT NULL DEFAULT ''"];
+  const ddl = [
+    "ALTER TABLE about_score_rows ADD COLUMN term_name varchar(255) NOT NULL DEFAULT ''",
+    "ALTER TABLE about_score_rows ADD COLUMN source_row_index int NOT NULL DEFAULT 0",
+  ];
 
   for (const sqlText of ddl) {
     try {
@@ -829,6 +956,7 @@ async function insertScoreRow(
   await db.insert(aboutScoreRows).values({
     id: makeId(),
     batchId,
+    sourceRowIndex: row.sourceRowIndex,
     termId: row.TermID,
     termName: row.TermName,
     domain: row.Domain,
@@ -899,6 +1027,7 @@ async function insertErrorRow(batchId: string, row: ParsedUploadRow, error: unkn
   await db.insert(aboutScoreRows).values({
     id: makeId(),
     batchId,
+    sourceRowIndex: row.sourceRowIndex,
     termId: row.TermID,
     termName: row.TermName,
     domain: row.Domain,
@@ -951,11 +1080,64 @@ function buildIssueFlags(output: ScoreOutput) {
   };
 }
 
+function withChinaJobTimestamps<T extends { startedAt?: string | Date | null; finishedAt?: string | Date | null; updatedAt?: string | Date | null }>(
+  row: T,
+) {
+  return {
+    ...row,
+    startedAt: formatChinaIsoOffset(row.startedAt),
+    finishedAt: formatChinaIsoOffset(row.finishedAt),
+    updatedAt: formatChinaIsoOffset(row.updatedAt),
+  };
+}
+
+function toChinaIsoFromDbTimestamp(value?: string | null) {
+  if (!value) return "";
+  return `${String(value).replace(" ", "T")}+08:00`;
+}
+
+async function getIngestJobRawTimeMap(jobIds: string[]) {
+  const ids = Array.from(new Set(jobIds.filter(Boolean)));
+  const map = new Map<string, { startedAt?: string; finishedAt?: string; updatedAt?: string }>();
+  if (!ids.length) return map;
+
+  const placeholders = ids.map(() => "?").join(",");
+  const [rows] = await pool.query(
+    `select id, cast(started_at as char) as started_at_raw, cast(finished_at as char) as finished_at_raw, cast(updated_at as char) as updated_at_raw from ingest_jobs where id in (${placeholders})`,
+    ids,
+  );
+
+  for (const row of rows as Array<Record<string, unknown>>) {
+    map.set(String(row.id || ""), {
+      startedAt: toChinaIsoFromDbTimestamp(row.started_at_raw as string | null),
+      finishedAt: toChinaIsoFromDbTimestamp(row.finished_at_raw as string | null),
+      updatedAt: toChinaIsoFromDbTimestamp(row.updated_at_raw as string | null),
+    });
+  }
+
+  return map;
+}
+
 export async function getIngestStatus(jobId: string) {
   await markStalledJobsAsFailed();
   const rows = await db.select().from(ingestJobs).where(eq(ingestJobs.id, jobId));
   if (!rows.length) throw new Error("job 不存在");
-  return rows[0];
+  const job = rows[0];
+  const rawTimeMap = await getIngestJobRawTimeMap([jobId]);
+  const rawTimes = rawTimeMap.get(jobId);
+  const batchRows = await db.select().from(uploadBatches).where(eq(uploadBatches.id, job.batchId));
+  const batch = batchRows[0];
+  return {
+    ...withChinaJobTimestamps(job),
+    ...(rawTimes || {}),
+    outputMode: (batch?.outputMode || "full") as OutputMode,
+    retryScope: String(job.retryScope || "all"),
+    isFailedOnlyRetry: String(job.retryScope || "all") === "failed_only",
+    failureReasonStats: job.failureReasonStatsJson || {},
+    failureReasonSummary:
+      formatFailureReasonStats(job.failureReasonStatsJson) ||
+      (job.failedRows > 0 ? "存在失败行，请下载结果查看失败原因列" : ""),
+  };
 }
 
 export async function listIngestJobs(page = 1, pageSize = 20, moduleId?: "about" | "faq") {
@@ -969,34 +1151,67 @@ export async function listIngestJobs(page = 1, pageSize = 20, moduleId?: "about"
   const filtered = moduleId
     ? rows.filter((item) => moduleByBatchId.get(item.batchId) === moduleId)
     : rows;
+  const batchById = new Map(batchRows.map((item) => [item.id, item]));
+  const pageRows = filtered.slice(offset, offset + safePageSize);
+  const rawTimeMap = await getIngestJobRawTimeMap(pageRows.map((item) => item.id));
   return {
     total: filtered.length,
     page: safePage,
     pageSize: safePageSize,
-    rows: filtered.slice(offset, offset + safePageSize),
+    rows: pageRows.map((item) => {
+      const batch = batchById.get(item.batchId);
+      const rawTimes = rawTimeMap.get(item.id);
+      return {
+        ...withChinaJobTimestamps(item),
+        ...(rawTimes || {}),
+        outputMode: (batch?.outputMode || "full") as OutputMode,
+        retryScope: String(item.retryScope || "all"),
+        isFailedOnlyRetry: String(item.retryScope || "all") === "failed_only",
+        failureReasonStats: item.failureReasonStatsJson || {},
+        failureReasonSummary:
+          formatFailureReasonStats(item.failureReasonStatsJson) ||
+          (item.errorReason || (item.failedRows > 0 ? "存在失败行，请下载结果查看失败原因列" : "")),
+      };
+    }),
   };
 }
 
 export async function cancelIngestJob(jobId: string) {
   await db
     .update(ingestJobs)
-    .set({ status: "cancelled", finishedAt: new Date(), etaSeconds: 0 })
+    .set({ status: "cancelled", finishedAt: sql`CURRENT_TIMESTAMP`, etaSeconds: 0 })
     .where(and(eq(ingestJobs.id, jobId), inArray(ingestJobs.status, ["pending", "running"])));
   return { ok: true };
 }
 
-export async function retryIngestJob(jobId: string) {
+export async function retryIngestJob(jobId: string, scope: "all" | "failed_only" = "all") {
   await ensureIngestJobsColumns();
   const rows = await db.select().from(ingestJobs).where(eq(ingestJobs.id, jobId));
   if (!rows.length) throw new Error("job 不存在");
   const job = rows[0];
 
-  const payloadRows = ingestPayloadByBatch.get(job.batchId);
+  let payloadRows = ingestPayloadByBatch.get(job.batchId) || [];
+  if (!payloadRows.length) {
+    const storedRows = await db.select().from(aboutScoreRows).where(eq(aboutScoreRows.batchId, job.batchId));
+    payloadRows = dedupeStoredRowsKeepLatest(storedRows).map(parsedUploadRowFromStoredRow);
+  }
+  if (scope === "failed_only") {
+    const storedRows = await db.select().from(aboutScoreRows).where(eq(aboutScoreRows.batchId, job.batchId));
+    payloadRows = dedupeStoredRowsKeepLatest(storedRows)
+      .filter((row) => Boolean(row.errorReason))
+      .map(parsedUploadRowFromStoredRow);
+    if (!payloadRows.length) {
+      throw new Error("当前批次没有失败行可补跑");
+    }
+  }
+
   if (!payloadRows || payloadRows.length === 0) {
     throw new Error("当前任务不可重试，请重新上传文件");
   }
 
-  await db.update(uploadBatches).set({ rowCount: 0 }).where(eq(uploadBatches.id, job.batchId));
+  if (scope === "all") {
+    await db.update(uploadBatches).set({ rowCount: 0 }).where(eq(uploadBatches.id, job.batchId));
+  }
 
   const newJobId = makeId();
   const batchRows = await db.select().from(uploadBatches).where(eq(uploadBatches.id, job.batchId));
@@ -1010,10 +1225,15 @@ export async function retryIngestJob(jobId: string) {
     id: newJobId,
     batchId: job.batchId,
     status: "pending",
+    retryScope: scope,
+    retryOfJobId: jobId,
     merchantTotal,
     totalRows: payloadRows.length,
     doneRows: 0,
     failedRows: 0,
+    initialFailedRows: 0,
+    recoveredRows: 0,
+    finalFailedRows: 0,
     elapsedMs: 0,
     etaSeconds: 0,
     promptTokensSum: 0,
@@ -1022,9 +1242,18 @@ export async function retryIngestJob(jobId: string) {
     estimatedCostUsdSum: "0",
     predictedTotalTokens: 0,
     predictedCostUsd: "0",
+    failureReasonStatsJson: null,
     errorReason: null,
   });
-  pendingIngestJobsByModule[moduleId].push({ jobId: newJobId, batchId: job.batchId, rows: payloadRows, moduleId, outputMode });
+  pendingIngestJobsByModule[moduleId].push({
+    jobId: newJobId,
+    batchId: job.batchId,
+    rows: payloadRows,
+    moduleId,
+    outputMode,
+    retryScope: scope,
+    retryOfJobId: jobId,
+  });
   void processPendingIngestJobs(moduleId);
 
   return { ok: true, newJobId };
@@ -1068,10 +1297,14 @@ async function markStalledJobsAsFailed() {
         .update(ingestJobs)
         .set({
           status: "failed",
-          finishedAt: new Date(),
+          finishedAt: sql`CURRENT_TIMESTAMP`,
           etaSeconds: 0,
           doneRows,
           failedRows,
+          initialFailedRows: failedRows,
+          recoveredRows: 0,
+          finalFailedRows: failedRows,
+          failureReasonStatsJson: buildFailureReasonStats([reason]),
           errorReason: reason,
         })
         .where(eq(ingestJobs.id, row.id));
@@ -1081,11 +1314,20 @@ async function markStalledJobsAsFailed() {
 
 export async function getBatchResult(batchId: string) {
   await ensureAboutScoreRowsColumns();
+  await ensureIngestJobsColumns();
+  const moduleId = await getBatchModuleId(batchId);
+  const jobs = await db.select().from(ingestJobs).where(eq(ingestJobs.batchId, batchId));
+  const failedOnlyRetryJobs = jobs
+    .filter((job) => String(job.retryScope || "all") === "failed_only")
+    .sort((a, b) => toTimestampMs(a.startedAt) - toTimestampMs(b.startedAt));
   const rawRows = await db.select().from(aboutScoreRows).where(eq(aboutScoreRows.batchId, batchId));
   const rows = dedupeStoredRowsKeepLatest(rawRows).map((row) => sanitizeStoredRow(row));
   const validRows = rows.filter((row) => !row.errorReason);
   const failedRows = rows.filter((row) => row.errorReason);
-  const passMetrics = collectPassMetrics(validRows);
+  const passMetrics = collectPassMetrics(
+    validRows,
+    moduleId === "about" ? { publishDecider: pickAboutPublishCandidate } : undefined,
+  );
   const opEligibleRows = validRows.filter((row) => row.scoreOpTotal != null);
   const rowCount = rows.length;
 
@@ -1123,6 +1365,9 @@ export async function getBatchResult(batchId: string) {
       rowCount,
       failedRows: failedRows.length,
       failureReasonStats,
+      hasFailedRowRetry: failedOnlyRetryJobs.length > 0,
+      failedRowRetryCount: failedOnlyRetryJobs.length,
+      latestFailedRowRetryAt: failedOnlyRetryJobs[failedOnlyRetryJobs.length - 1]?.startedAt ?? null,
       publishPassCount: passMetrics.publishPassCount,
       publishPassRate: passMetrics.publishPassRate,
       avgOnline,
@@ -1192,14 +1437,40 @@ function sanitizeStoredRow<T extends Record<string, unknown>>(row: T) {
   };
 }
 
-export function buildExportRows(rows: Array<Record<string, unknown>>) {
+function pickStoredPublishCandidate(row: Record<string, unknown>) {
+  return pickAboutPublishCandidate({
+    passOnline: row.passOnline,
+    passAi: row.passAi,
+    passOp: row.passOp,
+    scoreOnlineTotal: row.scoreOnlineTotal,
+    scoreAiTotal: row.scoreAiTotal,
+    scoreOpTotal: row.scoreOpTotal,
+  });
+}
+
+function publishCandidateLabel(version: PublishCandidateVersion | null) {
+  if (version === "ai") return "AI";
+  if (version === "op") return "OP";
+  return "";
+}
+
+export function buildExportRows(rows: Array<Record<string, unknown>>, options?: { moduleId?: "about" | "faq" }) {
   return rows.map((rawRow) => {
     const row = sanitizeStoredRow(rawRow);
     const failed = Boolean(row.errorReason);
     const failureCategory = failed ? classifyFailureReason(row.errorReason) : "";
-    const aiScore = Number(row.scoreAiTotal || 0);
-    const opScore = Number(row.scoreOpTotal || 0);
-    const passByScore = aiScore >= 8 || opScore >= 8;
+    const publishDecision: PublishCandidateDecision =
+      options?.moduleId === "about"
+        ? pickStoredPublishCandidate(row)
+        : {
+            publish: Number(row.passAi || 0) === 1 || Number(row.passOp || 0) === 1,
+            selectedVersion:
+              Number(row.passOp || 0) === 1 && Number(row.scoreOpTotal || 0) >= Number(row.scoreAiTotal || 0)
+                ? "op"
+                : Number(row.passAi || 0) === 1
+                  ? "ai"
+                  : null,
+          };
     const keyDeltasRaw = Array.isArray(row.keyDeltas) ? row.keyDeltas : [];
     const keyDeltasText = keyDeltasRaw
       .map((item) => String(item || "").trim())
@@ -1214,7 +1485,8 @@ export function buildExportRows(rows: Array<Record<string, unknown>>) {
       线上总分: row.scoreOnlineTotal ?? "",
       AI总分: row.scoreAiTotal ?? "",
       OP总分: row.scoreOpTotal ?? "",
-      是否可发布: passByScore ? "是" : "否",
+      是否可发布: publishDecision.publish ? "是" : "否",
+      可发布版本: publishCandidateLabel(publishDecision.selectedVersion),
       最优版本: row.bestVersion ?? "",
       关键差异: keyDeltasText,
       状态: failed ? "失败" : "成功",
@@ -1343,14 +1615,12 @@ function buildPublishAboutRows(rows: Array<Record<string, unknown>>) {
   return rows
     .filter((row) => !row.errorReason)
     .map((row) => {
-      const aiScore = Number(row.scoreAiTotal || 0);
-      const opScore = Number(row.scoreOpTotal || 0);
-      const aiPass = aiScore >= 8;
-      const opPass = opScore >= 8;
-      if (!aiPass && !opPass) return null;
+      const publishDecision = pickStoredPublishCandidate(row);
+      if (!publishDecision.publish) return null;
 
-      const useOp = opPass && (!aiPass || opScore > aiScore);
-      const brief = trimBlankEdgeLines(useOp ? row.snapshotOp || "" : row.snapshotAi || "");
+      const brief = trimBlankEdgeLines(
+        publishDecision.selectedVersion === "op" ? row.snapshotOp || row.snapshotAi || "" : row.snapshotAi || "",
+      );
 
       return {
         ...blank,
@@ -1359,7 +1629,7 @@ function buildPublishAboutRows(rows: Array<Record<string, unknown>>) {
         TermID: String(row.termId || ""),
         TermName: String(row.termName || ""),
         Domain: String(row.domain || ""),
-        Source: "AI",
+        Source: publishDecision.selectedVersion === "op" ? "OP" : "AI",
         板块名称: publishAboutSectionName,
         "Brief Introduction": brief,
       };
@@ -1421,7 +1691,7 @@ function flattenSummaryObject(input: Record<string, unknown>, prefix = ""): Arra
 
 export function toXlsx(rows: Array<Record<string, unknown>>, summary: Record<string, unknown>) {
   const workbook = XLSX.utils.book_new();
-  const resultSheet = XLSX.utils.json_to_sheet(buildExportRows(rows));
+  const resultSheet = XLSX.utils.json_to_sheet(buildExportRows(rows, { moduleId: "about" }));
   XLSX.utils.book_append_sheet(workbook, resultSheet, "结果明细");
 
   const statsSheet = XLSX.utils.json_to_sheet(buildSummaryRowsZh(summary));
@@ -1470,7 +1740,7 @@ export function toXlsxByModule(
   if (moduleId === "about") return toXlsx(rows, summary);
 
   const workbook = XLSX.utils.book_new();
-  const resultSheet = XLSX.utils.json_to_sheet(buildExportRows(rows));
+  const resultSheet = XLSX.utils.json_to_sheet(buildExportRows(rows, { moduleId }));
   XLSX.utils.book_append_sheet(workbook, resultSheet, "结果明细");
 
   const statsSheet = XLSX.utils.json_to_sheet(buildSummaryRowsZh(summary));
@@ -1611,9 +1881,12 @@ export async function listBatches(filters: {
     const avgAi = avg("scoreAiTotal");
     const opRows = validRows.filter((item) => item.scoreOpTotal !== null);
     const avgOp = opRows.length ? Math.round((opRows.reduce((acc, item) => acc + Number(item.scoreOpTotal || 0), 0) / opRows.length) * 10) / 10 : 0;
-    const passMetrics = collectPassMetrics(validRows);
-    const hasOpData = passMetrics.hasOpData;
     const moduleId = String(batch.moduleId || "about");
+    const passMetrics = collectPassMetrics(
+      validRows,
+      moduleId === "about" ? { publishDecider: pickAboutPublishCandidate } : undefined,
+    );
+    const hasOpData = passMetrics.hasOpData;
 
     let merchantCount = 0;
     let merchantPublishPassCount = 0;
@@ -1726,7 +1999,11 @@ export async function analyticsSummary(filters: {
   const rows = dedupedRows.filter((item) => batchIds.has(item.batchId));
   const scopedRows = filters.country ? rows.filter((item) => item.country === filters.country) : rows;
   const validRows = scopedRows.filter((item) => !item.errorReason);
-  const passMetrics = collectPassMetrics(validRows);
+  const moduleId = String(filters.moduleId || "about");
+  const passMetrics = collectPassMetrics(
+    validRows,
+    moduleId === "about" ? { publishDecider: pickAboutPublishCandidate } : undefined,
+  );
   const opEligibleRows = validRows.filter((item) => item.scoreOpTotal != null);
 
   const avgOnRows = (targetRows: RowSelect[], key: keyof RowSelect) => {
@@ -1795,7 +2072,6 @@ export async function analyticsSummary(filters: {
     fill("op", item.scoreOpTotal);
   }
 
-  const moduleId = String(filters.moduleId || "about");
   let merchantCount = 0;
   let merchantPublishPassCount = 0;
   let merchantPublishPassRate = 0;

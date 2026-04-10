@@ -7,7 +7,6 @@ import {
   batchQueueInputSchema,
   batchListInputSchema,
   batchResultInputSchema,
-  batchRetryInputSchema,
   batchStartInputSchema,
   categoryCalibrationPreviewInputSchema,
   categoryCalibrationQueueInputSchema,
@@ -58,7 +57,6 @@ import {
   getIngestStatus,
   listIngestJobs,
   listBatches,
-  retryIngestJob,
   saveManualScoreToBatch,
   startIngestJob,
   buildExportRows,
@@ -269,16 +267,15 @@ export const appRouter = t.router({
       cancel: t.procedure.input(batchCancelInputSchema).mutation(async ({ input }) => {
         return cancelIngestJob(input.jobId);
       }),
-      retry: t.procedure.input(batchRetryInputSchema).mutation(async ({ input }) => {
-        return retryIngestJob(input.jobId);
-      }),
       result: t.procedure.input(batchResultInputSchema).query(async ({ input }) => {
         const data = await getBatchResult(input.batchId);
+        const moduleId = await getBatchModuleId(input.batchId);
         if (input.format === "csv") {
-          return { csv: toCsv(buildExportRows(data.rows as unknown as Array<Record<string, unknown>>)) };
+          return {
+            csv: toCsv(buildExportRows(data.rows as unknown as Array<Record<string, unknown>>, { moduleId })),
+          };
         }
         if (input.format === "xlsx") {
-          const moduleId = await getBatchModuleId(input.batchId);
           return {
             xlsxBase64: toXlsxByModule(
               moduleId,

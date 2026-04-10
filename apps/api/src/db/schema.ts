@@ -25,6 +25,7 @@ export const aboutScoreRows = mysqlTable("about_score_rows", {
   id: varchar("id", { length: 36 }).primaryKey(),
   batchId: varchar("batch_id", { length: 36 }).notNull(),
   rowKind: varchar("row_kind", { length: 16 }).notNull().default("about"),
+  sourceRowIndex: int("source_row_index").notNull().default(0),
   termId: varchar("term_id", { length: 191 }).notNull(),
   termName: varchar("term_name", { length: 255 }).notNull().default(""),
   domain: varchar("domain", { length: 255 }).notNull(),
@@ -86,10 +87,15 @@ export const ingestJobs = mysqlTable("ingest_jobs", {
   id: varchar("id", { length: 36 }).primaryKey(),
   batchId: varchar("batch_id", { length: 36 }).notNull(),
   status: varchar("status", { length: 16 }).notNull().default("pending"),
+  retryScope: varchar("retry_scope", { length: 16 }).notNull().default("all"),
+  retryOfJobId: varchar("retry_of_job_id", { length: 36 }),
   merchantTotal: int("merchant_total").notNull().default(0),
   totalRows: int("total_rows").notNull().default(0),
   doneRows: int("done_rows").notNull().default(0),
   failedRows: int("failed_rows").notNull().default(0),
+  initialFailedRows: int("initial_failed_rows").notNull().default(0),
+  recoveredRows: int("recovered_rows").notNull().default(0),
+  finalFailedRows: int("final_failed_rows").notNull().default(0),
   elapsedMs: int("elapsed_ms").notNull().default(0),
   etaSeconds: int("eta_seconds").notNull().default(0),
   promptTokensSum: int("prompt_tokens_sum").notNull().default(0),
@@ -98,13 +104,14 @@ export const ingestJobs = mysqlTable("ingest_jobs", {
   estimatedCostUsdSum: decimal("estimated_cost_usd_sum", { precision: 12, scale: 6 }).notNull().default("0"),
   predictedTotalTokens: int("predicted_total_tokens").notNull().default(0),
   predictedCostUsd: decimal("predicted_cost_usd", { precision: 12, scale: 6 }).notNull().default("0"),
+  failureReasonStatsJson: json("failure_reason_stats_json"),
   errorReason: varchar("error_reason", { length: 512 }),
   startedAt: timestamp("started_at").defaultNow().notNull(),
   finishedAt: timestamp("finished_at"),
   updatedAt: timestamp("updated_at")
     .defaultNow()
     .notNull()
-    .$onUpdateFn(() => new Date()),
+    .$onUpdateFn(() => sql`CURRENT_TIMESTAMP`),
 });
 
 export const contentGenerationJobs = mysqlTable("content_generation_jobs", {

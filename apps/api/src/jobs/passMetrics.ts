@@ -3,6 +3,15 @@ export type PassMetricRow = {
   passAi: unknown;
   passOp: unknown;
   scoreOpTotal: unknown;
+  scoreOnlineTotal?: unknown;
+  scoreAiTotal?: unknown;
+};
+
+export type PublishCandidateVersion = "ai" | "op";
+
+export type PublishCandidateDecision = {
+  publish: boolean;
+  selectedVersion: PublishCandidateVersion | null;
 };
 
 export type PassMetricsPayload = {
@@ -26,9 +35,36 @@ export function ratePercent(numerator: number, denominator: number) {
   return Math.round((numerator / denominator) * 1000) / 10;
 }
 
-export function collectPassMetrics(rows: PassMetricRow[]): PassMetricsPayload {
+export function pickAboutPublishCandidate(row: PassMetricRow): PublishCandidateDecision {
+  const onlineScore = Number(row.scoreOnlineTotal ?? 0);
+  const aiScore = Number(row.scoreAiTotal ?? 0);
+  const hasOpScore = row.scoreOpTotal !== null && row.scoreOpTotal !== undefined && row.scoreOpTotal !== "";
+  const opScore = hasOpScore ? Number(row.scoreOpTotal) : Number.NEGATIVE_INFINITY;
+
+  const aiEligible = aiScore > onlineScore && aiScore > 8;
+  const opEligible = hasOpScore && opScore > onlineScore && opScore > 8;
+
+  if (aiEligible && opEligible) {
+    return {
+      publish: true,
+      selectedVersion: opScore >= aiScore ? "op" : "ai",
+    };
+  }
+
+  if (opEligible) return { publish: true, selectedVersion: "op" };
+  if (aiEligible) return { publish: true, selectedVersion: "ai" };
+  return { publish: false, selectedVersion: null };
+}
+
+export function collectPassMetrics(
+  rows: PassMetricRow[],
+  options?: {
+    publishDecider?: (row: PassMetricRow) => PublishCandidateDecision;
+  },
+): PassMetricsPayload {
   const opEligibleRows = rows.filter((item) => item.scoreOpTotal !== null && item.scoreOpTotal !== undefined);
   const publishPassCount = rows.filter((item) => {
+    if (options?.publishDecider) return options.publishDecider(item).publish;
     const onlinePass = Number(item.passOnline) === 1;
     const aiPass = Number(item.passAi) === 1;
     const opEligible = item.scoreOpTotal !== null && item.scoreOpTotal !== undefined;

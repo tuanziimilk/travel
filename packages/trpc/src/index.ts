@@ -206,6 +206,7 @@ export const batchCancelInputSchema = z.object({
 
 export const batchRetryInputSchema = z.object({
   jobId: z.string(),
+  scope: z.enum(["all", "failed_only"]).optional().default("all"),
 });
 
 export const batchQueueInputSchema = z.object({
