@@ -1,6 +1,6 @@
 import * as Select from "@radix-ui/react-select";
 import * as XLSX from "xlsx";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   type AiModel,
   categoryCalibrationDefaultAiModel,
@@ -176,8 +176,26 @@ function formatProgress(processedRows: number, totalRows: number) {
   return Math.max(0, Math.min(100, Math.round((processedRows / totalRows) * 100)));
 }
 
+function formatVisualProgress(processedRows: number, totalRows: number, status: string) {
+  const raw = formatProgress(processedRows, totalRows);
+  if (status === "running" && processedRows <= 0 && totalRows > 0) return 4;
+  return raw;
+}
+
 function formatSummaryHeadline(processedRows: number, totalRows: number, successRows: number, failedRows: number) {
   return `${processedRows}/${totalRows} | 成功 ${successRows} | 失败 ${failedRows}`;
+}
+
+function formatProgressStage(status: string, summary: Record<string, unknown> | undefined, processedRows: number, totalRows: number) {
+  const explicit = normalizeText(summary?.progressStage);
+  if (explicit) return explicit;
+  if (status === "queued") return "排队中";
+  if (status === "done") return "已完成";
+  if (status === "failed") return "失败";
+  if (status === "running" && processedRows <= 0 && totalRows > 0) return "已启动";
+  if (status === "running" && totalRows > 0 && processedRows >= totalRows) return "正在收尾";
+  if (status === "running") return "正在调用 AI";
+  return "";
 }
 
 function formatSummaryMeta(summary: Record<string, unknown> | undefined, inputMode: string, totalRows: number) {
@@ -219,6 +237,35 @@ function formatFailureReasonList(summary: Record<string, unknown> | undefined) {
   return reasons.map((item) => normalizeText(item)).filter(Boolean);
 }
 
+function formatJudgementBreakdown(summary: Record<string, unknown> | undefined) {
+  const counts = summary?.judgementCounts;
+  if (!counts || typeof counts !== "object") return "";
+  const map = counts as Record<string, unknown>;
+  const parts = ([
+    ["正确", Number(map["正确"] || 0)],
+    ["可更精准", Number(map["可更精准"] || 0)],
+    ["有误", Number(map["有误"] || 0)],
+    ["无分类新增", Number(map["无分类新增"] || 0)],
+  ] as Array<[string, number]>)
+    .filter(([, count]) => Number.isFinite(count) && count > 0)
+    .map(([label, count]) => `${label} ${count}`);
+  return parts.join(" | ");
+}
+
+function formatRecoveryMeta(summary: Record<string, unknown> | undefined) {
+  if (!summary) return "";
+  const parts: string[] = [];
+  const primary = Number(summary.primarySuccessRows || 0);
+  const recovered = Number(summary.recoveredRows || 0);
+  const rewritten = Number(summary.noteRewrittenRows || 0);
+  const programRecovered = Number(summary.programmaticallyRecoveredRows || 0);
+  if (primary > 0) parts.push(`首轮成功 ${primary}`);
+  if (recovered > 0) parts.push(`恢复成功 ${recovered}`);
+  if (rewritten > 0) parts.push(`说明补写 ${rewritten}`);
+  if (programRecovered > 0) parts.push(`程序纠偏 ${programRecovered}`);
+  return parts.join(" | ");
+}
+
 function formatQueueSummaryMeta(summary: Record<string, unknown> | undefined, _inputMode: string, totalRows: number) {
   const aiModel = normalizeText(summary?.aiModel);
   const rawRows = Number(summary?.rawRows || 0);
@@ -244,7 +291,7 @@ export function CategoryCalibrationPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadedFileId, setUploadedFileId] = useState("");
   const [isUploadingFile, setIsUploadingFile] = useState(false);
-  const [currentJobId, setCurrentJobId] = useState("");
+  const [runningJobStatuses, setRunningJobStatuses] = useState<Record<string, Record<string, unknown>>>({});
   const [queuePage, setQueuePage] = useState(1);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -258,26 +305,60 @@ export function CategoryCalibrationPage() {
     },
   });
 
-  const queueQuery = trpc.categoryCalibration.queue.useQuery({ page: queuePage, pageSize: queuePageSize }, { refetchInterval: 4000 });
-  const statusQuery = trpc.categoryCalibration.status.useQuery(
-    { jobId: currentJobId },
+  const queueQuery = trpc.categoryCalibration.queue.useQuery(
+    { page: queuePage, pageSize: queuePageSize },
     {
-      enabled: Boolean(currentJobId),
       refetchInterval: (query) => {
-        const status = query.state.data?.status;
-        if (!status) return 1500;
-        return status === "done" || status === "failed" ? false : 1500;
+        const rows = query.state.data?.rows ?? [];
+        return rows.some((row) => row.status === "running") ? 1500 : 5000;
       },
     },
   );
 
   const previewData = previewMutation.data;
-  const currentStatus = statusQuery.data;
+  const runningJobIds = useMemo(() => {
+    const rows = queueQuery.data?.rows ?? [];
+    return rows.filter((row) => row.status === "running").map((row) => row.id);
+  }, [queueQuery.data?.rows]);
+
+  useEffect(() => {
+    if (!runningJobIds.length) {
+      setRunningJobStatuses({});
+      return;
+    }
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const pollStatuses = async () => {
+      try {
+        const entries = await Promise.all(
+          runningJobIds.map(async (jobId) => [jobId, await utils.client.categoryCalibration.status.query({ jobId })] as const),
+        );
+        if (cancelled) return;
+        setRunningJobStatuses(Object.fromEntries(entries));
+      } catch {
+        if (!cancelled) timer = setTimeout(() => void pollStatuses(), 1800);
+        return;
+      }
+      if (!cancelled) timer = setTimeout(() => void pollStatuses(), 1500);
+    };
+
+    void pollStatuses();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [runningJobIds, utils.client]);
+
   const queueRows = useMemo(() => {
     const rows = queueQuery.data?.rows ?? [];
-    if (!currentStatus || !currentJobId) return rows;
-    return rows.map((item) => (item.id === currentJobId ? { ...item, ...currentStatus } : item));
-  }, [queueQuery.data?.rows, currentJobId, currentStatus]);
+    return rows.map((item) => {
+      const liveStatus = runningJobStatuses[item.id];
+      return liveStatus ? { ...item, ...liveStatus } : item;
+    });
+  }, [queueQuery.data?.rows, runningJobStatuses]);
 
   const queueTotalPages = useMemo(() => {
     const total = queueQuery.data?.total ?? 0;
@@ -333,7 +414,6 @@ export function CategoryCalibrationPage() {
         uploadId: uploadedFileId,
         aiModel: (aiConfigQuery.data?.aiModel || categoryCalibrationDefaultAiModel) as AiModel,
       });
-      setCurrentJobId(result.jobId);
       setQueuePage(1);
       setNotice(`任务已创建，任务 ID: ${result.jobId}，有效行数 ${result.validRows}。`);
     } catch (err) {
@@ -538,6 +618,13 @@ export function CategoryCalibrationPage() {
             <tbody>
               {queueRows.map((row) => {
                 const progressPercent = formatProgress(row.processedRows, row.totalRows);
+                const visualProgressPercent = formatVisualProgress(row.processedRows, row.totalRows, row.status);
+                const progressStage = formatProgressStage(
+                  row.status,
+                  row.summary as Record<string, unknown> | undefined,
+                  row.processedRows,
+                  row.totalRows,
+                );
                 const canDownload = Boolean(row.canDownload || row.resultFilePath);
                 return (
                   <tr key={row.id}>
@@ -547,13 +634,22 @@ export function CategoryCalibrationPage() {
                     <td title={row.errorReason || row.inputFileName}>
                       <div className="gg-cleaning-summary-cell">
                         <div className="progress-label" style={{ marginBottom: 6 }}>
-                          <span>{formatSummaryHeadline(row.processedRows, row.totalRows, row.successRows, row.failedRows)}</span>
+                          <span>
+                            {row.status === "running" ? `处理中 ${row.processedRows}/${row.totalRows}` : formatSummaryHeadline(row.processedRows, row.totalRows, row.successRows, row.failedRows)}
+                          </span>
                           <strong>{progressPercent}%</strong>
                         </div>
                         <div className="progress-track" style={{ marginBottom: 6 }}>
-                          <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
+                          <div className="progress-fill" style={{ width: `${visualProgressPercent}%` }} />
                         </div>
+                        {progressStage ? <div className="muted gg-cleaning-summary-meta">{progressStage}</div> : null}
                         <div className="muted gg-cleaning-summary-meta">{formatQueueSummaryMeta(row.summary as Record<string, unknown> | undefined, row.inputMode, row.totalRows)}</div>
+                        {formatJudgementBreakdown(row.summary as Record<string, unknown> | undefined) ? (
+                          <div className="muted gg-cleaning-summary-meta">{formatJudgementBreakdown(row.summary as Record<string, unknown> | undefined)}</div>
+                        ) : null}
+                        {formatRecoveryMeta(row.summary as Record<string, unknown> | undefined) ? (
+                          <div className="muted gg-cleaning-summary-meta">{formatRecoveryMeta(row.summary as Record<string, unknown> | undefined)}</div>
+                        ) : null}
                         {formatFailureReasonList(row.summary as Record<string, unknown> | undefined).map((reason) => (
                           <div key={`${row.id}-${reason}`} className="gg-cleaning-summary-reason">
                             {reason}

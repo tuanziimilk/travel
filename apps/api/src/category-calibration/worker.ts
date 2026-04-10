@@ -26,9 +26,29 @@ let loopStarted = false;
 let activeJobId = "";
 const RESULT_DIR = path.resolve(process.cwd(), "apps", "api", ".runtime", "category-calibration-results");
 const RESULT_TMP_DIR = path.resolve(process.cwd(), "apps", "api", ".runtime", "category-calibration-results-tmp");
+const CATEGORY_CALIBRATION_PROGRESS_FLUSH_MS = Math.max(
+  500,
+  Number(process.env.CATEGORY_CALIBRATION_PROGRESS_FLUSH_MS || 900),
+);
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function resolveProgressStage(input: {
+  status?: string;
+  processedRows: number;
+  totalRows: number;
+  completedSubBatches?: number;
+  totalSubBatches?: number;
+}) {
+  if (input.status === "queued") return "排队中";
+  if (input.status === "done") return "已完成";
+  if (input.status === "failed") return "失败";
+  if (input.processedRows <= 0) return "已启动";
+  if (input.totalRows > 0 && input.processedRows >= input.totalRows) return "正在收尾";
+  if ((input.completedSubBatches || 0) > 0 && (input.totalSubBatches || 0) > 0) return "正在写入结果";
+  return "正在调用 AI";
 }
 
 async function resolvePreview(uploadId: string) {
@@ -78,48 +98,134 @@ async function processJob(jobId: string) {
       validRows: preview.validRows,
       skippedRows: Math.max(0, preview.totalRows - preview.validRows),
       aiModel: job.aiModel,
+      progressFlushCount: 1,
+      rowConcurrency: 0,
+      progressStage: resolveProgressStage({ status: "running", processedRows: 0, totalRows: preview.validRows }),
     },
   });
 
   await mkdir(RESULT_TMP_DIR, { recursive: true });
 
-  const result = await executeCategoryCalibrationChunkRows({
-    rawRowChunks: (async function* () {
-      for await (const chunk of iterateCategoryCalibrationUploadChunks(uploaded.id)) {
-        yield chunk.rows;
+  let latestProgress:
+    | {
+        processedRows: number;
+        successRows: number;
+        failedRows: number;
+        promptTokens: number;
+        completionTokens: number;
+        totalTokens: number;
+        estimatedCostUsd: number;
+        completedSubBatches: number;
+        totalSubBatches: number;
+        primarySuccessRows: number;
+        recoveredRows: number;
+        noteRewrittenRows: number;
+        programmaticallyRecoveredRows: number;
+        finalFailedRows: number;
+        aiCallRows: number;
+        dedupedRows: number;
+        progressFlushCount: number;
+        rowConcurrency: number;
+        judgementCounts: Record<string, number>;
+        failureBuckets: Record<string, number>;
       }
-    })(),
-    columns: uploaded.columns,
-    sampleRawRows: uploaded.sampleRows,
-    totalRows: preview.validRows,
-    aiModel: job.aiModel || categoryCalibrationDefaultAiModel,
-    csvOutputPath: path.join(RESULT_TMP_DIR, `${jobId}.csv`),
-    onProgress: async (progress) => {
-      await updateCategoryCalibrationJobProgress({
-        jobId,
+    | null = null;
+  let lastFlushedAt = Date.now();
+  let lastFlushedProcessedRows = 0;
+  let progressFlushCount = 1;
+
+  const flushProgress = async (
+    progress: NonNullable<typeof latestProgress>,
+    options?: { force?: boolean; stageOverride?: string },
+  ) => {
+    const force = options?.force === true;
+    const now = Date.now();
+    const processedRowsChanged = progress.processedRows !== lastFlushedProcessedRows;
+    const shouldFlush =
+      force ||
+      (processedRowsChanged &&
+        (progress.processedRows <= 10 ||
+          progress.processedRows >= preview.validRows ||
+          now - lastFlushedAt >= CATEGORY_CALIBRATION_PROGRESS_FLUSH_MS));
+    if (!shouldFlush) return;
+
+    lastFlushedAt = now;
+    lastFlushedProcessedRows = progress.processedRows;
+    progressFlushCount += 1;
+
+    await updateCategoryCalibrationJobProgress({
+      jobId,
+      processedRows: progress.processedRows,
+      successRows: progress.successRows,
+      failedRows: progress.failedRows,
+      aiModel: job.aiModel,
+      summary: {
+        inputMode: preview.inputMode,
+        totalRows: preview.validRows,
+        rawRows: uploaded.uploadedRowCount,
+        skippedRows: Math.max(0, preview.totalRows - preview.validRows),
         processedRows: progress.processedRows,
         successRows: progress.successRows,
         failedRows: progress.failedRows,
+        promptTokens: progress.promptTokens,
+        completionTokens: progress.completionTokens,
+        totalTokens: progress.totalTokens,
+        estimatedCostUsd: progress.estimatedCostUsd,
         aiModel: job.aiModel,
-        summary: {
-          inputMode: preview.inputMode,
-          totalRows: preview.validRows,
-          rawRows: uploaded.uploadedRowCount,
-          skippedRows: Math.max(0, preview.totalRows - preview.validRows),
-          processedRows: progress.processedRows,
-          successRows: progress.successRows,
-          failedRows: progress.failedRows,
-          promptTokens: progress.promptTokens,
-          completionTokens: progress.completionTokens,
-          totalTokens: progress.totalTokens,
-          estimatedCostUsd: progress.estimatedCostUsd,
-          aiModel: job.aiModel,
-          completedSubBatches: progress.completedSubBatches,
-          totalSubBatches: progress.totalSubBatches,
-        },
-      });
-    },
-  });
+        completedSubBatches: progress.completedSubBatches,
+        totalSubBatches: progress.totalSubBatches,
+        primarySuccessRows: progress.primarySuccessRows,
+        recoveredRows: progress.recoveredRows,
+        noteRewrittenRows: progress.noteRewrittenRows,
+        programmaticallyRecoveredRows: progress.programmaticallyRecoveredRows,
+        finalFailedRows: progress.finalFailedRows,
+        aiCallRows: progress.aiCallRows,
+        dedupedRows: progress.dedupedRows,
+        progressFlushCount,
+        rowConcurrency: progress.rowConcurrency,
+        progressStage:
+          options?.stageOverride ||
+          resolveProgressStage({
+            status: "running",
+            processedRows: progress.processedRows,
+            totalRows: preview.validRows,
+            completedSubBatches: progress.completedSubBatches,
+            totalSubBatches: progress.totalSubBatches,
+          }),
+        judgementCounts: progress.judgementCounts,
+        failureBuckets: progress.failureBuckets,
+      },
+    });
+  };
+
+  let result;
+  try {
+    result = await executeCategoryCalibrationChunkRows({
+      rawRowChunks: (async function* () {
+        for await (const chunk of iterateCategoryCalibrationUploadChunks(uploaded.id)) {
+          yield chunk.rows;
+        }
+      })(),
+      columns: uploaded.columns,
+      sampleRawRows: uploaded.sampleRows,
+      totalRows: preview.validRows,
+      aiModel: job.aiModel || categoryCalibrationDefaultAiModel,
+      csvOutputPath: path.join(RESULT_TMP_DIR, `${jobId}.csv`),
+      onProgress: async (progress) => {
+        latestProgress = progress;
+        await flushProgress(progress);
+      },
+    });
+  } catch (error) {
+    if (latestProgress) {
+      await flushProgress(latestProgress, { force: true });
+    }
+    throw error;
+  }
+
+  if (latestProgress) {
+    await flushProgress(latestProgress, { force: true, stageOverride: "正在收尾" });
+  }
 
   await mkdir(RESULT_DIR, { recursive: true });
   const resultFileName = `${job.inputFileName.replace(/\.[^.]+$/, "") || "category-calibration"}-result.xlsx`;
@@ -137,11 +243,21 @@ async function processJob(jobId: string) {
     successRows: result.summary.successRows,
     failedRows: result.summary.failedRows,
     resultFileName,
-    resultFilePath,
-    rowResults: result.rowResults.slice(0, 50),
-    summary: result.summary,
-    aiModel: job.aiModel,
-  });
+      resultFilePath,
+      rowResults: result.rowResults.slice(0, 50),
+      summary: {
+        ...result.summary,
+        progressFlushCount,
+        progressStage: resolveProgressStage({
+          status: "done",
+          processedRows: result.summary.processedRows,
+          totalRows: result.summary.totalRows,
+          completedSubBatches: result.summary.completedSubBatches,
+          totalSubBatches: result.summary.totalSubBatches,
+        }),
+      },
+      aiModel: job.aiModel,
+    });
 }
 
 async function consumeLoop() {

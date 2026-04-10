@@ -20,8 +20,12 @@ const RESULT_PARENT = "\u5efa\u8bae\u7236\u7c7b";
 const RESULT_CHILD = "\u5efa\u8bae\u5b50\u7c7b";
 const RESULT_NOTE = "\u6838\u9a8c\u8bf4\u660e";
 const ROW_MARKER_VALUES = new Set(["\u5fc5\u586b", "\u9009\u586b", "\u793a\u4f8b", "example", "required", "optional"]);
-const CATEGORY_CALIBRATION_ROW_CONCURRENCY = Math.max(1, Number(process.env.CATEGORY_CALIBRATION_ROW_CONCURRENCY || 3));
+const CATEGORY_CALIBRATION_ROW_CONCURRENCY = Math.max(1, Number(process.env.CATEGORY_CALIBRATION_ROW_CONCURRENCY || 5));
 const CATEGORY_CALIBRATION_SUB_BATCH_SIZE = Math.max(200, Number(process.env.CATEGORY_CALIBRATION_SUB_BATCH_SIZE || 2000));
+const CATEGORY_CALIBRATION_PROGRESS_INTERVAL_MS = Math.max(
+  300,
+  Number(process.env.CATEGORY_CALIBRATION_PROGRESS_INTERVAL_MS || 800),
+);
 const REQUIRED_COLUMNS = [
   "TermID",
   "TermName",
@@ -118,6 +122,10 @@ type CalibrationResult = {
     noteRewrittenRows: number;
     programmaticallyRecoveredRows: number;
     finalFailedRows: number;
+    aiCallRows: number;
+    dedupedRows: number;
+    progressFlushCount: number;
+    rowConcurrency: number;
     judgementCounts: Record<string, number>;
     failureBuckets: Record<string, number>;
   };
@@ -1767,6 +1775,10 @@ export async function executeCategoryCalibrationChunkRows(input: {
     noteRewrittenRows: number;
     programmaticallyRecoveredRows: number;
     finalFailedRows: number;
+    aiCallRows: number;
+    dedupedRows: number;
+    progressFlushCount: number;
+    rowConcurrency: number;
     judgementCounts: Record<string, number>;
     failureBuckets: Record<string, number>;
   }) => Promise<void> | void;
@@ -1790,6 +1802,8 @@ export async function executeCategoryCalibrationChunkRows(input: {
   let recoveredRows = 0;
   let noteRewrittenRows = 0;
   let programmaticallyRecoveredRows = 0;
+  let aiCallRows = 0;
+  let dedupedRows = 0;
   const totalSubBatches = Math.max(1, Math.ceil(input.totalRows / CATEGORY_CALIBRATION_SUB_BATCH_SIZE));
   const judgementCounts: Record<string, number> = {
     [JUDGEMENT_CORRECT]: 0,
@@ -1869,8 +1883,11 @@ export async function executeCategoryCalibrationChunkRows(input: {
         for (const item of chunkResults) {
           if (item.ok) {
             if (!item.deduped) {
+              aiCallRows += 1;
               promptTokens += item.classified.usage.promptTokens;
               completionTokens += item.classified.usage.completionTokens;
+            } else {
+              dedupedRows += 1;
             }
             successRows += 1;
             if (item.classified.stats.usedRecoveryRequest) recoveredRows += 1;
@@ -1896,6 +1913,8 @@ export async function executeCategoryCalibrationChunkRows(input: {
               note: item.classified.verificationNote,
             });
           } else {
+            if (!item.deduped) aiCallRows += 1;
+            else dedupedRows += 1;
             failedRows += 1;
             const failedJudgementText = hasCurrentCategory(item.row) ? JUDGEMENT_INCORRECT : JUDGEMENT_NEW;
             judgementCounts[failedJudgementText] = (judgementCounts[failedJudgementText] || 0) + 1;
@@ -1934,7 +1953,11 @@ export async function executeCategoryCalibrationChunkRows(input: {
           processedRows += 1;
           if (input.onProgress) {
             const now = Date.now();
-            if (processedRows <= 10 || processedRows === input.totalRows || now - lastProgressReportedAt >= 1200) {
+            if (
+              processedRows <= 10 ||
+              processedRows === input.totalRows ||
+              now - lastProgressReportedAt >= CATEGORY_CALIBRATION_PROGRESS_INTERVAL_MS
+            ) {
               lastProgressReportedAt = now;
               await input.onProgress({
                 processedRows,
@@ -1951,6 +1974,10 @@ export async function executeCategoryCalibrationChunkRows(input: {
                 noteRewrittenRows,
                 programmaticallyRecoveredRows,
                 finalFailedRows: failedRows,
+                aiCallRows,
+                dedupedRows,
+                progressFlushCount: 0,
+                rowConcurrency: CATEGORY_CALIBRATION_ROW_CONCURRENCY,
                 judgementCounts: { ...judgementCounts },
                 failureBuckets: { ...failureBuckets },
               });
@@ -1974,6 +2001,10 @@ export async function executeCategoryCalibrationChunkRows(input: {
           noteRewrittenRows,
           programmaticallyRecoveredRows,
           finalFailedRows: failedRows,
+          aiCallRows,
+          dedupedRows,
+          progressFlushCount: 0,
+          rowConcurrency: CATEGORY_CALIBRATION_ROW_CONCURRENCY,
           judgementCounts: { ...judgementCounts },
           failureBuckets: { ...failureBuckets },
         });
@@ -2005,6 +2036,10 @@ export async function executeCategoryCalibrationChunkRows(input: {
       noteRewrittenRows,
       programmaticallyRecoveredRows,
       finalFailedRows: failedRows,
+      aiCallRows,
+      dedupedRows,
+      progressFlushCount: 0,
+      rowConcurrency: CATEGORY_CALIBRATION_ROW_CONCURRENCY,
       judgementCounts,
       failureBuckets,
       promptTokens,
