@@ -667,8 +667,8 @@ export function CategoryCalibrationPage() {
                     <td className="category-calibration-time-cell" title={formatChinaDateTime(row.startedAt || row.createdAt)}>
                       {formatChinaDateTime(row.startedAt || row.createdAt)}
                     </td>
-                    <td className="category-calibration-duration-cell" title={formatDuration(row.startedAt || row.createdAt, row.finishedAt)}>
-                      {formatDuration(row.startedAt || row.createdAt, row.finishedAt)}
+                    <td className="category-calibration-duration-cell" title={formatDuration(row.createdAt, row.finishedAt)}>
+                      {formatDuration(row.createdAt, row.finishedAt)}
                     </td>
                     <td className="queue-action-cell">
                       <button className="btn-ghost faq-queue-action-btn" type="button" disabled={!canDownload} onClick={() => void downloadJobResult(row.id)}>
