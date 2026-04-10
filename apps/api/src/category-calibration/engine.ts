@@ -38,6 +38,7 @@ const REQUIRED_COLUMNS = [
 const RESULT_HEADERS = ["domain", RESULT_CURRENT_CATEGORY, RESULT_JUDGEMENT, RESULT_PARENT, RESULT_CHILD, RESULT_NOTE] as const;
 const JUDGEMENT_CORRECT = "\u6b63\u786e";
 const JUDGEMENT_INCORRECT = "\u6709\u8bef";
+const JUDGEMENT_MORE_PRECISE = "\u53ef\u66f4\u7cbe\u51c6";
 const JUDGEMENT_NEW = "\u65e0\u5206\u7c7b\u65b0\u589e";
 
 type DictionaryParent = {
@@ -112,19 +113,56 @@ type CalibrationResult = {
     failedRows: number;
     aiModel: string;
     dictionaryPath: string;
+    primarySuccessRows: number;
+    recoveredRows: number;
+    noteRewrittenRows: number;
+    programmaticallyRecoveredRows: number;
+    finalFailedRows: number;
+    judgementCounts: Record<string, number>;
+    failureBuckets: Record<string, number>;
   };
 };
 
 const aiOutputSchema = z.object({
-  judgement: z.enum([JUDGEMENT_CORRECT, JUDGEMENT_INCORRECT]).optional().default(JUDGEMENT_INCORRECT),
-  suggestedParentId: z.string().trim().min(1),
-  suggestedChildId: z.string().trim().min(1),
-  verificationNote: z.string().trim().min(1).max(60).optional().default(""),
+  judgementHint: z.string().trim().max(120).optional().default(""),
+  suggestedParentId: z.string().trim().max(32).optional().default(""),
+  suggestedChildId: z.string().trim().max(32).optional().default(""),
+  merchantBusiness: z.string().trim().max(120).optional().default(""),
+  classificationReason: z.string().trim().max(120).optional().default(""),
+  verificationNote: z.string().trim().max(120).optional().default(""),
 });
 
 const verificationNoteSchema = z.object({
-  verificationNote: z.string().trim().min(1).max(60),
+  verificationNote: z.string().trim().min(1).max(120),
 });
+
+type ParsedCandidate = {
+  judgementHint: string;
+  suggestedParentId: string;
+  suggestedParentName: string;
+  suggestedChildId: string;
+  suggestedChildName: string;
+  merchantBusiness: string;
+  classificationReason: string;
+  verificationNote: string;
+  parseMode: "json" | "salvaged";
+  programmaticallyRecovered: boolean;
+};
+
+type FinalClassification = {
+  judgement: string;
+  suggestedParentId: string;
+  suggestedParentName: string;
+  suggestedChildId: string;
+  suggestedChildName: string;
+  verificationNote: string;
+  usage: { promptTokens: number; completionTokens: number; totalTokens: number };
+  stats: {
+    usedRecoveryRequest: boolean;
+    programmaticallyRecovered: boolean;
+    noteRewritten: boolean;
+  };
+};
 
 let dictionaryCache: Promise<CategoryDictionary> | null = null;
 
@@ -180,25 +218,312 @@ function hasCurrentCategory(row: NormalizedInputRow) {
   return Boolean(row.currentCategoryId || row.currentCategoryName);
 }
 
-function buildVerificationNote(input: {
-  judgement: string;
-  suggestedParentName?: string;
-  suggestedChildName?: string;
-  error?: string;
-}) {
-  if (input.error) return "\u7ed3\u679c\u672a\u751f\u6210";
-  if (input.judgement === JUDGEMENT_NEW) {
-    return `\u539f\u65e0\u5206\u7c7b\uff0c\u8865\u5145\u4e3a ${input.suggestedChildName || input.suggestedParentName || "\u5efa\u8bae\u7c7b\u76ee"}`;
-  }
-  if (input.judgement === JUDGEMENT_CORRECT) {
-    return "\u5f53\u524d\u5206\u7c7b\u53ef\u7528";
-  }
-  const target = input.suggestedChildName || input.suggestedParentName || "\u5efa\u8bae\u7c7b\u76ee";
-  return `\u66f4\u9002\u5408 ${target}`;
+function displayCategoryValue(id: string, name: string) {
+  if (!id && !name) return "";
+  if (!id) return name;
+  if (!name) return id;
+  return `${id} \u00b7 ${name}`;
+}
+
+function displayCurrentCategoryValue(row: NormalizedInputRow) {
+  if (!row.currentCategoryId && !row.currentCategoryName) return "-";
+  return displayCategoryValue(row.currentCategoryId, row.currentCategoryName);
 }
 
 function sanitizeVerificationNote(value: string) {
-  return normalizeText(value).replace(/[\u3002.!\uFF01]+$/u, "").slice(0, 60);
+  return normalizeText(value)
+    .replace(/[\u3002.!\uFF01]+$/u, "")
+    .replace(/\s+/g, " ")
+    .slice(0, 120);
+}
+
+function cleanupAiVerificationNote(value: string) {
+  return sanitizeVerificationNote(value)
+    .replace(/^该商家主营主营/, "主营")
+    .replace(/^该商家主营经营/, "主营")
+    .replace(/^该商家主营是一个/, "主营")
+    .replace(/^该商家主营是一家/, "主营")
+    .replace(/^该商家主营主要/, "主营")
+    .replace(/^该商家主营/, "主营")
+    .replace(/^主营主营/, "主营")
+    .replace(/^主营是一个/, "主营")
+    .replace(/^主营是一家/, "主营")
+    .replace(/^主营主要/, "主营")
+    .replace(/，主营/g, "，主要经营")
+    .replace(/因此应归类于/g, "应归入")
+    .replace(/因此应属/g, "应归入")
+    .replace(/，因此应归入([^，]+)，非([^，]+)$/, "，应归入$1，非$2")
+    .replace(/，因此应属([^，]+)，非([^，]+)$/, "，应归入$1，非$2")
+    .replace(/，当前无分类，建议新增归入$/, "")
+    .replace(/，{2,}/g, "，")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function sanitizeFreeformText(value: string, maxLength = 72) {
+  return normalizeText(value)
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/[。.!！]+$/u, "")
+    .replace(/^[\-:：、，\s]+|[\-:：、，\s]+$/g, "")
+    .slice(0, maxLength);
+}
+
+function inferMerchantBusinessSnippet(row: NormalizedInputRow) {
+  const candidates = [row.about, row.meta, row.termName, row.domain]
+    .map((value) => sanitizeFreeformText(value, 50))
+    .filter(Boolean);
+  return candidates[0] || `\u57df\u540d ${row.domain}`;
+}
+
+function stripKnownLeadPhrases(value: string, leads: string[]) {
+  let next = sanitizeFreeformText(value, 80);
+  for (const lead of leads.filter(Boolean)) {
+    const escaped = lead.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    next = next.replace(new RegExp(`^${escaped}`), "");
+  }
+  return sanitizeFreeformText(next, 80);
+}
+
+function normalizeBusinessPhrase(row: NormalizedInputRow, value: string) {
+  const normalized = stripKnownLeadPhrases(value, [row.termName, row.domain, row.domain.replace(/^www\./i, "")])
+    .replace(/^(?:\u8be5\u5546\u5bb6\u4e3b\u8425|\u4e3b\u8981\u7ecf\u8425|\u4e3b\u8981\u9500\u552e|\u4e13\u6ce8\u4e8e|\u4e13\u8425|\u63d0\u4f9b|\u9500\u552e|\u662f\u4e00\u5bb6|\u4e00\u5bb6)/, "")
+    .replace(/^(?:online|brand|store|shop)\b[:：\s-]*/i, "")
+    .replace(/[，,:：;；]+$/, "");
+  return sanitizeFreeformText(normalized || inferMerchantBusinessSnippet(row), 52);
+}
+
+function extractChineseBusinessFromReason(reason: string) {
+  const normalized = sanitizeFreeformText(reason, 80);
+  const matched =
+    normalized.match(/(?:\u4e3b\u8981\u7ecf\u8425|\u4e3b\u8425|\u9500\u552e|\u63d0\u4f9b)([^，。,]{4,28})/) ||
+    normalized.match(/([\u4e00-\u9fa5]{6,24}(?:\u73e0\u5b9d|\u5bb6\u5177|\u8425\u517b|\u8865\u5145\u5242|\u89c6\u9891|\u670d\u88c5|\u914d\u4ef6|\u65b0\u95fb|\u6559\u80b2|\u57f9\u8bad))/);
+  return sanitizeFreeformText(matched?.[1] || "", 28);
+}
+
+function normalizeReasonPhrase(value: string, target: string, current: string) {
+  return sanitizeFreeformText(value, 56)
+    .replace(/\b(current category|merchant|website|site content)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .replace(new RegExp(`${target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\u66f4\u7cbe\u51c6`, "g"), `${target} \u66f4\u7cbe\u51c6`)
+    .replace(new RegExp(`\u5e94\u5c5e\\s*${target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "g"), "")
+    .replace(new RegExp(`\u975e\\s*${current.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "g"), "")
+    .replace(/^[，,\s]+|[，,\s]+$/g, "");
+}
+
+function looksTooAsciiHeavy(value: string) {
+  const text = String(value || "");
+  if (!text) return false;
+  const asciiChars = (text.match(/[A-Za-z]/g) || []).length;
+  return asciiChars >= 18 && asciiChars / text.length > 0.35;
+}
+
+function isGenericNote(value: string) {
+  const normalized = sanitizeVerificationNote(value);
+  if (!normalized) return true;
+  return (
+    normalized.length < 10 ||
+    /\u8fd9\u662f\u65b0\u5206\u7c7b\u6dfb\u52a0|\u65b0\u5206\u7c7b\u6dfb\u52a0|\u5f53\u524d\u5206\u7c7b\u53ef\u7528|\u66f4\u9002\u5408|\u5efa\u8bae\u5f52\u5165/.test(
+      normalized,
+    )
+  );
+}
+
+function buildProgrammaticVerificationNote(input: {
+  row: NormalizedInputRow;
+  judgement: string;
+  currentCategoryDisplay: string;
+  suggestedParentName?: string;
+  suggestedChildName?: string;
+  merchantBusiness?: string;
+  classificationReason?: string;
+  error?: string;
+}) {
+  let business = normalizeBusinessPhrase(input.row, input.merchantBusiness || inferMerchantBusinessSnippet(input.row));
+  const target = sanitizeFreeformText(input.suggestedChildName || input.suggestedParentName || "\u5efa\u8bae\u7c7b\u76ee", 36);
+  const current = sanitizeFreeformText(input.currentCategoryDisplay, 36);
+  const reason = normalizeReasonPhrase(input.classificationReason || "", target, current);
+  if (looksTooAsciiHeavy(business)) {
+    business = extractChineseBusinessFromReason(reason) || business;
+  }
+
+  if (input.error) {
+    if (input.judgement === JUDGEMENT_NEW) {
+      return sanitizeVerificationNote(`\u4e3b\u8425${business}\uff0c\u5f53\u524d\u65e0\u5206\u7c7b\uff0c\u5efa\u8bae\u65b0\u589e\u5f52\u5165${target}`);
+    }
+    if (input.judgement === JUDGEMENT_MORE_PRECISE) {
+      return sanitizeVerificationNote(`\u4e3b\u8425${business}\uff0c${target}\u6bd4\u5f53\u524d\u5206\u7c7b\u66f4\u7cbe\u51c6`);
+    }
+    if (input.judgement === JUDGEMENT_CORRECT) {
+      return sanitizeVerificationNote(`\u4e3b\u8425${business}\uff0c\u5f53\u524d\u5f52\u7c7b\u4e3a${target}\uff0c\u5224\u65ad\u6b63\u786e`);
+    }
+    return sanitizeVerificationNote(`\u4e3b\u8425${business}\uff0c\u5e94\u5f52\u5165${target}\uff0c\u975e${current}`);
+  }
+  if (input.judgement === JUDGEMENT_NEW) {
+    return sanitizeVerificationNote(`\u4e3b\u8425${business}\uff0c\u5f53\u524d\u65e0\u5206\u7c7b\uff0c\u5efa\u8bae\u65b0\u589e\u5f52\u5165${target}`);
+  }
+  if (input.judgement === JUDGEMENT_MORE_PRECISE) {
+    return sanitizeVerificationNote(`\u4e3b\u8425${business}\uff0c${target}\u6bd4\u5f53\u524d\u5206\u7c7b\u66f4\u7cbe\u51c6`);
+  }
+  if (input.judgement === JUDGEMENT_CORRECT) {
+    return sanitizeVerificationNote(`\u4e3b\u8425${business}\uff0c\u5f53\u524d\u5f52\u7c7b\u4e3a${target}\uff0c\u5224\u65ad\u6b63\u786e`);
+  }
+  if (reason) {
+    return sanitizeVerificationNote(`\u4e3b\u8425${business}\uff0c${reason}\uff0c\u5e94\u5f52\u5165${target}\uff0c\u975e${current}`);
+  }
+  return sanitizeVerificationNote(`\u4e3b\u8425${business}\uff0c\u5e94\u5f52\u5165${target}\uff0c\u975e${current}`);
+}
+
+function noteLooksConsistent(input: {
+  note: string;
+  judgement: string;
+  currentCategoryDisplay: string;
+  suggestedParentName?: string;
+  suggestedChildName?: string;
+}) {
+  const note = sanitizeVerificationNote(input.note);
+  if (isGenericNote(note)) return false;
+  const current = sanitizeFreeformText(input.currentCategoryDisplay, 36);
+  const target = sanitizeFreeformText(input.suggestedChildName || input.suggestedParentName || "", 36);
+
+  if (input.judgement === JUDGEMENT_NEW) {
+    return /无分类|新增|归入/.test(note) && (!target || note.includes(target));
+  }
+  if (input.judgement === JUDGEMENT_MORE_PRECISE) {
+    return /更精准/.test(note) && (!target || note.includes(target));
+  }
+  if (input.judgement === JUDGEMENT_CORRECT) {
+    return /准确|正确|精准/.test(note) && (!target || note.includes(target));
+  }
+  return (/应属|非/.test(note) || (target && note.includes(target) && current && note.includes(current)));
+}
+
+function findMentionedCategoryConflicts(input: {
+  dictionary: CategoryDictionary;
+  text: string;
+  allowedNames: string[];
+}) {
+  const text = sanitizeFreeformText(input.text, 120);
+  if (!text) return [];
+  const allowed = new Set(input.allowedNames.filter(Boolean));
+  const hits = new Set<string>();
+
+  for (const parent of input.dictionary.parents) {
+    if (parent.name.length >= 3 && text.includes(parent.name) && !allowed.has(parent.name)) hits.add(parent.name);
+    for (const child of parent.children) {
+      if (child.name.length >= 3 && text.includes(child.name) && !allowed.has(child.name)) hits.add(child.name);
+    }
+  }
+
+  return Array.from(hits).slice(0, 4);
+}
+
+function classificationLooksConsistent(input: {
+  dictionary: CategoryDictionary;
+  judgement: string;
+  currentCategoryDisplay: string;
+  suggestedParentName: string;
+  suggestedChildName: string;
+  classificationReason: string;
+  verificationNote: string;
+}) {
+  const target = sanitizeFreeformText(input.suggestedChildName || input.suggestedParentName, 36);
+  const current = sanitizeFreeformText(input.currentCategoryDisplay, 36);
+  const allowed = [target, input.suggestedParentName, current];
+  const reasonConflicts = findMentionedCategoryConflicts({
+    dictionary: input.dictionary,
+    text: input.classificationReason,
+    allowedNames: allowed,
+  });
+  const noteConflicts = findMentionedCategoryConflicts({
+    dictionary: input.dictionary,
+    text: input.verificationNote,
+    allowedNames: allowed,
+  });
+  if (reasonConflicts.length > 0 || noteConflicts.length > 0) return false;
+  return noteLooksConsistent({
+    note: input.verificationNote,
+    judgement: input.judgement,
+    currentCategoryDisplay: input.currentCategoryDisplay,
+    suggestedParentName: input.suggestedParentName,
+    suggestedChildName: input.suggestedChildName,
+  });
+}
+
+function shouldRetryClassificationConsistency(input: {
+  dictionary: CategoryDictionary;
+  currentCategoryDisplay: string;
+  suggestedParentName: string;
+  suggestedChildName: string;
+  classificationReason: string;
+  verificationNote: string;
+}) {
+  const target = sanitizeFreeformText(input.suggestedChildName || input.suggestedParentName, 36);
+  const current = sanitizeFreeformText(input.currentCategoryDisplay, 36);
+  const allowed = [target, input.suggestedParentName, current];
+  return (
+    findMentionedCategoryConflicts({
+      dictionary: input.dictionary,
+      text: input.classificationReason,
+      allowedNames: allowed,
+    }).length > 0 ||
+    findMentionedCategoryConflicts({
+      dictionary: input.dictionary,
+      text: input.verificationNote,
+      allowedNames: allowed,
+    }).length > 0
+  );
+}
+
+function noteNeedsRewrite(input: {
+  judgement: string;
+  currentCategoryDisplay: string;
+  suggestedParentName: string;
+  suggestedChildName: string;
+  verificationNote: string;
+}) {
+  return (
+    /本次校验失败|请重试/.test(input.verificationNote) ||
+    looksTooAsciiHeavy(input.verificationNote) ||
+    !noteLooksConsistent({
+      note: cleanupAiVerificationNote(input.verificationNote),
+      judgement: input.judgement,
+      currentCategoryDisplay: input.currentCategoryDisplay,
+      suggestedParentName: input.suggestedParentName,
+      suggestedChildName: input.suggestedChildName,
+    })
+  );
+}
+
+function noteNeedsRewriteLite(input: {
+  judgement: string;
+  currentCategoryDisplay: string;
+  suggestedParentName: string;
+  suggestedChildName: string;
+  verificationNote: string;
+}) {
+  const note = sanitizeVerificationNote(input.verificationNote)
+    .replace(/^(?:\u8be5\u5546\u5bb6)?\u4e3b\u8425+/u, "\u4e3b\u8425")
+    .replace(/^\u4e3b\u8425(?:\u662f|\u7ecf\u8425)?/u, "\u4e3b\u8425")
+    .replace(/\u3002+$/u, "")
+    .trim();
+  if (!note) return true;
+  if (/\u8bf7\u91cd\u8bd5|\u6821\u9a8c\u5931\u8d25|\u6682\u65e0\u6cd5\u5224\u65ad/u.test(note)) return true;
+  if (looksTooAsciiHeavy(note)) return true;
+  if (isGenericNote(note)) return true;
+  if (!/[\u4e00-\u9fa5]/u.test(note)) return true;
+  if (note.length < 8) return true;
+  return false;
+}
+
+function normalizePrimaryVerificationNote(value: string) {
+  return sanitizeVerificationNote(value)
+    .replace(/^(?:\u8be5\u5546\u5bb6)?\u4e3b\u8425+/u, "\u4e3b\u8425")
+    .replace(/^\u4e3b\u8425(?:\u662f|\u7ecf\u8425)?/u, "\u4e3b\u8425")
+    .replace(/(\u5f53\u524d\u65e0\u5206\u7c7b\uff0c\u5efa\u8bae\u65b0\u589e\u5f52\u5165[^\uff0c,]*)\1+/gu, "$1")
+    .replace(/\u3002+$/u, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function addUsage(
@@ -349,15 +674,103 @@ function summarizeFailureReasons(rowResults: RowDebugResult[]) {
     .map(([reason, count]) => `${reason}（${count}条）`);
 }
 
+function shouldRetryCategoryRecoveryError(message: string) {
+  const normalized = String(message || "");
+  return (
+    normalized.includes("does not belong to parent") ||
+    normalized.includes("not a valid parent category id") ||
+    normalized.includes("not a valid child category id") ||
+    normalized.startsWith("AI ")
+  );
+}
+
+function normalizeJudgementHintValue(value: string) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return "";
+  if (
+    normalized.includes("\u53ef\u66f4\u7cbe\u51c6") ||
+    normalized.includes("more precise") ||
+    normalized.includes("more specific")
+  ) {
+    return JUDGEMENT_MORE_PRECISE;
+  }
+  if (normalized.includes("\u65e0\u5206\u7c7b") || normalized.includes("\u65b0\u589e") || normalized === "new") {
+    return JUDGEMENT_NEW;
+  }
+  return normalizeJudgementValue(value);
+}
+
+function salvageStructuredCandidateV2(candidate: string) {
+  const text = String(candidate || "");
+  if (!text.trim()) return null;
+
+  const suggestedParentId = extractFirstMatch(text, [
+    /"suggestedParentId"\s*:\s*"?(\\?\d+)"?/i,
+    /suggestedParentId\s*[:=]\s*"?(\\?\d+)"?/i,
+    /parent(?:\s+category)?\s*id\s*[:=]\s*"?(\\?\d+)"?/i,
+  ]).replace(/\\/g, "");
+  const suggestedChildId = extractFirstMatch(text, [
+    /"suggestedChildId"\s*:\s*"?(\\?\d+)"?/i,
+    /suggestedChildId\s*[:=]\s*"?(\\?\d+)"?/i,
+    /child(?:\s+category)?\s*id\s*[:=]\s*"?(\\?\d+)"?/i,
+  ]).replace(/\\/g, "");
+  const judgementHint = normalizeJudgementHintValue(
+    extractFirstMatch(text, [
+      /"judgementHint"\s*:\s*"([^"]+)"/i,
+      /"judgement"\s*:\s*"([^"]+)"/i,
+      /judgement(?:Hint)?\s*[:=]\s*"?([^"\r\n]+)"?/i,
+      /\u5224\u65ad\s*[:=]\s*"?([^"\r\n]+)"?/i,
+    ]),
+  );
+  const merchantBusiness = sanitizeFreeformText(
+    extractFirstMatch(text, [
+      /"merchantBusiness"\s*:\s*"([^"]+)"/i,
+      /merchantBusiness\s*[:=]\s*"?([^"\r\n]+)"?/i,
+      /\u5546\u5bb6\u4e3b\u8425\s*[:=]\s*"?([^"\r\n]+)"?/i,
+    ]),
+    72,
+  );
+  const classificationReason = sanitizeFreeformText(
+    extractFirstMatch(text, [
+      /"classificationReason"\s*:\s*"([^"]+)"/i,
+      /classificationReason\s*[:=]\s*"?([^"\r\n]+)"?/i,
+      /\u5f52\u7c7b\u539f\u56e0\s*[:=]\s*"?([^"\r\n]+)"?/i,
+      /\u539f\u56e0\s*[:=]\s*"?([^"\r\n]+)"?/i,
+    ]),
+    72,
+  );
+  const verificationNote = sanitizeVerificationNote(
+    extractFirstMatch(text, [
+      /"verificationNote"\s*:\s*"([^"]+)"/i,
+      /\u6838\u9a8c\u8bf4\u660e\s*[:=]\s*"?([^"\r\n]+)"?/i,
+      /note\s*[:=]\s*"?([^"\r\n]+)"?/i,
+    ]),
+  );
+  if (!suggestedParentId && !suggestedChildId && !merchantBusiness && !classificationReason && !verificationNote) {
+    return null;
+  }
+  return {
+    judgementHint,
+    suggestedParentId,
+    suggestedChildId,
+    merchantBusiness,
+    classificationReason,
+    verificationNote,
+    parseMode: "salvaged" as const,
+  };
+}
+
 function parseCandidate(candidate: string, dictionary: CategoryDictionary) {
   const normalizedCandidate = normalizeJsonCandidate(candidate);
   let parsed: unknown;
+  let parseMode: "json" | "salvaged" = "json";
   try {
     parsed = JSON.parse(normalizedCandidate);
   } catch (error) {
-    const salvaged = salvageStructuredCandidate(candidate);
+    const salvaged = salvageStructuredCandidateV2(candidate);
     if (salvaged) {
       parsed = salvaged;
+      parseMode = "salvaged";
     } else {
       return {
         ok: false as const,
@@ -371,41 +784,52 @@ function parseCandidate(candidate: string, dictionary: CategoryDictionary) {
     return {
       ok: false as const,
       errors: normalized.error.issues.map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`),
-    };
+      };
   }
 
-  const parent = dictionary.parentsById.get(normalized.data.suggestedParentId);
-  if (!parent) {
+  const child = normalized.data.suggestedChildId ? dictionary.childrenById.get(normalized.data.suggestedChildId) : undefined;
+  const parentById = normalized.data.suggestedParentId ? dictionary.parentsById.get(normalized.data.suggestedParentId) : undefined;
+  const repairedParent = child ? dictionary.parentsById.get(child.parentId) : undefined;
+  const parent = repairedParent || parentById;
+
+  if (!parent && !child) {
     return {
       ok: false as const,
-      errors: [`suggestedParentId ${normalized.data.suggestedParentId} is not a valid parent category id.`],
+      errors: ["No valid category id could be extracted from model output."],
     };
   }
 
-  const child = dictionary.childrenById.get(normalized.data.suggestedChildId);
-  if (!child) {
+  if (normalized.data.suggestedChildId && !child) {
     return {
       ok: false as const,
       errors: [`suggestedChildId ${normalized.data.suggestedChildId} is not a valid child category id.`],
     };
   }
 
-  if (child.parentId !== parent.id) {
+  if (child && !parent) {
     return {
       ok: false as const,
-      errors: [`Child ${child.id} does not belong to parent ${parent.id}.`],
+      errors: [`suggestedParentId ${normalized.data.suggestedParentId} is not a valid parent category id.`],
     };
   }
 
   return {
     ok: true as const,
     value: {
-      judgement: normalized.data.judgement,
-      suggestedParentId: parent.id,
-      suggestedParentName: parent.name,
-      suggestedChildId: child.id,
-      suggestedChildName: child.name,
+      judgementHint: normalizeJudgementHintValue(normalized.data.judgementHint || ""),
+      suggestedParentId: parent?.id || "",
+      suggestedParentName: parent?.name || "",
+      suggestedChildId: child?.id || "",
+      suggestedChildName: child?.name || "",
+      merchantBusiness: sanitizeFreeformText(normalized.data.merchantBusiness || "", 72),
+      classificationReason: sanitizeFreeformText(normalized.data.classificationReason || "", 72),
       verificationNote: sanitizeVerificationNote(normalized.data.verificationNote || ""),
+      parseMode,
+      programmaticallyRecovered:
+        parseMode === "salvaged" ||
+        (Boolean(child) && normalized.data.suggestedParentId !== child?.parentId) ||
+        (!normalized.data.suggestedParentId && Boolean(parent)) ||
+        (!normalized.data.suggestedChildId && Boolean(parent)),
     },
     errors: [] as string[],
   };
@@ -620,6 +1044,67 @@ async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictiona
       maxRetries: strictMode ? 3 : undefined,
     });
 
+  const executeRecoveryPass = async () =>
+    aiExecutor.execute({
+      buildMessages: () => ({
+        system: [
+          "You are repairing a category calibration result that previously failed taxonomy validation.",
+          "You must return JSON only with keys judgement, suggestedParentId, suggestedChildId, verificationNote.",
+          `Judgement must be exactly ${JUDGEMENT_CORRECT} or ${JUDGEMENT_INCORRECT}.`,
+          "The suggested child id must exist in the taxonomy, and the suggested parent id must be that child's real parent id.",
+          "Choose the child first, then copy its exact parent id from the taxonomy.",
+          "Never invent ids and never combine a child with the wrong parent.",
+          "verificationNote must be short Chinese text for humans.",
+          "Taxonomy:",
+          dictionary.promptText,
+        ].join("\n\n"),
+        user: JSON.stringify(
+          {
+            merchant: {
+              termId: row.termId,
+              termName: row.termName,
+              domain: row.domain,
+              landingPage: row.landingPage,
+              country: row.country,
+              language: row.language,
+              meta: row.meta,
+              about: row.about,
+            },
+            currentCategory: {
+              id: row.currentCategoryId,
+              name: row.currentCategoryName,
+            },
+            instruction:
+              "Return one valid taxonomy pair only. suggestedParentId must be the true parent of suggestedChildId in the taxonomy above.",
+          },
+          null,
+          2,
+        ),
+      }),
+      validate: (candidate) => parseCandidate(candidate, dictionary),
+      buildRepairMessages: async (candidate, errors) => ({
+        system:
+          "Repair the JSON into one valid taxonomy parent-child pair. suggestedParentId must be the true parent of suggestedChildId. Return JSON only.",
+        user: JSON.stringify(
+          {
+            previousOutput: candidate,
+            errors,
+            requiredFormat: {
+              judgement: `${JUDGEMENT_CORRECT}|${JUDGEMENT_INCORRECT}`,
+              suggestedParentId: "real parent id of suggestedChildId",
+              suggestedChildId: "valid child id",
+              verificationNote: "short Chinese note for humans",
+            },
+          },
+          null,
+          2,
+        ),
+      }),
+      requestTimeoutMs: env.aiRequestTimeoutMsBatch,
+      aiModel,
+      maxRetries: 3,
+    });
+
   const generateVerificationNote = async (input: {
     finalJudgement: string;
     suggestedParentName: string;
@@ -710,6 +1195,93 @@ async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictiona
       maxRetries: 2,
     });
 
+  const rewriteVerificationNoteAiFirst = async (input: {
+    finalJudgement: string;
+    suggestedParentName: string;
+    suggestedChildName: string;
+    merchantBusiness: string;
+    classificationReason: string;
+  }) =>
+    aiExecutor.execute({
+      buildMessages: () => ({
+        system: [
+          "You rewrite one Excel-friendly verification note for category calibration.",
+          "Return JSON only with key verificationNote.",
+          "Write one natural Chinese sentence, concise but complete, suitable for Excel.",
+          "Do not start with rigid prefixes like '该商家主营'.",
+          "Follow these formats exactly by judgement:",
+          `${JUDGEMENT_NEW}: 主营XXX，当前无分类，建议新增归入XXX`,
+          `${JUDGEMENT_INCORRECT}: 主营XXX，应归入XXX，非XXX`,
+          `${JUDGEMENT_MORE_PRECISE}: 主营XXX，XXX比当前分类更精准`,
+          `${JUDGEMENT_CORRECT}: 主营XXX，当前归类为XXX，判断正确`,
+          "No markdown.",
+        ].join("\n\n"),
+        user: JSON.stringify(
+          {
+            domain: row.domain,
+            termName: row.termName,
+            currentCategory: currentCategoryDisplay,
+            judgement: input.finalJudgement,
+            suggestedParent: input.suggestedParentName,
+            suggestedChild: input.suggestedChildName,
+            merchantBusiness: input.merchantBusiness,
+            classificationReason: input.classificationReason,
+          },
+          null,
+          2,
+        ),
+      }),
+      validate: (candidate) => {
+        const normalizedCandidate = normalizeJsonCandidate(candidate);
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(normalizedCandidate);
+        } catch (error) {
+          const salvaged = sanitizeVerificationNote(
+            extractFirstMatch(String(candidate || ""), [
+              /"verificationNote"\s*:\s*"([^"]+)"/i,
+              /\u6838\u9a8c\u8bf4\u660e\s*[:=]\s*"?([^"\r\n]+)"?/i,
+              /note\s*[:=]\s*"?([^"\r\n]+)"?/i,
+            ]),
+          );
+          if (!salvaged) {
+            return {
+              ok: false as const,
+              errors: [error instanceof Error ? error.message : "Invalid JSON output."],
+            };
+          }
+          parsed = { verificationNote: salvaged };
+        }
+        const validated = verificationNoteSchema.safeParse(parsed);
+        if (!validated.success) {
+          return {
+            ok: false as const,
+            errors: validated.error.issues.map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`),
+          };
+        }
+        const note = normalizePrimaryVerificationNote(validated.data.verificationNote);
+        if (isGenericNote(note)) {
+          return {
+            ok: false as const,
+            errors: ["verificationNote is too generic."],
+          };
+        }
+        return {
+          ok: true as const,
+          value: { verificationNote: note },
+          errors: [] as string[],
+        };
+      },
+      buildRepairMessages: async (candidate, errors) => ({
+        system:
+          "Repair the output into exactly one JSON object with key verificationNote. The sentence must include merchant business and why the category fits.",
+        user: JSON.stringify({ previousOutput: candidate, errors }, null, 2),
+      }),
+      requestTimeoutMs: env.aiRequestTimeoutMsBatch,
+      aiModel,
+      maxRetries: 1,
+    });
+
   let executed;
   try {
     executed = await executeStrictPass(false);
@@ -721,7 +1293,13 @@ async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictiona
       message.includes("Invalid JSON output") ||
       message.includes("not a valid");
     if (!shouldRetryStrict) throw error;
-    executed = await executeStrictPass(true);
+    try {
+      executed = await executeStrictPass(true);
+    } catch (strictError) {
+      const strictMessage = strictError instanceof Error ? strictError.message : String(strictError);
+      if (!shouldRetryCategoryRecoveryError(strictMessage)) throw strictError;
+      executed = await executeRecoveryPass();
+    }
   }
 
   const parent = dictionary.parentsById.get(executed.result.suggestedParentId);
@@ -742,7 +1320,7 @@ async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictiona
       suggestedParentName: parent.name,
       suggestedChildName: child.name,
     });
-    verificationNote = sanitizeVerificationNote(noteGenerated.result.verificationNote);
+    verificationNote = cleanupAiVerificationNote(noteGenerated.result.verificationNote);
     usage = addUsage(usage, noteGenerated.usage);
   }
 
@@ -754,6 +1332,366 @@ async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictiona
     suggestedChildName: child.name,
     verificationNote,
     usage,
+  };
+}
+
+function computeFinalJudgementV2(input: {
+  row: NormalizedInputRow;
+  currentAsParent?: DictionaryParent;
+  currentAsChild?: DictionaryChild;
+  suggestedParent: DictionaryParent;
+  suggestedChild?: DictionaryChild;
+}) {
+  if (!hasCurrentCategory(input.row)) return JUDGEMENT_NEW;
+  if (input.currentAsChild && input.suggestedChild?.id === input.currentAsChild.id) return JUDGEMENT_CORRECT;
+  if (input.currentAsParent && input.currentAsParent.id === input.suggestedParent.id) {
+    return input.suggestedChild ? JUDGEMENT_MORE_PRECISE : JUDGEMENT_CORRECT;
+  }
+  if (input.currentAsChild && input.currentAsChild.parentId === input.suggestedParent.id && !input.suggestedChild) {
+    return JUDGEMENT_CORRECT;
+  }
+  return JUDGEMENT_INCORRECT;
+}
+
+async function classifyRowV2(row: NormalizedInputRow, dictionary: CategoryDictionary, aiModel: string): Promise<FinalClassification> {
+  const currentAsChild = dictionary.childrenById.get(row.currentCategoryId);
+  const currentAsParent = dictionary.parentsById.get(row.currentCategoryId);
+  const currentCategoryDisplay = displayCurrentCategoryValue(row);
+  const baseUserPayload = {
+    termId: row.termId,
+    termName: row.termName,
+    domain: row.domain,
+    landingPage: row.landingPage,
+    country: row.country,
+    language: row.language,
+    meta: row.meta,
+    about: row.about,
+    currentCategory: {
+      id: row.currentCategoryId,
+      name: row.currentCategoryName,
+      asParent: currentAsParent ? { id: currentAsParent.id, name: currentAsParent.name } : null,
+      asChild: currentAsChild
+        ? {
+            id: currentAsChild.id,
+            name: currentAsChild.name,
+            parentId: currentAsChild.parentId,
+            parentName: currentAsChild.parentName,
+          }
+        : null,
+    },
+  };
+
+  const executePrimaryPass = async (strictMode: boolean) =>
+    aiExecutor.execute({
+      buildMessages: () => ({
+        system: [
+          "You are a category calibration engine.",
+          "Choose the best taxonomy classification for the merchant using TermName, Domain, Meta, About, Country, and the current category.",
+          "Work in this order internally: identify the merchant's real business -> decide the monetized offering or service -> choose the safest parent -> choose a child only when the evidence clearly supports that child.",
+          "Return JSON only.",
+          "Required keys: judgementHint, suggestedParentId, suggestedChildId, merchantBusiness, classificationReason, verificationNote.",
+          `judgementHint must be one of: ${JUDGEMENT_CORRECT}, ${JUDGEMENT_INCORRECT}, ${JUDGEMENT_MORE_PRECISE}, ${JUDGEMENT_NEW}.`,
+          "merchantBusiness must describe the merchant's actual core business in concise Chinese, using concrete products or services rather than vague labels.",
+          "classificationReason must explain why the suggested category fits in concise Chinese and must stay consistent with merchantBusiness and verificationNote.",
+          "verificationNote must be one natural Chinese sentence for Excel, not bullet points, not fragments, not rigid template prefixes like '\u8be5\u5546\u5bb6\u4e3b\u8425', and it must mention the exact final category name rather than only a broad paraphrase.",
+          `verificationNote format rules:
+1. ${JUDGEMENT_NEW}: \u4e3b\u8425XXX\uff0c\u5f53\u524d\u65e0\u5206\u7c7b\uff0c\u5efa\u8bae\u65b0\u589e\u5f52\u5165XXX
+2. ${JUDGEMENT_INCORRECT}: \u4e3b\u8425XXX\uff0c\u5e94\u5f52\u5165XXX\uff0c\u975eXXX
+3. ${JUDGEMENT_MORE_PRECISE}: \u4e3b\u8425XXX\uff0cXXX\u6bd4\u5f53\u524d\u5206\u7c7b\u66f4\u7cbe\u51c6
+4. ${JUDGEMENT_CORRECT}: \u4e3b\u8425XXX\uff0c\u5f53\u524d\u5f52\u7c7b\u4e3aXXX\uff0c\u5224\u65ad\u6b63\u786e`,
+          "For 无分类新增, verificationNote must explicitly contain '当前无分类' and must not say '判断正确'.",
+          "For 有误, verificationNote must explicitly indicate the replacement category and must not say '判断正确'.",
+          "For 可更精准, verificationNote must explicitly contain '更精准' and must not say '判断正确'.",
+          "For 正确, verificationNote must explicitly contain '判断正确'.",
+          "If evidence is weak, prefer a safer broader valid parent or leave suggestedChildId empty instead of guessing a very specific child.",
+          "When Meta/About conflict, trust the most concrete business evidence such as explicit product nouns, service names, course names, certification names, or merchandise terms over generic boilerplate.",
+          "Classify by what the merchant actually sells or provides, not by article topic, fandom topic, or audience topic.",
+          "News, blog, or information platforms should not be mapped to Movies, Tickets & Events, or niche Entertainment children unless they clearly sell those offerings.",
+          "Training, certification, classes, and in-person instruction should prefer Training or a broad service category rather than product categories.",
+          "Official merch stores should be classified by the merchandise being sold, not by the band's or creator's subject domain.",
+          "Nutrition supplements, herbal wellness products, and kratom-like ingestible wellness products should prefer Nutrition & Vitamin unless the text clearly indicates medical devices, clinical supplies, or healthcare equipment.",
+          "Adults should only be used when the provided text clearly indicates explicit adult or sexual products; do not infer Adults from generic apparel wording alone.",
+          "judgementHint evaluates whether the CURRENT category is acceptable, not only what the ideal category is.",
+          "Before outputting JSON, self-check that judgementHint, suggestedParentId/suggestedChildId, classificationReason, and verificationNote all describe the same final classification. If they do not match, fix them before returning.",
+          strictMode
+            ? "Be strict about valid taxonomy ids and do not omit required keys."
+            : "Prefer the most specific valid child; when only parent-level confidence is safe, suggestedChildId may be empty.",
+          "Taxonomy:",
+          dictionary.promptText,
+        ].join("\n\n"),
+        user: JSON.stringify(baseUserPayload, null, 2),
+      }),
+      validate: (candidate) => parseCandidate(candidate, dictionary),
+      buildRepairMessages: async (candidate, errors) => ({
+        system:
+          "Repair the previous answer into exactly one JSON object with keys judgementHint, suggestedParentId, suggestedChildId, merchantBusiness, classificationReason, verificationNote. No markdown, no explanation.",
+        user: JSON.stringify(
+          {
+            previousOutput: candidate,
+            errors,
+            requiredFormat: {
+              judgementHint: `${JUDGEMENT_CORRECT}|${JUDGEMENT_INCORRECT}|${JUDGEMENT_MORE_PRECISE}|${JUDGEMENT_NEW}`,
+              suggestedParentId: "valid parent id string or empty string",
+              suggestedChildId: "valid child id string or empty string",
+              merchantBusiness: "merchant business in Chinese",
+              classificationReason: "why the category fits in Chinese",
+              verificationNote: "one concise Chinese sentence",
+            },
+          },
+          null,
+          2,
+        ),
+      }),
+      requestTimeoutMs: env.aiRequestTimeoutMsBatch,
+      aiModel,
+      maxRetries: strictMode ? 2 : 1,
+      useConfiguredTemperature: true,
+    });
+
+  const executeRecoveryPass = async () =>
+    aiExecutor.execute({
+      buildMessages: () => ({
+        system: [
+          "You are repairing a failed category classification. Re-evaluate the merchant business from the provided text, then map to the safest valid taxonomy result.",
+          "Return JSON only with keys judgementHint, suggestedParentId, suggestedChildId, merchantBusiness, classificationReason, verificationNote.",
+          "Pick a valid taxonomy result.",
+          "If a child id is returned, suggestedParentId must be that child's real parent id.",
+          "verificationNote must be one natural Chinese sentence, must follow the required judgement-specific format, and must mention the exact final category name.",
+          "For 无分类新增, verificationNote must explicitly contain '当前无分类' and must not say '判断正确'.",
+          "For 有误, verificationNote must explicitly indicate the replacement category and must not say '判断正确'.",
+          "For 可更精准, verificationNote must explicitly contain '更精准' and must not say '判断正确'.",
+          "For 正确, verificationNote must explicitly contain '判断正确'.",
+          "If evidence is weak, prefer a safer broader valid parent or leave suggestedChildId empty instead of guessing a very specific child.",
+          "Use concrete products or services from the text as the strongest evidence. Do not let vague store boilerplate override explicit business signals.",
+          "Do not guess niche Entertainment, Adults, or Medical Supplies unless the text clearly supports it.",
+          "Before outputting JSON, self-check that judgementHint, suggestedParentId/suggestedChildId, classificationReason, and verificationNote all describe the same final classification. If they do not match, fix them before returning.",
+          "Taxonomy:",
+          dictionary.promptText,
+        ].join("\n\n"),
+        user: JSON.stringify({ merchant: baseUserPayload }, null, 2),
+      }),
+      validate: (candidate) => parseCandidate(candidate, dictionary),
+      buildRepairMessages: async (candidate, errors) => ({
+        system:
+          "Repair into one valid taxonomy JSON object. suggestedParentId must match suggestedChildId when child is provided. No markdown.",
+        user: JSON.stringify({ previousOutput: candidate, errors }, null, 2),
+      }),
+      requestTimeoutMs: env.aiRequestTimeoutMsBatch,
+      aiModel,
+      maxRetries: 2,
+      useConfiguredTemperature: true,
+    });
+
+  const rewriteVerificationNote = async (input: {
+    finalJudgement: string;
+    suggestedParentName: string;
+    suggestedChildName: string;
+    merchantBusiness: string;
+    classificationReason: string;
+  }) =>
+    aiExecutor.execute({
+      buildMessages: () => ({
+        system: [
+          "You rewrite one Excel-friendly verification note for category calibration.",
+          "Return JSON only with key verificationNote.",
+          "Write one natural Chinese sentence, concise but complete, suitable for Excel, and mention the exact final category name.",
+          "Do not start with rigid prefixes like '\u8be5\u5546\u5bb6\u4e3b\u8425'.",
+          "Follow these formats exactly by judgement:",
+          `${JUDGEMENT_NEW}: \u4e3b\u8425XXX\uff0c\u5f53\u524d\u65e0\u5206\u7c7b\uff0c\u5efa\u8bae\u65b0\u589e\u5f52\u5165XXX`,
+          `${JUDGEMENT_INCORRECT}: \u4e3b\u8425XXX\uff0c\u5e94\u5f52\u5165XXX\uff0c\u975eXXX`,
+          `${JUDGEMENT_MORE_PRECISE}: \u4e3b\u8425XXX\uff0cXXX\u6bd4\u5f53\u524d\u5206\u7c7b\u66f4\u7cbe\u51c6`,
+          `${JUDGEMENT_CORRECT}: \u4e3b\u8425XXX\uff0c\u5f53\u524d\u5f52\u7c7b\u4e3aXXX\uff0c\u5224\u65ad\u6b63\u786e`,
+          "If judgement is 无分类新增, the sentence must explicitly contain '当前无分类' and must not say '判断正确'.",
+          "If judgement is 有误, the sentence must explicitly indicate the replacement category and must not say '判断正确'.",
+          "If judgement is 可更精准, the sentence must explicitly contain '更精准' and must not say '判断正确'.",
+          "Before returning, self-check that the sentence wording matches the provided judgement exactly.",
+          "No markdown.",
+        ].join("\n\n"),
+        user: JSON.stringify(
+          {
+            domain: row.domain,
+            termName: row.termName,
+            currentCategory: currentCategoryDisplay,
+            judgement: input.finalJudgement,
+            suggestedParent: input.suggestedParentName,
+            suggestedChild: input.suggestedChildName,
+            merchantBusiness: input.merchantBusiness,
+            classificationReason: input.classificationReason,
+          },
+          null,
+          2,
+        ),
+      }),
+      validate: (candidate) => {
+        const normalizedCandidate = normalizeJsonCandidate(candidate);
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(normalizedCandidate);
+        } catch (error) {
+          const salvaged = sanitizeVerificationNote(
+            extractFirstMatch(String(candidate || ""), [
+              /"verificationNote"\s*:\s*"([^"]+)"/i,
+              /\u6838\u9a8c\u8bf4\u660e\s*[:=]\s*"?([^"\r\n]+)"?/i,
+              /note\s*[:=]\s*"?([^"\r\n]+)"?/i,
+            ]),
+          );
+          if (!salvaged) {
+            return {
+              ok: false as const,
+              errors: [error instanceof Error ? error.message : "Invalid JSON output."],
+            };
+          }
+          parsed = { verificationNote: salvaged };
+        }
+        const validated = verificationNoteSchema.safeParse(parsed);
+        if (!validated.success) {
+          return {
+            ok: false as const,
+            errors: validated.error.issues.map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`),
+          };
+        }
+        const note = normalizePrimaryVerificationNote(validated.data.verificationNote);
+        if (isGenericNote(note)) {
+          return {
+            ok: false as const,
+            errors: ["verificationNote is too generic."],
+          };
+        }
+        return {
+          ok: true as const,
+          value: { verificationNote: note },
+          errors: [] as string[],
+        };
+      },
+      buildRepairMessages: async (candidate, errors) => ({
+        system:
+          "Repair the output into exactly one JSON object with key verificationNote. The sentence must include merchant business, why the category fits, and the exact final category name.",
+        user: JSON.stringify({ previousOutput: candidate, errors }, null, 2),
+      }),
+      requestTimeoutMs: env.aiRequestTimeoutMsBatch,
+      aiModel,
+      maxRetries: 1,
+      useConfiguredTemperature: true,
+    });
+
+  let executed;
+  let usedRecoveryRequest = false;
+  try {
+    executed = await executePrimaryPass(false);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const shouldRetryStrict =
+      message.includes("AI ") ||
+      message.includes("Required") ||
+      message.includes("Invalid JSON output") ||
+      message.includes("valid category id");
+    if (!shouldRetryStrict) throw error;
+    try {
+      executed = await executePrimaryPass(true);
+    } catch (strictError) {
+      const strictMessage = strictError instanceof Error ? strictError.message : String(strictError);
+      if (!shouldRetryCategoryRecoveryError(strictMessage)) throw strictError;
+      executed = await executeRecoveryPass();
+      usedRecoveryRequest = true;
+    }
+  }
+
+  let parsed = executed.result;
+  let usage = executed.usage;
+  let suggestedChild = parsed.suggestedChildId ? dictionary.childrenById.get(parsed.suggestedChildId) : undefined;
+  let suggestedParent = parsed.suggestedParentId
+    ? dictionary.parentsById.get(parsed.suggestedParentId)
+    : suggestedChild
+      ? dictionary.parentsById.get(suggestedChild.parentId)
+      : undefined;
+
+  if (!suggestedParent) {
+    throw new Error("AI output could not be mapped to a valid parent category.");
+  }
+
+  let finalSuggestedChild = suggestedChild || (currentAsChild && currentAsChild.parentId === suggestedParent.id ? currentAsChild : undefined);
+  let finalJudgement = computeFinalJudgementV2({
+    row,
+    currentAsParent,
+    currentAsChild,
+    suggestedParent,
+    suggestedChild: finalSuggestedChild,
+  });
+  let merchantBusiness = normalizeBusinessPhrase(row, parsed.merchantBusiness || inferMerchantBusinessSnippet(row));
+  let classificationReason = normalizeReasonPhrase(
+    parsed.classificationReason ||
+      (finalJudgement === JUDGEMENT_CORRECT
+        ? `${finalSuggestedChild?.name || suggestedParent.name} \u5f52\u7c7b\u51c6\u786e`
+        : finalJudgement === JUDGEMENT_MORE_PRECISE
+          ? `${finalSuggestedChild?.name || suggestedParent.name} \u6bd4 ${currentCategoryDisplay} \u66f4\u7cbe\u51c6`
+          : finalJudgement === JUDGEMENT_NEW
+            ? `\u5e94\u65b0\u589e\u5f52\u5165 ${finalSuggestedChild?.name || suggestedParent.name}`
+            : `\u5e94\u5c5e ${finalSuggestedChild?.name || suggestedParent.name}\uff0c\u975e ${currentCategoryDisplay}`),
+    sanitizeFreeformText(finalSuggestedChild?.name || suggestedParent.name, 36),
+    sanitizeFreeformText(currentCategoryDisplay, 36),
+  );
+  if (looksTooAsciiHeavy(merchantBusiness)) {
+    merchantBusiness = extractChineseBusinessFromReason(classificationReason) || merchantBusiness;
+  }
+  let verificationNote = normalizePrimaryVerificationNote(parsed.verificationNote || "");
+  let noteRewritten = false;
+
+  const modelDrivenNote = buildProgrammaticVerificationNote({
+    row,
+    judgement: finalJudgement,
+    currentCategoryDisplay,
+    suggestedParentName: suggestedParent.name,
+    suggestedChildName: finalSuggestedChild?.name || "",
+    merchantBusiness,
+    classificationReason,
+  });
+
+  if (
+    noteNeedsRewriteLite({
+      judgement: finalJudgement,
+      currentCategoryDisplay,
+      suggestedParentName: suggestedParent.name,
+      suggestedChildName: finalSuggestedChild?.name || "",
+      verificationNote,
+    })
+  ) {
+    const noteGenerated = await rewriteVerificationNote({
+      finalJudgement,
+      suggestedParentName: suggestedParent.name,
+      suggestedChildName: finalSuggestedChild?.name || "",
+      merchantBusiness,
+      classificationReason,
+    });
+    verificationNote = normalizePrimaryVerificationNote(noteGenerated.result.verificationNote);
+    usage = addUsage(usage, noteGenerated.usage);
+    noteRewritten = true;
+  }
+
+  if (
+    noteNeedsRewriteLite({
+      judgement: finalJudgement,
+      currentCategoryDisplay,
+      suggestedParentName: suggestedParent.name,
+      suggestedChildName: finalSuggestedChild?.name || "",
+      verificationNote,
+    })
+  ) {
+    verificationNote = cleanupAiVerificationNote(modelDrivenNote);
+  }
+
+  return {
+    judgement: finalJudgement,
+    suggestedParentId: suggestedParent.id,
+    suggestedParentName: suggestedParent.name,
+    suggestedChildId: finalSuggestedChild?.id || "",
+    suggestedChildName: finalSuggestedChild?.name || "",
+    verificationNote,
+    usage,
+    stats: {
+      usedRecoveryRequest,
+      programmaticallyRecovered: parsed.programmaticallyRecovered || !parsed.suggestedChildId || parsed.parseMode === "salvaged",
+      noteRewritten,
+    },
   };
 }
 
@@ -824,6 +1762,13 @@ export async function executeCategoryCalibrationChunkRows(input: {
     estimatedCostUsd: number;
     completedSubBatches: number;
     totalSubBatches: number;
+    primarySuccessRows: number;
+    recoveredRows: number;
+    noteRewrittenRows: number;
+    programmaticallyRecoveredRows: number;
+    finalFailedRows: number;
+    judgementCounts: Record<string, number>;
+    failureBuckets: Record<string, number>;
   }) => Promise<void> | void;
 }) {
   ensureRequiredColumns(input.columns);
@@ -841,10 +1786,27 @@ export async function executeCategoryCalibrationChunkRows(input: {
   let rowOffset = 0;
   let completedSubBatches = 0;
   let lastProgressReportedAt = 0;
+  let primarySuccessRows = 0;
+  let recoveredRows = 0;
+  let noteRewrittenRows = 0;
+  let programmaticallyRecoveredRows = 0;
   const totalSubBatches = Math.max(1, Math.ceil(input.totalRows / CATEGORY_CALIBRATION_SUB_BATCH_SIZE));
+  const judgementCounts: Record<string, number> = {
+    [JUDGEMENT_CORRECT]: 0,
+    [JUDGEMENT_INCORRECT]: 0,
+    [JUDGEMENT_MORE_PRECISE]: 0,
+    [JUDGEMENT_NEW]: 0,
+  };
+  const failureBuckets: Record<string, number> = {
+    parse: 0,
+    taxonomy: 0,
+    note: 0,
+    request: 0,
+    unknown: 0,
+  };
   const dedupeCache = new Map<
     string,
-    | { ok: true; classified: Awaited<ReturnType<typeof classifyRow>> }
+    | { ok: true; classified: Awaited<ReturnType<typeof classifyRowV2>> }
     | { ok: false; error: string }
   >();
 
@@ -884,7 +1846,7 @@ export async function executeCategoryCalibrationChunkRows(input: {
           }
 
           try {
-            const classified = await classifyRow(row, dictionary, input.aiModel);
+            const classified = await classifyRowV2(row, dictionary, input.aiModel);
             dedupeCache.set(fingerprint, { ok: true, classified });
             return {
               ok: true as const,
@@ -911,12 +1873,17 @@ export async function executeCategoryCalibrationChunkRows(input: {
               completionTokens += item.classified.usage.completionTokens;
             }
             successRows += 1;
+            if (item.classified.stats.usedRecoveryRequest) recoveredRows += 1;
+            else primarySuccessRows += 1;
+            if (item.classified.stats.noteRewritten) noteRewrittenRows += 1;
+            if (item.classified.stats.programmaticallyRecovered) programmaticallyRecoveredRows += 1;
+            judgementCounts[item.classified.judgement] = (judgementCounts[item.classified.judgement] || 0) + 1;
             const outputRow: RowOutput = {
               domain: item.row.domain,
-              [RESULT_CURRENT_CATEGORY]: formatCurrentCategoryDisplay(item.row),
+              [RESULT_CURRENT_CATEGORY]: displayCurrentCategoryValue(item.row),
               [RESULT_JUDGEMENT]: item.classified.judgement,
-              [RESULT_PARENT]: formatCategoryDisplay(item.classified.suggestedParentId, item.classified.suggestedParentName),
-              [RESULT_CHILD]: formatCategoryDisplay(item.classified.suggestedChildId, item.classified.suggestedChildName),
+              [RESULT_PARENT]: displayCategoryValue(item.classified.suggestedParentId, item.classified.suggestedParentName),
+              [RESULT_CHILD]: displayCategoryValue(item.classified.suggestedChildId, item.classified.suggestedChildName),
               [RESULT_NOTE]: item.classified.verificationNote,
             };
             await writeCsvRow(csvStream, outputRow);
@@ -931,16 +1898,26 @@ export async function executeCategoryCalibrationChunkRows(input: {
           } else {
             failedRows += 1;
             const failedJudgementText = hasCurrentCategory(item.row) ? JUDGEMENT_INCORRECT : JUDGEMENT_NEW;
+            judgementCounts[failedJudgementText] = (judgementCounts[failedJudgementText] || 0) + 1;
+            const lowerError = String(item.error || "").toLowerCase();
+            if (lowerError.includes("verificationnote") || lowerError.includes("note")) failureBuckets.note += 1;
+            else if (lowerError.includes("parent") || lowerError.includes("child") || lowerError.includes("taxonomy")) failureBuckets.taxonomy += 1;
+            else if (lowerError.includes("json") || lowerError.includes("parse") || lowerError.includes("required")) failureBuckets.parse += 1;
+            else if (lowerError.includes("llm") || lowerError.includes("timeout") || lowerError.includes("request")) failureBuckets.request += 1;
+            else failureBuckets.unknown += 1;
+            const failedNote = buildProgrammaticVerificationNote({
+              row: item.row,
+              judgement: failedJudgementText,
+              currentCategoryDisplay: displayCurrentCategoryValue(item.row),
+              error: item.error,
+            });
             const outputRow: RowOutput = {
               domain: item.row.domain,
-              [RESULT_CURRENT_CATEGORY]: formatCurrentCategoryDisplay(item.row),
+              [RESULT_CURRENT_CATEGORY]: displayCurrentCategoryValue(item.row),
               [RESULT_JUDGEMENT]: failedJudgementText,
               [RESULT_PARENT]: "",
               [RESULT_CHILD]: "",
-              [RESULT_NOTE]: buildVerificationNote({
-                judgement: failedJudgementText,
-                error: item.error,
-              }),
+              [RESULT_NOTE]: failedNote,
             };
             await writeCsvRow(csvStream, outputRow);
             rowResults.push({
@@ -949,10 +1926,7 @@ export async function executeCategoryCalibrationChunkRows(input: {
               judgement: failedJudgementText,
               suggestedParentId: "",
               suggestedChildId: "",
-              note: buildVerificationNote({
-                judgement: failedJudgementText,
-                error: item.error,
-              }),
+              note: failedNote,
               error: item.error,
             });
           }
@@ -972,6 +1946,13 @@ export async function executeCategoryCalibrationChunkRows(input: {
                 estimatedCostUsd: Math.round(estimateCategoryCost(promptTokens, completionTokens, input.aiModel) * 1_000_000) / 1_000_000,
                 completedSubBatches,
                 totalSubBatches,
+                primarySuccessRows,
+                recoveredRows,
+                noteRewrittenRows,
+                programmaticallyRecoveredRows,
+                finalFailedRows: failedRows,
+                judgementCounts: { ...judgementCounts },
+                failureBuckets: { ...failureBuckets },
               });
             }
           }
@@ -988,6 +1969,13 @@ export async function executeCategoryCalibrationChunkRows(input: {
           estimatedCostUsd: Math.round(estimateCategoryCost(promptTokens, completionTokens, input.aiModel) * 1_000_000) / 1_000_000,
           completedSubBatches,
           totalSubBatches,
+          primarySuccessRows,
+          recoveredRows,
+          noteRewrittenRows,
+          programmaticallyRecoveredRows,
+          finalFailedRows: failedRows,
+          judgementCounts: { ...judgementCounts },
+          failureBuckets: { ...failureBuckets },
         });
       }
     }
@@ -1012,6 +2000,13 @@ export async function executeCategoryCalibrationChunkRows(input: {
       failedRows,
       aiModel: input.aiModel,
       dictionaryPath: dictionary.dictionaryPath,
+      primarySuccessRows,
+      recoveredRows,
+      noteRewrittenRows,
+      programmaticallyRecoveredRows,
+      finalFailedRows: failedRows,
+      judgementCounts,
+      failureBuckets,
       promptTokens,
       completionTokens,
       totalTokens: promptTokens + completionTokens,

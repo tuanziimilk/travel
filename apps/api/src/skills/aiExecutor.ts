@@ -34,6 +34,7 @@ export type ExecuteOptions<T> = {
   maxRetries?: number;
   requestTimeoutMs?: number;
   aiModel?: string;
+  useConfiguredTemperature?: boolean;
 };
 
 type ResponseFormatMode = "json_object" | "json_schema";
@@ -244,6 +245,7 @@ export class AiExecutor {
     messages: ExecutorMessages,
     requestTimeoutMs?: number,
     aiModel = env.aiModel,
+    useConfiguredTemperature = false,
   ): Promise<{ content: string; usage: LlmCallUsage }> {
     const maxRetries = env.aiHttpMaxRetries;
     const formatMode = this.normalizeFormatMode(env.aiResponseFormatMode);
@@ -251,7 +253,15 @@ export class AiExecutor {
 
     for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
       try {
-        return await this.callLLMOnce(messages, formatMode, false, true, true, requestTimeoutMs ?? env.aiRequestTimeoutMs, aiModel);
+        return await this.callLLMOnce(
+          messages,
+          formatMode,
+          useConfiguredTemperature,
+          true,
+          true,
+          requestTimeoutMs ?? env.aiRequestTimeoutMs,
+          aiModel,
+        );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         errors.push(`attempt${attempt + 1}: ${message}`);
@@ -274,7 +284,7 @@ export class AiExecutor {
     const maxRetries = options.maxRetries ?? env.aiExecutorMaxRetries;
     const init = await options.buildMessages();
     const aiModel = options.aiModel || env.aiModel;
-    const initial = await this.callLLM(init, options.requestTimeoutMs, aiModel);
+    const initial = await this.callLLM(init, options.requestTimeoutMs, aiModel, options.useConfiguredTemperature === true);
     let candidate = initial.content;
     const usage: LlmCallUsage = {
       promptTokens: initial.usage.promptTokens,
@@ -290,13 +300,23 @@ export class AiExecutor {
       if (i === maxRetries) break;
       if (options.buildRepairMessages) {
         const repair = await options.buildRepairMessages(candidate, lastErrors);
-        const repaired = await this.callLLM(repair, options.requestTimeoutMs, aiModel);
+        const repaired = await this.callLLM(
+          repair,
+          options.requestTimeoutMs,
+          aiModel,
+          options.useConfiguredTemperature === true,
+        );
         candidate = repaired.content;
         usage.promptTokens += repaired.usage.promptTokens;
         usage.completionTokens += repaired.usage.completionTokens;
         usage.totalTokens += repaired.usage.totalTokens;
       } else {
-        const retried = await this.callLLM(init, options.requestTimeoutMs, aiModel);
+        const retried = await this.callLLM(
+          init,
+          options.requestTimeoutMs,
+          aiModel,
+          options.useConfiguredTemperature === true,
+        );
         candidate = retried.content;
         usage.promptTokens += retried.usage.promptTokens;
         usage.completionTokens += retried.usage.completionTokens;
