@@ -258,11 +258,11 @@ export function UploadPage() {
     if (jobId === jobIdValue) await statusQuery.refetch();
   }
 
-  async function retryFailedRows() {
+  async function retryFailedRows(_jobId?: string) {
     return undefined;
   }
 
-  async function retryWholeBatch() {
+  async function retryWholeBatch(_jobId?: string) {
     return undefined;
   }
 
@@ -690,13 +690,13 @@ export function UploadPage() {
                     下载结果
                   </button>
                 )}
-                {false && detailRow.failedRows > 0 && (detailRow.status === "done" || detailRow.status === "failed" || detailRow.status === "cancelled") && (
-                  <button className="btn-ghost" type="button" onClick={() => void retryFailedRows(detailRow.id)}>
+                {false && detailRow!.failedRows > 0 && (detailRow!.status === "done" || detailRow!.status === "failed" || detailRow!.status === "cancelled") && (
+                  <button className="btn-ghost" type="button" onClick={() => void retryFailedRows(detailJobId)}>
                     重跑失败行
                   </button>
                 )}
-                {false && (detailRow.status === "done" || detailRow.status === "failed" || detailRow.status === "cancelled") && (
-                  <button className="btn-ghost" type="button" onClick={() => void retryWholeBatch(detailRow.id)}>
+                {false && (detailRow!.status === "done" || detailRow!.status === "failed" || detailRow!.status === "cancelled") && (
+                  <button className="btn-ghost" type="button" onClick={() => void retryWholeBatch(detailJobId)}>
                     整批重跑
                   </button>
                 )}

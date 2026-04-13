@@ -92,7 +92,7 @@ function downloadBase64File(fileName: string, base64: string, mimeType = "applic
   URL.revokeObjectURL(url);
 }
 
-function buildShareData(items: Array<{ label: string; value: number }>, maxItems = 5): ShareDatum[] {
+function buildShareData(items: Array<{ label: string; value: number }>, maxItems = 5, _showOthers = true): ShareDatum[] {
   const sorted = [...items].sort((a, b) => b.value - a.value).filter((item) => item.value > 0);
   const top = sorted.slice(0, maxItems);
   const rest = sorted.slice(maxItems).reduce((sum, item) => sum + item.value, 0);
@@ -232,7 +232,7 @@ function HorizontalBars({
 
 export function FaqOutputHistoryPage() {
   const scType = "faq" as const;
-  const pageSize = 12;
+  const pageSize = 20;
   const [page, setPage] = useState(1);
   const [country, setCountry] = useState("");
   const [subclass, setSubclass] = useState("");
@@ -259,11 +259,16 @@ export function FaqOutputHistoryPage() {
   );
 
   const summaryQuery = trpc.generation.historySummary.useQuery(filterInput);
-  const rowsQuery = trpc.generation.historyRows.useQuery({
-    ...filterInput,
-    page,
-    pageSize,
-  });
+  const rowsQuery = trpc.generation.historyRows.useQuery(
+    {
+      ...filterInput,
+      page,
+      pageSize,
+    },
+    {
+      placeholderData: (previousData) => previousData,
+    },
+  );
   useEffect(() => {
     setPage(1);
   }, [country, subclass, uploader, keyword, startDate, endDate]);
@@ -274,6 +279,11 @@ export function FaqOutputHistoryPage() {
   const rows = (rowsQuery.data?.rows ?? []) as HistoryRow[];
   const totalPages = Math.max(1, Math.ceil((rowsQuery.data?.total ?? 0) / pageSize));
   const queryError = summaryQuery.error || rowsQuery.error;
+  const isRowsLoading = rowsQuery.isLoading || rowsQuery.isFetching;
+
+  useEffect(() => {
+    setPage((currentPage) => Math.min(currentPage, totalPages));
+  }, [totalPages]);
 
   const countryShare = useMemo(
     () => buildShareData(byCountry.map((item) => ({ label: item.country, value: item.merchantCount }))),
@@ -552,7 +562,7 @@ export function FaqOutputHistoryPage() {
                     <td title={formatDateTime(item.finishedAt || item.createdAt)}>{formatDateTime(item.finishedAt || item.createdAt)}</td>
                   </tr>
                 ))}
-                {!rows.length ? (
+                {!isRowsLoading && !rows.length ? (
                   <tr>
                     <td colSpan={9}>暂无符合筛选条件的结果记录。</td>
                   </tr>
@@ -563,13 +573,13 @@ export function FaqOutputHistoryPage() {
             <div className="upload-actions faq-pagination-row">
               <span className="muted">共 {rowsQuery.data?.total ?? 0} 条结果记录</span>
               <div className="upload-actions" style={{ gap: 8 }}>
-                <button className="btn-ghost" type="button" disabled={page <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>
+                <button className="btn-ghost" type="button" disabled={page <= 1 || isRowsLoading} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>
                   上一页
                 </button>
                 <span className="faq-pagination-indicator">
                   {page}/{totalPages}
                 </span>
-                <button className="btn-ghost" type="button" disabled={page >= totalPages} onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}>
+                <button className="btn-ghost" type="button" disabled={page >= totalPages || isRowsLoading} onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}>
                   下一页
                 </button>
               </div>
