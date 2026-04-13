@@ -90,7 +90,9 @@ app.get("/generation/jobs/:jobId/download", async (req, res) => {
   try {
     const jobId = String(req.params.jobId || "").trim();
     if (!jobId) throw new Error("jobId is required.");
-    const result = await getGenerationJobDownloadPayload(jobId);
+    const requestedVariant = String(req.query.variant || "").trim();
+    const variant = requestedVariant === "field_extract" || requestedVariant === "full" ? requestedVariant : "main";
+    const result = await getGenerationJobDownloadPayload(jobId, { variant });
     const safeFileName = path.basename(result.fileName || `faq-output-${jobId}.xlsx`);
     res.setHeader("Content-Type", result.contentType);
     res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(safeFileName)}`);

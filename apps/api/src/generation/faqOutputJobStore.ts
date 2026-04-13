@@ -595,6 +595,15 @@ const extractionSheetHeaders = [
   "url",
 ] as const;
 
+const failureSheetHeaders = ["rowIndex", "factType", "subclass", "routeKey", "error"] as const;
+const faqDownloadSheetNames = {
+  output: "FAQ_output",
+  extract: "field_extract",
+  failures: "failures",
+} as const;
+
+type GenerationDownloadVariant = "main" | "field_extract" | "full";
+
 function normalize(value: unknown) {
   return String(value || "").trim();
 }
@@ -734,6 +743,53 @@ function isLikelyXlsxBuffer(buffer: Buffer | null | undefined) {
   return buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04;
 }
 
+function cloneSheet(workbook: XLSX.WorkBook, sheetName: string) {
+  const sheet = workbook.Sheets[sheetName];
+  if (!sheet) return null;
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as unknown[][];
+  return XLSX.utils.aoa_to_sheet(rows);
+}
+
+function buildWorkbookForVariant(sourceBuffer: Buffer, variant: GenerationDownloadVariant) {
+  const sourceWorkbook = XLSX.read(sourceBuffer, { type: "buffer" });
+  const nextWorkbook = XLSX.utils.book_new();
+
+  if (variant === "field_extract") {
+    const extractSheet = cloneSheet(sourceWorkbook, faqDownloadSheetNames.extract);
+    if (!extractSheet) {
+      throw new Error("Current FAQ output task has no field_extract sheet yet.");
+    }
+    XLSX.utils.book_append_sheet(nextWorkbook, extractSheet, faqDownloadSheetNames.extract);
+    return XLSX.write(nextWorkbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+  }
+
+  const outputSheet = cloneSheet(sourceWorkbook, faqDownloadSheetNames.output);
+  if (!outputSheet) {
+    throw new Error("Current FAQ output task has no FAQ_output sheet yet.");
+  }
+  XLSX.utils.book_append_sheet(nextWorkbook, outputSheet, faqDownloadSheetNames.output);
+
+  const failuresSheet = cloneSheet(sourceWorkbook, faqDownloadSheetNames.failures);
+  if (failuresSheet) {
+    XLSX.utils.book_append_sheet(nextWorkbook, failuresSheet, faqDownloadSheetNames.failures);
+  } else {
+    XLSX.utils.book_append_sheet(
+      nextWorkbook,
+      XLSX.utils.json_to_sheet([], { header: [...failureSheetHeaders] }),
+      faqDownloadSheetNames.failures,
+    );
+  }
+
+  if (variant === "full") {
+    const extractSheet = cloneSheet(sourceWorkbook, faqDownloadSheetNames.extract);
+    if (extractSheet) {
+      XLSX.utils.book_append_sheet(nextWorkbook, extractSheet, faqDownloadSheetNames.extract);
+    }
+  }
+
+  return XLSX.write(nextWorkbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+}
+
 async function rebuildGenerationResultArtifact(row: typeof contentGenerationJobs.$inferSelect) {
   if (!row.inputFileBase64) {
     return {
@@ -770,7 +826,7 @@ async function rebuildGenerationResultArtifact(row: typeof contentGenerationJobs
       })),
       { header: [...outputHeaders] },
     ),
-    "FAQ_output",
+    faqDownloadSheetNames.output,
   );
   XLSX.utils.book_append_sheet(
     workbook,
@@ -791,7 +847,7 @@ async function rebuildGenerationResultArtifact(row: typeof contentGenerationJobs
       }),
       { header: [...extractionSheetHeaders] },
     ),
-    "field_extract",
+    faqDownloadSheetNames.extract,
   );
   XLSX.utils.book_append_sheet(
     workbook,
@@ -803,8 +859,9 @@ async function rebuildGenerationResultArtifact(row: typeof contentGenerationJobs
         routeKey: item.routeKey,
         error: item.errorReason,
       })),
+      { header: [...failureSheetHeaders] },
     ),
-    "failures",
+    faqDownloadSheetNames.failures,
   );
 
   const fileName = row.resultFileName || `faq-output-${row.id}.xlsx`;
@@ -1445,10 +1502,11 @@ export async function getGenerationJobResult(jobId: string) {
   };
 }
 
-export async function getGenerationJobDownloadPayload(jobId: string) {
+export async function getGenerationJobDownloadPayload(jobId: string, options?: { variant?: GenerationDownloadVariant }) {
   const rows = await db.select().from(contentGenerationJobs).where(eq(contentGenerationJobs.id, jobId));
   const row = rows[0];
   if (!row) throw new Error("Current FAQ output task was not found.");
+  const variant = options?.variant || "main";
 
   let fileBuffer: Buffer | null = null;
   if (row.resultFilePath) {
@@ -1489,10 +1547,21 @@ export async function getGenerationJobDownloadPayload(jobId: string) {
     throw new Error(row.errorReason || "Current FAQ output task has no downloadable result yet.");
   }
 
+  const trimmedBuffer = buildWorkbookForVariant(fileBuffer, variant);
+  const baseName = row.resultFileName || `faq-output-${row.id}.xlsx`;
+  const fileExt = path.extname(baseName) || ".xlsx";
+  const fileStem = path.basename(baseName, fileExt);
+  const fileName =
+    variant === "field_extract"
+      ? `${fileStem}-field-extract${fileExt}`
+      : variant === "full"
+        ? `${fileStem}-full${fileExt}`
+        : baseName;
+
   return {
-    fileName: rebuiltResult?.fileName || row.resultFileName || `faq-output-${row.id}.xlsx`,
+    fileName,
     contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    buffer: fileBuffer,
+    buffer: trimmedBuffer,
   };
 }
 

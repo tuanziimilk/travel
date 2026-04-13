@@ -6332,7 +6332,7 @@ pre {
 
 .faq-queue-table th:nth-child(10),
 .faq-queue-table td:nth-child(10) {
-  width: 7%;
+  width: 12%;
   text-align: left;
 }
 
@@ -6340,11 +6340,17 @@ pre {
   text-align: left;
   padding-left: 6px;
   padding-right: 6px;
-  min-width: 76px;
+  min-width: 148px;
 }
 
 .faq-queue-table .queue-action-group {
   justify-content: flex-start;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.faq-queue-action-btn-secondary {
+  min-width: 64px;
 }
 
 @media (max-width: 1180px) {
