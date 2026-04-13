@@ -1,3 +1,5 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 import type { RowDataPacket } from "mysql2/promise";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { parse } from "csv-parse/sync";
@@ -129,6 +131,7 @@ let generationHistorySummaryTableEnsured = false;
 let generationHistorySummaryRefreshPromise: Promise<void> | null = null;
 let generationHistorySummaryRefreshRequested = false;
 let generationHistorySummaryRefreshTimer: NodeJS.Timeout | null = null;
+const FAQ_RESULT_DIR = path.resolve(process.cwd(), ".runtime", "faq-output-results");
 
 function buildGenerationHistoryCacheKey(input: HistoryFilters) {
   return JSON.stringify({
@@ -679,11 +682,21 @@ function parseGenerationInputWorkbook(fileName: string, fileBase64: string) {
   return rows.map(mapRow);
 }
 
+async function persistFaqResultWorkbook(jobId: string, fileName: string, workbookBuffer: Buffer) {
+  await mkdir(FAQ_RESULT_DIR, { recursive: true });
+  const safeExt = path.extname(fileName || "").toLowerCase() === ".xlsx" ? ".xlsx" : ".xlsx";
+  const resultFilePath = path.join(FAQ_RESULT_DIR, `${jobId}${safeExt}`);
+  await writeFile(resultFilePath, workbookBuffer);
+  return resultFilePath;
+}
+
 async function rebuildGenerationResultArtifact(row: typeof contentGenerationJobs.$inferSelect) {
   if (!row.inputFileBase64) {
     return {
       fileName: row.resultFileName || `faq-output-${row.id}.xlsx`,
       xlsxBase64: row.resultFileBase64 || "",
+      buffer: row.resultFileBase64 ? Buffer.from(row.resultFileBase64, "base64") : Buffer.alloc(0),
+      resultFilePath: row.resultFilePath || "",
     };
   }
 
@@ -750,18 +763,21 @@ async function rebuildGenerationResultArtifact(row: typeof contentGenerationJobs
     "failures",
   );
 
-  const xlsxBase64 = XLSX.write(workbook, { type: "base64", bookType: "xlsx" });
   const fileName = row.resultFileName || `faq-output-${row.id}.xlsx`;
+  const workbookBuffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+  const xlsxBase64 = workbookBuffer.toString("base64");
+  const resultFilePath = await persistFaqResultWorkbook(row.id, fileName, workbookBuffer);
 
   await db
     .update(contentGenerationJobs)
     .set({
       resultFileName: fileName,
       resultFileBase64: xlsxBase64,
+      resultFilePath,
     })
     .where(eq(contentGenerationJobs.id, row.id));
 
-  return { fileName, xlsxBase64 };
+  return { fileName, xlsxBase64, buffer: workbookBuffer, resultFilePath };
 }
 
 async function listDoneGenerationRows(scType = "faq") {
@@ -905,6 +921,7 @@ export async function markGenerationJobQueued(jobId: string) {
       estimatedCostUsdSum: String(persisted.estimatedCostUsdSum),
       resultFileName: "",
       resultFileBase64: null,
+      resultFilePath: null,
       routeSummaryJson: null,
       rowResultsJson: null,
       finishedAt: null,
@@ -929,6 +946,7 @@ export async function markGenerationJobRunning(jobId: string) {
       estimatedCostUsdSum: String(persisted.estimatedCostUsdSum),
       resultFileName: "",
       resultFileBase64: null,
+      resultFilePath: null,
       routeSummaryJson: null,
       rowResultsJson: null,
       startedAt: new Date(),
@@ -978,6 +996,7 @@ export async function completeGenerationJob(input: {
   aiModel: string;
   resultFileName: string;
   resultFileBase64?: string | null;
+  resultFilePath?: string | null;
   routeSummary: RouteSummaryRow[];
   rowResults: RowRuntimeResult[];
   errorReason?: string;
@@ -1001,12 +1020,21 @@ export async function completeGenerationJob(input: {
       aiModel: input.aiModel,
       resultFileName: input.resultFileName,
       resultFileBase64: input.resultFileBase64 || null,
+      resultFilePath: input.resultFilePath || null,
       routeSummaryJson: input.routeSummary,
       rowResultsJson: input.rowResults,
       errorReason: input.errorReason || null,
       finishedAt: new Date(),
     })
     .where(eq(contentGenerationJobs.id, input.jobId));
+
+  if (!input.resultFilePath && !input.resultFileBase64) {
+    const rows = await db.select().from(contentGenerationJobs).where(eq(contentGenerationJobs.id, input.jobId));
+    const row = rows[0];
+    if (row && (row.status === "done" || row.status === "failed")) {
+      await rebuildGenerationResultArtifact(row);
+    }
+  }
 }
 
 export async function updateGenerationJobProgress(input: {
@@ -1048,6 +1076,7 @@ export async function failGenerationJob(jobId: string, message: string) {
       status: "failed",
       errorReason: message,
       rowResultsJson: [{ rowIndex: 0, status: "error", subclass: "", factType: "", routeKey: "", error: message }],
+      resultFilePath: null,
       finishedAt: new Date(),
     })
     .where(eq(contentGenerationJobs.id, jobId));
@@ -1094,6 +1123,8 @@ export async function listGenerationJobs(page: number, pageSize: number, scType 
       aiModel: row.aiModel,
       errorReason: row.errorReason || "",
       resultFileName: row.resultFileName,
+      resultFilePath: row.resultFilePath || "",
+      canDownload: Boolean(row.resultFilePath || row.resultFileBase64 || row.status === "done" || row.status === "failed"),
       createdAt: formatChinaIsoOffset(row.createdAt),
       startedAt: formatChinaIsoOffset(row.startedAt),
       finishedAt: formatChinaIsoOffset(row.finishedAt),
@@ -1257,7 +1288,7 @@ export async function getGenerationJobResult(jobId: string) {
   const rows = await db.select().from(contentGenerationJobs).where(eq(contentGenerationJobs.id, jobId));
   const row = rows[0];
   const rebuiltResult =
-    row && !row.resultFileBase64 && (row.status === "done" || row.status === "failed")
+    row && !row.resultFileBase64 && !row.resultFilePath && (row.status === "done" || row.status === "failed")
       ? await rebuildGenerationResultArtifact(row)
       : null;
   if (!row) throw new Error("未找到 FAQ 输出任务。");
@@ -1280,6 +1311,42 @@ export async function getGenerationJobResult(jobId: string) {
       estimatedCostUsd: Number(row.estimatedCostUsdSum || 0),
       aiModel: row.aiModel,
     },
+  };
+}
+
+export async function getGenerationJobDownloadPayload(jobId: string) {
+  const rows = await db.select().from(contentGenerationJobs).where(eq(contentGenerationJobs.id, jobId));
+  const row = rows[0];
+  if (!row) throw new Error("Current FAQ output task was not found.");
+
+  const rebuiltResult =
+    !row.resultFilePath && !row.resultFileBase64 && (row.status === "done" || row.status === "failed")
+      ? await rebuildGenerationResultArtifact(row)
+      : null;
+
+  let fileBuffer: Buffer | null = rebuiltResult?.buffer || null;
+  if (!fileBuffer && row.resultFilePath) {
+    try {
+      fileBuffer = await readFile(row.resultFilePath);
+    } catch {
+      fileBuffer = null;
+    }
+  }
+  if (!fileBuffer && row.resultFileBase64) {
+    fileBuffer = Buffer.from(row.resultFileBase64, "base64");
+  }
+  if (!fileBuffer && rebuiltResult?.xlsxBase64) {
+    fileBuffer = Buffer.from(rebuiltResult.xlsxBase64, "base64");
+  }
+
+  if (!fileBuffer) {
+    throw new Error(row.errorReason || "Current FAQ output task has no downloadable result yet.");
+  }
+
+  return {
+    fileName: rebuiltResult?.fileName || row.resultFileName || `faq-output-${row.id}.xlsx`,
+    contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: fileBuffer,
   };
 }
 

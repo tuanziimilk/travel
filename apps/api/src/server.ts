@@ -10,7 +10,7 @@ import {
   completeCategoryCalibrationUpload,
   initCategoryCalibrationUpload,
 } from "./category-calibration/uploadStore";
-import { warmGenerationHistoryCaches } from "./generation/faqOutputJobStore";
+import { getGenerationJobDownloadPayload, warmGenerationHistoryCaches } from "./generation/faqOutputJobStore";
 import { getGgCleaningJobDownloadPayload } from "./gg-cleaning/jobStore";
 import { appendGgCleaningUploadChunk, appendGgCleaningUploadFileChunk, completeGgCleaningUpload, initGgCleaningUpload } from "./gg-cleaning/uploadStore";
 
@@ -78,6 +78,20 @@ app.get("/gg-cleaning/jobs/:jobId/download", async (req, res) => {
     const includeDebug = String(req.query.includeDebug || "").trim() === "1";
     const result = await getGgCleaningJobDownloadPayload(jobId, { includeDebug });
     const safeFileName = path.basename(result.fileName || `gg-cleaning-${jobId}.xlsx`);
+    res.setHeader("Content-Type", result.contentType);
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(safeFileName)}`);
+    res.send(result.buffer);
+  } catch (error) {
+    res.status(404).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.get("/generation/jobs/:jobId/download", async (req, res) => {
+  try {
+    const jobId = String(req.params.jobId || "").trim();
+    if (!jobId) throw new Error("jobId is required.");
+    const result = await getGenerationJobDownloadPayload(jobId);
+    const safeFileName = path.basename(result.fileName || `faq-output-${jobId}.xlsx`);
     res.setHeader("Content-Type", result.contentType);
     res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(safeFileName)}`);
     res.send(result.buffer);

@@ -32,6 +32,20 @@ type RoutePreviewRow = {
 };
 
 const faqOutputUploadLimitMb = Math.round(faqOutputUploadMaxFileBytes / 1024 / 1024);
+const faqOutputApiBase = (() => {
+  const trpcUrl = import.meta.env.VITE_TRPC_URL || "/trpc";
+  if (/^https?:\/\//i.test(trpcUrl)) {
+    try {
+      return new URL(trpcUrl).origin;
+    } catch {
+      return trpcUrl.replace(/\/trpc\/?$/, "");
+    }
+  }
+  if (typeof window !== "undefined") {
+    return window.location.origin;
+  }
+  return trpcUrl.replace(/\/trpc\/?$/, "");
+})();
 
 const faqOutputTemplateCsv = [
   "term_id,country,domain,term_name,fact_type,supported,status,discount_type,discount_value,currency,discount_details,url",
@@ -151,15 +165,37 @@ function toBase64(file: File) {
   });
 }
 
-function downloadBase64File(fileName: string, base64: string, mimeType = "application/octet-stream") {
-  const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
-  const blob = new Blob([bytes], { type: mimeType });
-  const url = URL.createObjectURL(blob);
+function triggerBrowserDownload(url: string, fileName: string) {
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = fileName;
+  anchor.rel = "noopener";
+  document.body.appendChild(anchor);
   anchor.click();
-  URL.revokeObjectURL(url);
+  anchor.remove();
+}
+
+async function downloadFileFromResponse(response: Response, fallbackFileName: string) {
+  if (!response.ok) {
+    let message = `Download failed with status ${response.status}.`;
+    try {
+      const payload = (await response.json()) as { error?: string };
+      if (payload?.error) message = payload.error;
+    } catch {
+      // keep default message
+    }
+    throw new Error(message);
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const encodedNameMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  const plainNameMatch = disposition.match(/filename=\"?([^\";]+)\"?/i);
+  const fileName = encodedNameMatch?.[1]
+    ? decodeURIComponent(encodedNameMatch[1])
+    : plainNameMatch?.[1] || fallbackFileName;
+  const url = URL.createObjectURL(blob);
+  triggerBrowserDownload(url, fileName);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function getSummaryText(item: {
@@ -227,6 +263,7 @@ export function FaqOutputPage() {
   const [error, setError] = useState("");
   const [resultNotice, setResultNotice] = useState("");
   const [currentJobId, setCurrentJobId] = useState("");
+  const [downloadingJobId, setDownloadingJobId] = useState("");
   const [routePreviewRows, setRoutePreviewRows] = useState<RoutePreviewRow[]>([]);
   const [showRouteDetails, setShowRouteDetails] = useState(false);
   const [queuePage, setQueuePage] = useState(1);
@@ -426,9 +463,20 @@ export function FaqOutputPage() {
   }
 
   async function downloadJobResult(jobId: string) {
-    const data = await utils.client.generation.result.query({ jobId });
-    if (!data.xlsxBase64) return;
-    downloadBase64File(data.fileName, data.xlsxBase64, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    setError("");
+    setDownloadingJobId(jobId);
+    try {
+      const url = new URL(`${faqOutputApiBase}/generation/jobs/${encodeURIComponent(jobId)}/download`);
+      const response = await fetch(url.toString(), {
+        method: "GET",
+        credentials: "include",
+      });
+      await downloadFileFromResponse(response, `faq-output-${jobId}.xlsx`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "下载 FAQ 输出结果失败，请稍后重试。");
+    } finally {
+      setDownloadingJobId("");
+    }
   }
 
   async function runGeneration() {
@@ -678,7 +726,7 @@ export function FaqOutputPage() {
             </thead>
             <tbody>
               {(queueQuery.data?.rows ?? []).map((item) => {
-                const hasResult = Boolean(item.resultFileName) || item.status === "done" || item.status === "failed";
+                const hasResult = Boolean(item.resultFilePath) || item.canDownload || Boolean(item.resultFileName) || item.status === "done" || item.status === "failed";
                 const itemProgress = getExecutionProgress(item);
                 const displayStatus = getDisplayJobStatus(item);
                 return (
@@ -711,10 +759,10 @@ export function FaqOutputPage() {
                         <button
                           className="btn-ghost faq-queue-action-btn"
                           type="button"
-                          disabled={!hasResult}
+                          disabled={!hasResult || downloadingJobId === item.id}
                           onClick={() => void downloadJobResult(item.id)}
                         >
-                          下载
+                          {downloadingJobId === item.id ? "下载中..." : "下载"}
                         </button>
                       </div>
                     </td>
