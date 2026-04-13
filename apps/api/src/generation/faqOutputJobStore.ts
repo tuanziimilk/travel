@@ -729,6 +729,11 @@ async function persistFaqResultWorkbook(jobId: string, fileName: string, workboo
   return resultFilePath;
 }
 
+function isLikelyXlsxBuffer(buffer: Buffer | null | undefined) {
+  if (!buffer || buffer.length < 4) return false;
+  return buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04;
+}
+
 async function rebuildGenerationResultArtifact(row: typeof contentGenerationJobs.$inferSelect) {
   if (!row.inputFileBase64) {
     return {
@@ -1445,24 +1450,39 @@ export async function getGenerationJobDownloadPayload(jobId: string) {
   const row = rows[0];
   if (!row) throw new Error("Current FAQ output task was not found.");
 
-  const rebuiltResult =
-    !row.resultFilePath && !row.resultFileBase64 && (row.status === "done" || row.status === "failed")
-      ? await rebuildGenerationResultArtifact(row)
-      : null;
-
-  let fileBuffer: Buffer | null = rebuiltResult?.buffer || null;
-  if (!fileBuffer && row.resultFilePath) {
+  let fileBuffer: Buffer | null = null;
+  if (row.resultFilePath) {
     try {
-      fileBuffer = await readFile(row.resultFilePath);
+      const diskBuffer = await readFile(row.resultFilePath);
+      if (isLikelyXlsxBuffer(diskBuffer)) {
+        fileBuffer = diskBuffer;
+      }
     } catch {
       fileBuffer = null;
     }
   }
+
   if (!fileBuffer && row.resultFileBase64) {
-    fileBuffer = Buffer.from(row.resultFileBase64, "base64");
+    const base64Buffer = Buffer.from(row.resultFileBase64, "base64");
+    if (isLikelyXlsxBuffer(base64Buffer)) {
+      fileBuffer = base64Buffer;
+    }
+  }
+
+  const shouldRebuild =
+    !fileBuffer &&
+    (row.status === "done" || row.status === "failed") &&
+    Boolean(row.inputFileBase64);
+  const rebuiltResult = shouldRebuild ? await rebuildGenerationResultArtifact(row) : null;
+
+  if (!fileBuffer && rebuiltResult?.buffer && isLikelyXlsxBuffer(rebuiltResult.buffer)) {
+    fileBuffer = rebuiltResult.buffer;
   }
   if (!fileBuffer && rebuiltResult?.xlsxBase64) {
-    fileBuffer = Buffer.from(rebuiltResult.xlsxBase64, "base64");
+    const rebuiltBuffer = Buffer.from(rebuiltResult.xlsxBase64, "base64");
+    if (isLikelyXlsxBuffer(rebuiltBuffer)) {
+      fileBuffer = rebuiltBuffer;
+    }
   }
 
   if (!fileBuffer) {

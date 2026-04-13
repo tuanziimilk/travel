@@ -77,13 +77,13 @@ const faqOutputTemplateCsv = [
 ].join("\n");
 
 const queueStatusText: Record<string, string> = {
-  queued: "???",
-  pending: "???",
-  running: "???",
-  done: "???",
-  partial_failed: "????",
-  failed: "??",
-  cancelled: "???",
+  queued: "\u6392\u961f\u4e2d",
+  pending: "\u6392\u961f\u4e2d",
+  running: "\u6267\u884c\u4e2d",
+  done: "\u5df2\u5b8c\u6210",
+  partial_failed: "\u90e8\u5206\u5931\u8d25",
+  failed: "\u5931\u8d25",
+  cancelled: "\u5df2\u53d6\u6d88",
 };
 
 function normalizeHeader(value: string) {
@@ -114,12 +114,12 @@ function getReadableFaqOutputError(error: unknown) {
   const httpStatus = details?.data?.httpStatus;
 
   if (httpStatus === 413 || /\b413\b/.test(message)) {
-    return `????????? FAQ ????? ${faqOutputUploadLimitMb}MB ????????????`;
+    return `上传的 FAQ 源文件超过 ${faqOutputUploadLimitMb}MB，请压缩内容后再重试。`;
   }
   if (/Unexpected token '<'|not valid JSON|<html/i.test(message)) {
-    return "????? HTML ????? JSON?????????????????????????";
+    return "接口返回了 HTML 页面而不是 JSON，请检查 API 服务或网关代理配置。";
   }
-  return message || "FAQ ??????";
+  return message || "FAQ 输出失败。";
 }
 
 function getDisplayJobStatus(item: {
