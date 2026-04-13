@@ -296,61 +296,72 @@ async function rebuildMaterializedHistorySummary(scType = "faq") {
     bumpMaterializedHistorySummary(row, aggregateMap);
   }
 
-  await pool.execute(
-    `DELETE FROM ${generationHistorySummaryTableName} WHERE sc_type = ? AND summary_version = ?`,
-    [scType, generationHistorySummaryVersion],
-  );
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.execute(
+      `DELETE FROM ${generationHistorySummaryTableName} WHERE sc_type = ? AND summary_version = ?`,
+      [scType, generationHistorySummaryVersion],
+    );
 
-  if (!aggregateMap.size) return;
+    if (aggregateMap.size) {
+      const refreshedAt = new Date();
+      const entries = [...aggregateMap.entries()];
+      const batchSize = 400;
 
-  const refreshedAt = new Date();
-  const entries = [...aggregateMap.entries()];
-  const batchSize = 400;
+      for (let start = 0; start < entries.length; start += batchSize) {
+        const batch = entries.slice(start, start + batchSize);
+        const valueSql = batch.map(() => "(?,?,?,?,?,?,?,?,?,?,?,?,?)").join(",");
+        const params: unknown[] = [];
 
-  for (let start = 0; start < entries.length; start += batchSize) {
-    const batch = entries.slice(start, start + batchSize);
-    const valueSql = batch.map(() => "(?,?,?,?,?,?,?,?,?,?,?,?,?)").join(",");
-    const params: unknown[] = [];
+        for (const [key, aggregate] of batch) {
+          const [uploaderFilter, countryFilter, subclassFilter, dimensionType, dimensionValue] = key.split("::");
+          params.push(
+            scType,
+            generationHistorySummaryVersion,
+            uploaderFilter,
+            countryFilter,
+            subclassFilter,
+            dimensionType,
+            dimensionValue,
+            aggregate.rowCount,
+            aggregate.uniqueResults.size,
+            aggregate.merchants.size,
+            aggregate.countries.size,
+            aggregate.subclasses.size,
+            refreshedAt,
+          );
+        }
 
-    for (const [key, aggregate] of batch) {
-      const [uploaderFilter, countryFilter, subclassFilter, dimensionType, dimensionValue] = key.split("::");
-      params.push(
-        scType,
-        generationHistorySummaryVersion,
-        uploaderFilter,
-        countryFilter,
-        subclassFilter,
-        dimensionType,
-        dimensionValue,
-        aggregate.rowCount,
-        aggregate.uniqueResults.size,
-        aggregate.merchants.size,
-        aggregate.countries.size,
-        aggregate.subclasses.size,
-        refreshedAt,
-      );
+        await connection.execute(
+          `
+            INSERT INTO ${generationHistorySummaryTableName} (
+              sc_type,
+              summary_version,
+              uploader_filter,
+              country_filter,
+              subclass_filter,
+              dimension_type,
+              dimension_value,
+              row_count,
+              unique_result_count,
+              merchant_count,
+              country_count,
+              subclass_count,
+              refreshed_at
+            ) VALUES ${valueSql}
+          `,
+          params,
+        );
+      }
     }
 
-    await pool.execute(
-      `
-        INSERT INTO ${generationHistorySummaryTableName} (
-          sc_type,
-          summary_version,
-          uploader_filter,
-          country_filter,
-          subclass_filter,
-          dimension_type,
-          dimension_value,
-          row_count,
-          unique_result_count,
-          merchant_count,
-          country_count,
-          subclass_count,
-          refreshed_at
-        ) VALUES ${valueSql}
-      `,
-      params,
-    );
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
   }
 }
 
