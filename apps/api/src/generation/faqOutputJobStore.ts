@@ -1568,6 +1568,7 @@ function mapGenerationQueueRow(row: Record<string, unknown>) {
     createdAt: formatChinaIsoOffset(row.created_at instanceof Date ? row.created_at : new Date(String(row.created_at || ""))),
     startedAt: formatChinaIsoOffset(row.started_at instanceof Date ? row.started_at : row.started_at ? new Date(String(row.started_at)) : null),
     finishedAt: formatChinaIsoOffset(row.finished_at instanceof Date ? row.finished_at : row.finished_at ? new Date(String(row.finished_at)) : null),
+    routeSummary: (row.route_summary_json as RouteSummaryRow[] | null) || [],
   };
 }
 
@@ -1631,6 +1632,7 @@ export async function listGenerationJobs(page: number, pageSize: number, scType 
           error_reason,
           result_file_name,
           result_file_path,
+          route_summary_json,
           CASE WHEN result_file_base64 IS NULL OR result_file_base64 = '' THEN 0 ELSE 1 END AS has_result_file_base64,
           CASE WHEN input_file_path IS NULL OR input_file_path = '' THEN 0 ELSE 1 END AS has_input_file_path,
           CASE WHEN input_file_base64 IS NULL OR input_file_base64 = '' THEN 0 ELSE 1 END AS has_input_file_base64,
