@@ -1096,39 +1096,63 @@ export async function listGenerationJobs(page: number, pageSize: number, scType 
   );
   const total = Number((countRows[0] as Record<string, unknown> | undefined)?.total_count || 0);
 
-  const rows = await db
-    .select()
-    .from(contentGenerationJobs)
-    .where(eq(contentGenerationJobs.scType, scType))
-    .orderBy(desc(contentGenerationJobs.createdAt))
-    .limit(safePageSize)
-    .offset(start);
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `
+      SELECT
+        id,
+        status,
+        sc_type,
+        uploader,
+        note,
+        input_file_name,
+        total_rows,
+        executable_rows,
+        success_rows,
+        failed_rows,
+        skipped_rows,
+        total_tokens_sum,
+        estimated_cost_usd_sum,
+        ai_model,
+        error_reason,
+        result_file_name,
+        result_file_path,
+        route_summary_json,
+        created_at,
+        started_at,
+        finished_at
+      FROM content_generation_jobs
+      WHERE sc_type = ?
+      ORDER BY created_at DESC
+      LIMIT ? OFFSET ?
+    `,
+    [scType, safePageSize, start],
+  );
 
   return {
     total,
     rows: rows.map((row) => ({
-      id: row.id,
-      status: row.status,
-      scType: row.scType,
-      uploader: row.uploader,
-      note: row.note,
-      inputFileName: row.inputFileName,
-      totalRows: row.totalRows,
-      executableRows: row.executableRows,
-      successRows: row.successRows,
-      failedRows: row.failedRows,
-      skippedRows: row.skippedRows,
-      totalTokensSum: row.totalTokensSum,
-      estimatedCostUsdSum: Number(row.estimatedCostUsdSum || 0),
-      aiModel: row.aiModel,
-      errorReason: row.errorReason || "",
-      resultFileName: row.resultFileName,
-      resultFilePath: row.resultFilePath || "",
-      canDownload: Boolean(row.resultFilePath || row.resultFileBase64 || row.status === "done" || row.status === "failed"),
-      createdAt: formatChinaIsoOffset(row.createdAt),
-      startedAt: formatChinaIsoOffset(row.startedAt),
-      finishedAt: formatChinaIsoOffset(row.finishedAt),
-      routeSummary: (row.routeSummaryJson as RouteSummaryRow[] | null) || [],
+      id: String(row.id || ""),
+      status: String(row.status || ""),
+      scType: String(row.sc_type || ""),
+      uploader: String(row.uploader || ""),
+      note: String(row.note || ""),
+      inputFileName: String(row.input_file_name || ""),
+      totalRows: Number(row.total_rows || 0),
+      executableRows: Number(row.executable_rows || 0),
+      successRows: Number(row.success_rows || 0),
+      failedRows: Number(row.failed_rows || 0),
+      skippedRows: Number(row.skipped_rows || 0),
+      totalTokensSum: Number(row.total_tokens_sum || 0),
+      estimatedCostUsdSum: Number(row.estimated_cost_usd_sum || 0),
+      aiModel: String(row.ai_model || ""),
+      errorReason: String(row.error_reason || ""),
+      resultFileName: String(row.result_file_name || ""),
+      resultFilePath: String(row.result_file_path || ""),
+      canDownload: Boolean(row.result_file_path || row.result_file_name || row.status === "done" || row.status === "failed"),
+      createdAt: formatChinaIsoOffset(row.created_at instanceof Date ? row.created_at : new Date(String(row.created_at || ""))),
+      startedAt: formatChinaIsoOffset(row.started_at instanceof Date ? row.started_at : row.started_at ? new Date(String(row.started_at)) : null),
+      finishedAt: formatChinaIsoOffset(row.finished_at instanceof Date ? row.finished_at : row.finished_at ? new Date(String(row.finished_at)) : null),
+      routeSummary: (row.route_summary_json as RouteSummaryRow[] | null) || [],
     })),
   };
 }
