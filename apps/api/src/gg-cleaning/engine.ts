@@ -488,6 +488,7 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
     explicitTerms: [/\bapp\b/i, /\bmobile app\b/i, /\bapplication\b/i, /\baplicaci[oó]n\b/i, /\b앱\b/i],
     positive: [
       /\bapp(?:-only|-exclusive)?\b.{0,30}\b(?:discounts?|offers?|codes?|benefits?|exclusive|tickets?|perks?|coupons?|vouchers?)\b/i,
+      /\bapp\b.{0,30}\b(?:exclusieve|specifieke)\b.{0,20}\b(?:kortingen|voordelen|aanbiedingen)\b/i,
       /\b(?:discounts?|offers?|benefits?|coupons?|exclusive|vouchers?)\b.{0,30}\b(?:in|via|through)\b.{0,12}\b(?:the )?app\b/i,
       /\b(?:download|using|book(?:ing)?|order(?:ing)?)\b.{0,18}\b(?:the )?app\b.{0,24}\b(?:unlock|get|receive|save|discounts?|vouchers?|benefits?|offers?)\b/i,
       /\bofficial mobile app\b.{0,40}\b(?:exclusive vouchers?|partner offers?|early access|benefits?)\b/i,
@@ -498,6 +499,11 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
     ],
     negative: [
       /\bno\b.{0,20}\bapp(?:-specific|-based|-exclusive)?\b.{0,20}\b(?:discounts?|offers?|benefits?)\b/i,
+      /\bgeen\b.{0,30}\bspecifieke\b.{0,20}\bkortingen\b.{0,20}\bvia\b.{0,12}\b(?:een )?app\b/i,
+      /\bblijkt niet\b.{0,35}\bapp\b.{0,20}\b(?:specifieke|exclusieve)\b.{0,20}\bkortingen\b/i,
+      /\bde app\b.{0,35}\b(?:biedt|heeft)\b.{0,20}\bgeen\b.{0,20}\b(?:specifieke|exclusieve|unieke)\b.{0,20}\b(?:kortingen|voordelen)\b/i,
+      /\bniet expliciet bevestigd\b.{0,40}\bapp\b.{0,20}\b(?:unieke|exclusieve|specifieke)\b.{0,20}\b(?:kortingen|voordelen)\b/i,
+      /\bgeen\b.{0,35}\b(?:app-specifieke|exclusieve|unieke)\b.{0,20}\b(?:kortingen|voordelen|aanbiedingen)\b/i,
       /\bthere is no\b.{0,25}\b(?:specific|dedicated|exclusive|permanent|confirmed)\b.{0,20}\bapp\b.{0,20}\b(?:discount|offer|benefit|voucher)\b/i,
       /\b(?:does not|doesn'?t)\b.{0,25}\b(?:offer|have|provide|mention|list)\b.{0,20}\b(?:a )?(?:specific|dedicated|exclusive|shopping|discount)\b.{0,20}\bapp\b/i,
       /\bdoes not\b.{0,24}\b(?:have|offer|provide)\b.{0,24}\b(?:its own|a dedicated|a standalone|a mobile)?\b.{0,20}\bapp\b/i,
@@ -573,6 +579,7 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
     ],
     positive: [
       /\b(?:gift card|gift voucher|e-?gift|geschenkkarte[n]?|tarjeta(?:s)? de regalo|karta podarunkowa|기프트 카드)\b.{0,60}\b(?:available|offered|redeem|email|digital|physical|purchase|buy|valid)\b/i,
+      /\b(?:digitale )?cadeaubonnen?\b.{0,40}\b(?:aan|beschikbaar|per e-?mail|inwisselbaar)\b/i,
       /\b(?:available|offered|redeemable|delivered)\b.{0,45}\b(?:gift card|gift voucher|geschenkkarte[n]?|tarjeta(?:s)? de regalo|karta podarunkowa|기프트 카드)\b/i,
       /\bgeschenkgutscheine?\b.{0,35}\b(?:per e-?mail|sofort|einl[oö]sbar|erh[aä]ltlich)\b/i,
       /\bgift cards?\b.{0,35}\b(?:used both online and in (?:their )?physical stores?|digital and physical)\b/i,
@@ -580,6 +587,8 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
     ],
     negative: [
       /\bno\b.{0,35}\b(?:gift card|gift voucher|geschenkkarte[n]?|tarjetas? de regalo|karta podarunkowa|기프트 카드)\b/i,
+      /\bgeen\b.{0,30}\b(?:eigen )?cadeaubonnen?\b/i,
+      /\bgeen cadeaukaartproducten\b/i,
       /\bkeine?\b.{0,35}\b(?:geschenkkarten|gift cards?)\b/i,
       /\bkeine?\b.{0,25}\beigenen?\b.{0,20}\bgeschenkkarten?\b/i,
       /\bkeine?\b.{0,25}\bgeschenkkarten?\b.{0,20}\bim angebot\b/i,
@@ -603,6 +612,8 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
       /(?:折扣|优惠|专属优惠|福利).{0,24}(?:退伍军人|现役军人|军人)/,
     ],
     negative: [
+      /\bgeen\b.{0,35}\b(?:specifieke|structurele|vaste)?\b.{0,20}\bkorting\b.{0,20}\bvoor\b.{0,20}\bmilitair\w*\b/i,
+      /\bgeen speciale regeling\b.{0,35}\b(?:voor )?defensiepersoneel\b/i,
       /\bdoes not offer an official military discount directly through (?:their|its) website\b/i,
       /\bdoes not provide a specific military code\b/i,
       /\bdoes not\b.{0,20}\b(?:offer|provide)\b.{0,25}\b(?:official|specific|dedicated)?\b.{0,20}\bmilitary\b.{0,20}\b(?:discount|code)\b/i,
@@ -664,7 +675,7 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
     ignore: [/\bpublic safety\b/i, /\blaw enforcement agencies\b/i, /\bgovernment contracts?\b/i],
   },
   employee: {
-    explicitTerms: [/\bemployee(?:s)?\b/i, /\bstaff\b/i, /\bmitarbeiter\w*\b/i, /\bpracownik\w*\b/i, /\bempleado\w*\b/i, /员工/, /职员/, /\bstaff members?\b/i],
+    explicitTerms: [/\bemployee(?:s)?\b/i, /\bstaff\b/i, /\bmitarbeiter\w*\b/i, /\bpracownik\w*\b/i, /\bempleado\w*\b/i, /员工/, /职员/, /\bstaff members?\b/i, /\bpersoneelskorting\w*\b/i, /\bmedewerker\w*\b/i],
     positive: [
       /\b(?:employee(?:s)?|staff|mitarbeiter\w*|mitarbeitende\w*|pracownik\w*|empleado\w*)\b.{0,40}\b(?:discounts?|benefits?|perks?|programs?|offers?|rabat\w*|zniżk\w*|할인|혜택)\b/i,
       /\b(?:discounts?|benefits?|perks?|programs?|offers?|rabat\w*|zniżk\w*|할인|혜택)\b.{0,40}\b(?:employee(?:s)?|staff|mitarbeiter\w*|mitarbeitende\w*|pracownik\w*|empleado\w*)\b/i,
@@ -678,6 +689,8 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
       /\bemployee discounts?\b/i,
     ],
     negative: [
+      /\bgeen\b.{0,35}\b(?:publieke informatie|publiek beschikbare informatie)\b.{0,30}\b(?:over )?(?:specifieke )?personeelskortingen\b/i,
+      /\bniet publiekelijk gedetailleerd beschikbaar\b.{0,35}\b(?:personeelskortingen|medewerkerskortingen)\b/i,
       /\bdoes not\b.{0,20}\b(?:offer|provide)\b.{0,20}\b(?:employee|staff)\b.{0,20}\b(?:discounts?|benefits?|programs?)\b/i,
       /\bdo not explicitly feature\b.{0,25}\b(?:employee|staff)\b.{0,20}\bdiscounts?\b/i,
       /\bdoes not include\b.{0,25}\b(?:a )?direct\b.{0,20}\bemployee\b.{0,20}\bdiscounts?\b/i,
@@ -702,8 +715,11 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
     ],
   },
   "existing customer": {
+    explicitTerms: [/\bexisting customer(?:s)?\b/i, /\brepeat customer(?:s)?\b/i, /\breturn customer(?:s)?\b/i, /\bloyal customer(?:s)?\b/i, /\bbestaande klanten?\b/i, /\bvaste klanten?\b/i, /\bhuidige klanten?\b/i, /\bklantenbestand\b/i],
     positive: [
       /\b(?:existing customer(?:s)?|repeat customer(?:s)?|return customer(?:s)?|loyal customer(?:s)?|cliente(?:s)? existente(?:s)?|sta(?:ł|l)y klient\w*|기존 고객|회원)\b.{0,45}\b(?:discount|benefit|reward|coupon|perk|offer|program|savings|할인|혜택)\b/i,
+      /\b(?:bestaande klanten?|vaste klanten?)\b.{0,45}\b(?:korting|voordeel|actiecodes?|aanbiedingen|kortingscodes?)\b/i,
+      /\b(?:korting|voordeel|actiecodes?|aanbiedingen|kortingscodes?)\b.{0,45}\b(?:voor )?(?:bestaande klanten?|vaste klanten?)\b/i,
       /\b(?:member(?:s)?|membership|annual pass|subscriber(?:s)?|alumno(?:s)?|student(?:s)? of (?:the )?school|premium member(?:s)?)\b.{0,50}\b(?:discount|benefit|reward|free return|priority|coupon|offer|할인|혜택)\b/i,
       /\b(?:referral|refer(?:-a-friend)?|invite friends?)\b.{0,45}\b(?:existing customer|current customer|you will receive|coupon|reward|credit)\b/i,
       /\b(?:benefit|discount|reward|coupon|offer)\b.{0,45}\b(?:for being|por pertenecer|for members|for active students|for current customers)\b/i,
@@ -719,6 +735,7 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
     ],
     negative: [
       /\bno\b.{0,35}\b(?:public information|specific information|confirmation)\b.{0,20}\b(?:existing customer|repeat customer|loyal customer|member)\b/i,
+      /\bgeen\b.{0,35}\b(?:vaste|permanente|specifieke)?\b.{0,20}\b(?:korting|voordelen)\b.{0,20}\bvoor\b.{0,20}\b(?:bestaande klanten?|vaste klanten?)\b/i,
       /\bdoes not\b.{0,25}\b(?:typically|directly)\b.{0,20}\boffer\b.{0,30}\b(?:permanent|fixed)\b.{0,20}\b(?:loyalty|existing customer)\b/i,
       /\bno\b.{0,25}\b(?:permanent|fixed)\b.{0,20}\b(?:loyalty program|existing customer discount)\b/i,
       /\bno hay\b.{0,35}\b(?:informaci[oó]n|confirmaci[oó]n)\b.{0,20}\bclientes? existentes?\b/i,
@@ -730,12 +747,14 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
     explicitTerms: [/\bprice guarantee\b/i, /\bprice match\b/i, /\bbest price\b/i, /\blowest price\b/i, /\bpreisgarantie\b/i, /\bgwarancja ceny\b/i, /\bigualaci[oó]n de precios\b/i, /\b최저가 보장\b/i],
     positive: [
       /\b(?:price guarantee|price match|best price guarantee|lowest price guarantee|match or beat|refund the difference|price protection|preisgarantie|gwarancja ceny|igualaci[oó]n de precios|최저가 보장)\b/i,
+      /\blaagste(?:prijs)?garantie\b/i,
       /\bbestpreis-?garantie\b/i,
       /\b(?:differenz|difference)\b.{0,25}\b(?:erstattet|refunded?|refund)\b/i,
       /\b(?:price(?:s)?|preis)\b.{0,20}\b(?:anpassen|angleichen|match)\b/i,
     ],
     negative: [
       /\bno\b.{0,30}\b(?:general|explicit|formal)?\b.{0,20}\b(?:price guarantee|price match|best price|lowest price|price protection)\b/i,
+      /\bgeen\b.{0,35}\b(?:formele|expliciete)?\b.{0,20}\b(?:laagste prijs garantie|laagsteprijsgarantie|prijsgarantie)\b/i,
       /\bgibt\b.{0,20}\bkeine?\b.{0,25}\b(?:explizite|spezielle)?\b.{0,20}\b(?:bestpreisgarantie|preisgarantie)\b/i,
       /\bkeine?\b.{0,35}\bhinweise\b.{0,25}\b(?:auf )?(?:eine )?(?:bestpreisgarantie|preisgarantie)\b/i,
       /\b(?:nicht|nicht aktiv)\b.{0,20}\bbeworben\b.{0,25}\b(?:bestpreisgarantie|preisgarantie)\b/i,
@@ -748,7 +767,9 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
   "loyalty program": {
     positive: [
       /\b(?:loyalty program|rewards? program|membership program|points? program|club membership|treueprogramm|programm lojalno[śs]ciowy|programa de fidelizaci[oó]n|멤버십 프로그램|포인트 적립)\b/i,
+      /\b(?:loyaliteitsprogramma|spaarprogramma|beloningsprogramma|rewards program(?:ma)?|puntenprogramma)\b/i,
       /\b(?:collect|earn|accumulate|sammel\w*|zbiera\w*|acumular)\b.{0,30}\b(?:points?|rewards?|cashback|miles?)\b/i,
+      /\b(?:spaar|verdien)\b.{0,25}\b(?:punten|rewards?)\b/i,
       /\b(?:cashback|points?|rewards?|tiers?|등급별 혜택)\b.{0,30}\b(?:membership|club|program|member)\b/i,
       /\b(?:membership|member(?:s)?(?:hip)?|mitglied(?:er|schaft)?|abonnements?|abo(?:plus)?|club card|clubkarte)\b.{0,45}\b(?:discounts?|benefits?|perks?|privileges?|vorteile|rabatt\w*|welcome premium|willkommenspr[aä]mie|vorkaufsrecht)\b/i,
       /\b(?:discounts?|benefits?|perks?|privileges?|vorteile|rabatt\w*|vorkaufsrecht)\b.{0,45}\b(?:for )?(?:members?|mitglied(?:er|schaft)?|abonnements?|abo(?:plus)?)\b/i,
@@ -760,6 +781,8 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
     ],
     negative: [
       /\bno\b.{0,35}\b(?:traditional|typical|specific)\b.{0,20}\b(?:loyalty program|points?-based program|membership discount)\b/i,
+      /\bgeen\b.{0,35}\b(?:algemeen|publiek bekend|traditioneel|klassiek)?\b.{0,20}\b(?:loyaliteitsprogramma|spaarprogramma|puntenprogramma)\b/i,
+      /\bgeen\b.{0,25}\b(?:specifiek )?(?:loyaliteitsprogramma|spaarprogramma)\b/i,
       /\bkeine?\b.{0,35}\b(?:treueprogramm|mitgliedschaftsprogramm)\b/i,
       /\bnie prowadzi\b.{0,25}\b(?:typowego|stałego)\b.{0,20}\bprogramu lojalno[śs]ciowego\b/i,
       /\b(?:aktionsrabatte?|promo(?:tional)? codes?|gutscheincode|discount codes?|social media|facebook|instagram|tiktok)\b.{0,60}\b(?:rather than|instead of|less than|weniger als|mniej niż|no|not)\b.{0,25}\b(?:a )?(?:classic|traditional|real|klassisches?)\b.{0,20}\b(?:loyalty program|treueprogramm)\b/i,
@@ -780,6 +803,9 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
     ],
     negative: [
       /\bno\b.{0,35}\b(?:formal|specific|explicit)?\b.{0,20}\b(?:referral|refer(?:-a-friend)?|friend referral)\b.{0,15}\b(?:program|discount|offer)\b/i,
+      /\bgeen\b.{0,35}\b(?:actief|openbaar|publiek|specifiek)?\b.{0,20}\b(?:vriendenprogramma|referral(?:-programma)?|vrienden-?actie)\b/i,
+      /\bgeen\b.{0,35}\b(?:directe )?(?:korting|beloning)\b.{0,25}\b(?:door|voor)\b.{0,20}\bvrienden\b.{0,20}\b(?:uit te nodigen|aan te brengen)\b/i,
+      /\baffiliate programma\b.{0,40}\bniet\b.{0,20}\bvoor\b.{0,20}\bconsumenten\b/i,
       /\bdoes not\b.{0,25}\b(?:provide|offer)\b.{0,25}\b(?:a )?(?:standard|public|consumer|normal)?\b.{0,20}\b(?:refer(?:-a-friend)?|referral)\b.{0,20}\b(?:discount|program|offer)\b/i,
       /\bno longer offers a general friend referral program\b/i,
       /\bended in many markets\b/i,
@@ -805,11 +831,14 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
     explicitTerms: [/\bfamily\b/i, /\bfamil(?:y|ia|ien)\b/i, /\brodzin\w*\b/i, /\b패밀리\b/i, /\b가족\b/i],
     positive: [
       /\b(?:family|famil(?:y|ia|ien)|rodzin\w*|패밀리|가족)\b.{0,35}\b(?:discount|ticket|pass|price|offer|plan|bundle|rabat|zniżk|할인|혜택)\b/i,
+      /\bfamiliekorting\b/i,
+      /\b(?:eerste|1e)\b.{0,20}\bkind\b.{0,20}\bgratis\b/i,
       /\b(?:family ticket|family pass|ticket familiar|bilet rodzinny|가족 할인)\b/i,
       /\b(?:sibling|geschwister)\w*\b.{0,25}\b(?:discount|rabatt)\b/i,
     ],
     negative: [
       /\bno\b.{0,35}\b(?:public information|confirmation|evidence)\b.{0,20}\bfamily\b.{0,15}\b(?:discount|offer)\b/i,
+      /\bgeen\b.{0,35}\b(?:specifieke|standaard)?\b.{0,20}\bfamiliekorting\b/i,
       /\bno\b.{0,30}\b(?:special|specific|dedicated)?\b.{0,20}\bfamily\b.{0,15}\b(?:discount|offer)\b/i,
       /\bdoes not\b.{0,25}\b(?:offer|provide)\b.{0,20}\b(?:a )?(?:standard |specific |dedicated )?family\b.{0,15}\b(?:discount|offer)\b/i,
       /\bdoes not offer a standard family discount\b/i,
@@ -833,6 +862,8 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
   child: {
     positive: [
       /\b(?:child|children|kids?|baby|babies|niñ(?:o|os)|niñ(?:a|as)|ni(?:n|ñ)os|dzieci|dziecko|어린이|유아)\b.{0,40}\b(?:discounts?|offers?|tickets?|free|admission|stay free|eat free|rabat\w*|zniżk\w*|할인|혜택)\b/i,
+      /\bkinderkorting\b/i,
+      /\b(?:eerste|1e)\b.{0,20}\bkind\b.{0,20}\bgratis\b/i,
       /\b(?:kids? ticket|children eat free|ticket infantil|bilet ulgowy dla dzieci|어린이 할인)\b/i,
       /\b(?:children|kids?|kinder)\b.{0,25}\b(?:stay|eat|enter|travel)\b.{0,12}\bfree\b/i,
       /\bkindererm[aä]ßig\w*\b/i,
@@ -845,6 +876,7 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
     ],
     negative: [
       /\bno\b.{0,20}\bchild(?:-specific)?\b.{0,20}\bdiscount\b/i,
+      /\bgeen\b.{0,35}\b(?:speciale|specifieke)?\b.{0,20}\b(?:kinderkorting|korting voor kinderen)\b/i,
       /\bno\b.{0,30}\b(?:special|specific)?\b.{0,20}\bchild\b.{0,15}\b(?:discounts?|offers?)\b/i,
       /\bkeine?\b.{0,30}\b(?:kinderrabatt|rabatt fur kinder|rabatt für kinder)\b/i,
       /\bkeine?\b.{0,35}\bhinweise\b.{0,25}\b(?:auf )?spezielle\b.{0,20}\bkinderrabatt\w*\b/i,
@@ -856,6 +888,7 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
       /\b어린이\b.{0,20}\b(?:할인|혜택)\b.{0,12}\b없\S*/i,
       /어린이 전용 할인 혜택에 대한 언급은 없\S*/i,
       /어린이 전용 할인 혜택을 별도로 운영하지 않\S*/i,
+      /\bkindercamera'?s?\b/i,
     ],
   },
   birthday: {
@@ -871,6 +904,7 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
     ],
     negative: [
       /\bno\b.{0,35}\b(?:direct|explicit|public)\b.{0,20}\b(?:birthday|cumplea[nñ]os|geburtstag|urodzin)\b.{0,15}\b(?:discounts?|offers?|rewards?)\b/i,
+      /\bgeen\b.{0,35}\b(?:specifieke|algemeen bekende|structurele)?\b.{0,20}\bverjaardagskorting\b/i,
       /\bno\b.{0,30}\b(?:specific|standard|automatic)?\b.{0,20}\b(?:birthday|birthday discount)\b/i,
       /\bdoes not explicitly list\b.{0,25}\bbirthday\b.{0,20}\b(?:discounts?|rewards?|coupons?)\b/i,
       /\bdoes not\b.{0,25}\b(?:currently )?offer\b.{0,20}\b(?:a )?(?:standard|recurring|standalone|dedicated)\b.{0,20}\bbirthday\b.{0,15}\b(?:discounts?|rewards?|coupons?)\b/i,
@@ -889,12 +923,16 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
   "new customer": {
     positive: [
       /\b(?:new customer|first order|first purchase|welcome discount|nuevo cliente|premier achat|pierwsze zam[oó]wienie|신규 고객)\b.{0,35}\b(?:discount|offer|code|coupon|rabat|zniżk|할인)\b/i,
+      /\b(?:nieuwe klanten?|nieuwe accounts?)\b.{0,35}\b(?:korting|welkomstpunten|welkomstkorting|kortingscode)\b/i,
+      /\b(?:eerste bestelling|eerste aankoop)\b.{0,35}\b(?:korting|welkomstkorting|kortingscode)\b/i,
+      /\binschrijving\b.{0,35}\bnieuwsbrief\b.{0,35}\b(?:welkomstkorting|kortingsvoucher|waardebon)\b/i,
       /신규 (?:고객|회원).{0,15}(할인|혜택|쿠폰)/,
       /웰컴 (?:쿠폰|혜택)/,
       /\bnewsletter-rabatt\b.{0,30}\berste(?:n)? bestellung\b/i,
     ],
     negative: [
       /\bno\b.{0,25}\b(?:specific|explicit)\b.{0,20}\b(?:new customer|first order)\b.{0,15}\b(?:discount|offer)\b/i,
+      /\bgeen\b.{0,35}\b(?:vaste|specifieke)?\b.{0,20}\b(?:korting|aanbieding)\b.{0,20}\b(?:voor )?(?:nieuwe klanten?|eerste bestelling)\b/i,
       /\bkeinen?\b.{0,30}\b(?:allgemeinen?\b.{0,10})?neukundenrabatt\b/i,
       /\bkeine?\b.{0,30}\bspeziellen?\b.{0,20}\bneukundenrabatte?\b/i,
       /\bkeine?\b.{0,35}\bhinweise\b.{0,20}\b(?:auf )?(?:spezielle )?rabattaktionen\b.{0,20}\bf[uü]r\b.{0,20}\berstbesteller\b/i,
@@ -968,6 +1006,8 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
     positive: [
       /\bfree returns?\b/i,
       /\breturns? (?:are )?free\b/i,
+      /\bkosteloos\b.{0,20}\b(?:te )?(?:annuleren|retourneren)\b/i,
+      /\bgratis\b.{0,20}\b(?:omruilen|annuleren)\b/i,
       /\bdevoluciones? gratis\b/i,
       /\bkostenlose r[üu]cksendung\b/i,
       /\breturn(?:s| policy| guarantee)?\b.{0,35}\b(?:within|refund|portal|label|window|days?)\b/i,
@@ -982,6 +1022,10 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
     negative: [
       /\bno returns?\b/i,
       /\bno refunds?\b/i,
+      /\bgeen\b.{0,25}\bstandaard\b.{0,20}\bgratis\b.{0,20}\bretourneren\b/i,
+      /\bniet expliciet\b.{0,35}\bgratis\b.{0,20}\b(?:is|zijn|vermeld)\b/i,
+      /\bverzendkosten\b.{0,30}\b(?:zijn|blijven)\b.{0,20}\bvoor\b.{0,20}\bde consument\b/i,
+      /\b(?:kosten|verzendkosten)\b.{0,35}\b(?:voor )?eigen rekening\b/i,
       /\bfinal sale(?: only)?\b.{0,20}\bno returns?\b/i,
       /\bdoes not accept returns?\b/i,
       /\breturns? (?:are )?not accepted\b/i,
@@ -1004,12 +1048,15 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
   senior: {
     positive: [
       /\b(?:senior|55\+|60\+|50\+|emeryt\w*|rencist\w*|adultos mayores)\b.{0,35}\b(?:discount|offer|ticket|rabat|zniżk|할인)\b/i,
+      /\bseniorenkorting\b/i,
       /\bseniorenrabatt\w*\b/i,
       /\b(?:senior citizens?|older adults?|personas mayores)\b.{0,35}\b(?:discount|fare|ticket|rate|offer|benefit)\b/i,
       /\b50plus\b/i,
     ],
     negative: [
       /\bno\b.{0,25}\b(?:senior|senior discount)\b/i,
+      /\bgeen\b.{0,35}\b(?:standaard|vaste|specifieke|permanente)?\b.{0,20}\bseniorenkorting\b/i,
+      /\bblijkt niet\b.{0,25}\bdat er\b.{0,20}\b(?:een )?(?:specifieke|permanente)\b.{0,20}\bseniorenkorting\b.{0,20}\bis\b/i,
       /\bdoes not offer a specific senior discount\b/i,
       /\bno senior rate\b/i,
       /\bdoes not offer\b.{0,25}\b(?:a )?(?:specific|dedicated|standard|standing)\b.{0,20}\bsenior\b.{0,20}\b(?:discount|rate|fare)\b/i,
@@ -1069,13 +1116,15 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
     ],
   },
   teacher: {
-    explicitTerms: [/\bteacher(?:s)?\b/i, /\beducator(?:s)?\b/i, /\blehrer(?:rabatt)?\b/i, /\bnauczyciel\w*\b/i, /\b교사\b/],
+    explicitTerms: [/\bteacher(?:s)?\b/i, /\beducator(?:s)?\b/i, /\blehrer(?:rabatt)?\b/i, /\bnauczyciel\w*\b/i, /\b교사\b/, /\bleraren?\b/i, /\bdocenten?\b/i, /\bonderwijspersoneel\b/i],
     positive: [
-      /\b(?:teacher|educator|lehrer(?:rabatt)?|nauczyciel\w*|교사)\b.{0,35}\b(?:discount|offer|benefit|rabat|zniżk|할인)\b/i,
-      /\b(?:discount|offer|benefit|rabat|zniżk|할인)\b.{0,35}\b(?:for )?(?:teachers?|educators?|교사)\b/i,
+      /\b(?:teacher|educator|lehrer(?:rabatt)?|nauczyciel\w*|교사|leraren?|docenten?|onderwijspersoneel)\b.{0,35}\b(?:discount|offer|benefit|rabat|zniżk|할인|korting|voordeel)\b/i,
+      /\b(?:discount|offer|benefit|rabat|zniżk|할인|korting|voordeel)\b.{0,35}\b(?:for )?(?:teachers?|educators?|교사|leraren?|docenten?|onderwijspersoneel)\b/i,
     ],
     negative: [
       /\bno\b.{0,25}\b(?:teacher|teacher discount)\b/i,
+      /\bgeen\b.{0,35}\b(?:specifieke|structurele)?\b.{0,20}\bkorting\b.{0,20}\b(?:voor )?(?:leraren?|docenten?|onderwijspersoneel)\b/i,
+      /\bbiedt\b.{0,35}\bgeen\b.{0,20}\bspeciale\b.{0,20}\bkortingen\b.{0,20}\bvoor\b.{0,20}\bleraren\b/i,
       /\bdoes not\b.{0,25}\b(?:advertise|offer|list|provide)\b.{0,20}\b(?:a )?(?:dedicated|specific|official)\b.{0,20}\b(?:teacher|educator)\b.{0,20}\b(?:discount|offer|program)\b/i,
       /\b(?:teacher|educator)\b.{0,30}\bdiscount\b.{0,30}\bnot listed\b/i,
       /\bno\b.{0,35}\b(?:specific|official|dedicated)\b.{0,20}\b(?:teacher|educator)\b.{0,20}\b(?:discount|offer|program)\b/i,
@@ -1127,7 +1176,17 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
     ],
   },
   clearance: {
-    positive: [/\b(?:clearance|outlet|sale section|final sale|rebajas?|wyprzeda[żz]|아울렛)\b.{0,25}\b(?:discount|offer|up to|sale|rabat|zniżk|할인)\b/i],
+    positive: [
+      /\b(?:clearance|outlet|sale section|final sale|rebajas?|wyprzeda[żz]|아울렛)\b.{0,25}\b(?:discount|offer|up to|sale|rabat|zniżk|할인)\b/i,
+      /\bsale-?sectie\b.{0,35}\b(?:afgeprijsde artikelen|aanbiedingen|korting)\b/i,
+      /\bregelmaat\b.{0,35}\bafgeprijsde artikelen\b/i,
+      /\bproducten\b.{0,25}\bmet korting\b.{0,25}\baangeboden\b/i,
+      /\buitverkoopacties?\b/i,
+      /\bsale-pagina\b/i,
+      /\bafgeprijsde artikelen\b/i,
+      /\bspeciale aanbiedingen\b/i,
+      /\bwisselend assortiment\b.{0,35}\bproducten met korting\b/i,
+    ],
     negative: [/\bno\b.{0,25}\b(?:clearance|outlet|sale section)\b/i, /\bno se menciona expl[ií]citamente\b.{0,35}\b(?:outlet|liquidaci[oó]n)\b/i, /\bno dispone de\b.{0,35}\b(?:una )?(?:secci[oó]n )?(?:outlet|liquidaci[oó]n)\b/i],
   },
 };
@@ -1140,6 +1199,9 @@ const MILITARY_FALSE_POSITIVE_PATTERNS = [
 ];
 
 const MILITARY_HARD_NEGATIVE_PATTERNS = [
+  /\bgeen\b.{0,30}\b(?:specifieke|structurele|offici[eë]le)\b.{0,20}\bkortingsregeling\b.{0,20}\bvoor\b.{0,20}\bmilitair\w*\b/i,
+  /\bblijkt niet\b.{0,35}\b(?:dat|of)\b.{0,20}.*\bmilitair\w*\b.{0,20}\bkorting\b/i,
+  /\bgeen\b.{0,30}\bmilitaire korting\b/i,
   /\bkeinen?\b.{0,20}\bdirekten hinweis\b.{0,35}\bmilit[aä]rrabatt\b/i,
   /\bkeine?\b.{0,25}\b(?:einheitlichen?|nationalen?)\b.{0,20}\bmilit[aä]r\w*\b.{0,20}\brabatt\w*\b/i,
   /\bdoes not currently offer a dedicated military discount or promotional program\b/i,
@@ -1346,6 +1408,9 @@ const CHILD_NON_DISCOUNT_CONTEXT_PATTERNS = [
 ];
 
 const CHILD_HARD_NEGATIVE_PATTERNS = [
+  /\bgeen\b.{0,25}\bkortingen\b.{0,20}\bvoor kinderen\b/i,
+  /\buitsluitend\b.{0,25}\bzakelijke\b.{0,20}\b(?:tank- en laadpassen|mobiliteit)\b/i,
+  /\bgeen consumentenproduct\b/i,
   /\bgeneral member discount\b.{0,25}\brather than\b.{0,25}\ba child-?specific discount\b/i,
   /\bmember discount\b.{0,25}\bnot\b.{0,15}\ba child-?specific discount\b/i,
   /\bp[aä]nzclub\b.{0,40}\b(?:mitglieder-?rabatt|member discount)\b/i,
@@ -1362,6 +1427,9 @@ const CHILD_HARD_NEGATIVE_PATTERNS = [
 ];
 
 const CHILD_STRONG_POSITIVE_PATTERNS = [
+  /\bkinderen\b.{0,25}\b(?:krijgen|ontvangen)\b.{0,20}\b(?:maar liefst )?\d{1,3}\s*%\s*korting\b/i,
+  /\bkinderen van\b.{0,25}\b\d{1,2}\b.{0,20}\bt\/m\b.{0,20}\b\d{1,2}\b.{0,20}\b(?:jaar )?krijgen\b.{0,20}\d{1,3}\s*%\s*korting\b/i,
+  /\b(?:baby'?s|kinderen t\/m 2 jaar)\b.{0,35}\b(?:laag tarief|speciaal tarief)\b/i,
   /\bu21-?ticket\b/i,
   /\bkinderpreise?\b/i,
   /\bchildren and youth under 21\b.{0,30}\b(?:ticket|discount)\b/i,
@@ -1382,12 +1450,30 @@ const EXISTING_CUSTOMER_HARD_POSITIVE_PATTERNS = [
   /\bview renewal offers?\b/i,
   /\bexisting subscribers?\b.{0,35}\b(?:apply|receive|get|use)\b.{0,20}\b(?:discount|promo code|savings)\b/i,
   /\bcurrent members?\b.{0,35}\b(?:receive|get|unlock)\b.{0,20}\b(?:discount|benefit|offer)\b/i,
+  /\bvaste klanten(?:bestand)?\b.{0,35}\b(?:exclusieve )?(?:actiecodes?|kortingscodes?|aanbiedingen)\b/i,
+  /\bbestaande klanten\b.{0,35}\b(?:kunnen )?(?:profiteren van|ontvangen|krijgen)\b.{0,25}\b(?:kortingen|actiecodes?|aanbiedingen)\b/i,
   /现有客户.{0,24}(?:折扣|优惠|续订优惠|专用)/,
   /现有订阅者.{0,24}(?:折扣|优惠|优惠码)/,
   /回头客.{0,24}(?:折扣|优惠|优惠码)/,
 ];
 
+const EMPLOYEE_HARD_POSITIVE_PATTERNS = [
+  /\bcoaches?\b.{0,25}\b(?:kunnen )?(?:tot )?\d{1,3}\s*%\s*korting\b/i,
+  /\btrainers?\b.{0,25}\b(?:kunnen )?(?:tot )?\d{1,3}\s*%\s*korting\b/i,
+  /\bcoachprogramma\b.{0,35}\b(?:korting|voordelen?)\b/i,
+  /\b#teamyellow\b.{0,35}\bcoachprogramma\b/i,
+];
+
+const NEW_CUSTOMER_HARD_POSITIVE_PATTERNS = [
+  /\bnieuwe klanten\b.{0,30}\b(?:kunnen )?(?:vaak )?kortingen\b.{0,20}\bkrijgen\b/i,
+  /\bwelkomstkorting\b/i,
+  /\binschrijving\b.{0,35}\bnieuwsbrief\b.{0,35}\b(?:welkomstkorting|kortingsvoucher|waardebon)\b/i,
+  /\bnieuwe klanten\b.{0,35}\b(?:welkomstkorting|kortingsvoucher|waardebon)\b/i,
+];
+
 const SENIOR_HARD_NEGATIVE_PATTERNS = [
+  /\bblijkt niet\b.{0,25}\bdat er\b.{0,20}\b(?:een )?(?:specifieke|permanente)\b.{0,20}\bseniorenkorting\b.{0,20}\bis\b/i,
+  /\bgeen\b.{0,30}\bspecifieke\b.{0,20}\bpermanente\b.{0,20}\bseniorenkorting\b/i,
   /\bkeinen?\b.{0,35}\b(?:spezifischen|dauerhaften|offiziellen)?\b.{0,20}\bseniorenrabatt\b/i,
   /\bno senior rate\b/i,
   /\bdoes not offer a specific senior discount\b/i,
@@ -1402,6 +1488,8 @@ const SENIOR_HARD_NEGATIVE_PATTERNS = [
 ];
 
 const EMPLOYEE_HARD_NEGATIVE_PATTERNS = [
+  /\bgeen\b.{0,30}\bpublieke informatie\b.{0,20}\bbeschikbaar\b.{0,20}\bover\b.{0,20}\bspecifieke kortingen\b.{0,20}\bvoor\b.{0,20}\bmedewerkers\b/i,
+  /\bgeen\b.{0,25}\b(?:specifieke )?(?:medewerkers|personeels)\w*\b.{0,20}\bkorting\b/i,
   /福利体系中.{0,30}并不包含.{0,20}(?:直接)?[“"]?员工折扣[”"]?/,
   /并没有针对.{0,30}(?:员工|内部员工).{0,20}(?:直接)?折扣/,
   /而非直接的(?:投注|产品|购物)折扣/,
@@ -1423,6 +1511,9 @@ const EXISTING_CUSTOMER_AMBIGUOUS_PATTERNS = [
 ];
 
 const EXISTING_CUSTOMER_HARD_NEGATIVE_PATTERNS = [
+  /\bgeen\b.{0,35}\b(?:specifiek|structureel)\b.{0,20}\bkortingsprogramma\b.{0,20}\bvoor\b.{0,20}\bbestaande klanten\b/i,
+  /\bgeen\b.{0,35}\b(?:specifiek|formeel|vast)\b.{0,20}\b(?:loyaliteitsprogramma|klantenprogramma)\b/i,
+  /\ber is\b.{0,20}\bgeen\b.{0,20}\bspecifiek\b.{0,20}\bstructureel\b.{0,20}\bkortingsprogramma\b/i,
   /\bdoes not offer a permanent\b.{0,20}\bexisting customer\b.{0,20}\bdiscount\b/i,
   /\bno\b.{0,25}\bformal\b.{0,20}\bexisting-?customer\b.{0,20}\b(?:discount|program)\b/i,
   /\bno\b.{0,25}\b(?:standard|standing|permanent)\b.{0,20}\bexisting customer\b.{0,20}\b(?:discount|program)\b/i,
@@ -1440,6 +1531,9 @@ const AAA_HARD_NEGATIVE_EXTRA_PATTERNS = [
 ];
 
 const BIRTHDAY_HARD_NEGATIVE_PATTERNS = [
+  /\bbiedt\b.{0,25}\bgeen\b.{0,20}\bkorting\b.{0,20}\bop\b.{0,20}\bje verjaardag\b/i,
+  /\bgeen\b.{0,30}\b(?:directe aanwijzing|actuele acties?|standaard korting)\b.{0,20}.*\bverjaardag/i,
+  /\bgeen\b.{0,25}\bverjaardagskorting\b/i,
   /생일 할인 혜택에 대한 직접적인 언급은 찾을 수 없/,
   /\bbrak\b.{0,35}\bbezpo[śs]rednich informacji\b.{0,25}\bo\b.{0,20}\bsta[łl]ej,\s*osobistej\b.{0,20}\bzni[żz]ce\b.{0,20}\burodzinowej\b/i,
   /\burodzin(?:y|owa)\b.{0,35}\bmarki\b.{0,35}\bnie\b.{0,20}\bindywidualny\b.{0,20}\brabat\b.{0,20}\bdla klienta\b/i,
@@ -1903,7 +1997,7 @@ function scoreSentence(sentence: string, factType: string, index: number): Sente
   if (rule.ignore?.some((pattern) => pattern.test(sentence)) && (!explicit || factType === "app")) {
     return {
       existence: "unknown",
-      reasonCn: "ignored context sentence",
+      reasonCn: "忽略上下文噪音",
       matchedRule: "ignored_context",
       evidenceSentence: sentence,
       confidenceBucket: "none",
@@ -2042,6 +2136,17 @@ function scoreSentence(sentence: string, factType: string, index: number): Sente
       existence: "no",
       reasonCn: index < 2 ? "前两句出现明确否定证据" : "正文出现明确否定证据",
       matchedRule: "employee_hard_negative",
+      evidenceSentence: sentence,
+      confidenceBucket: "strong",
+      score: 7 + leadBoost,
+    };
+  }
+
+  if (factType === "employee" && hasPattern(sentence, EMPLOYEE_HARD_POSITIVE_PATTERNS)) {
+    return {
+      existence: "yes",
+      reasonCn: index < 2 ? "前两句出现明确肯定证据" : "正文出现明确肯定证据",
+      matchedRule: "employee_hard_positive",
       evidenceSentence: sentence,
       confidenceBucket: "strong",
       score: 7 + leadBoost,
@@ -2225,6 +2330,17 @@ function scoreSentence(sentence: string, factType: string, index: number): Sente
       existence: "yes",
       reasonCn: index < 2 ? "前两句出现明确肯定证据" : "正文出现明确肯定证据",
       matchedRule: "child_strong_positive",
+      evidenceSentence: sentence,
+      confidenceBucket: "strong",
+      score: 7 + leadBoost,
+    };
+  }
+
+  if (factType === "new customer" && hasPattern(sentence, NEW_CUSTOMER_HARD_POSITIVE_PATTERNS)) {
+    return {
+      existence: "yes",
+      reasonCn: index < 2 ? "前两句出现明确肯定证据" : "正文出现明确肯定证据",
+      matchedRule: "new_customer_hard_positive",
       evidenceSentence: sentence,
       confidenceBucket: "strong",
       score: 7 + leadBoost,
@@ -2489,6 +2605,28 @@ function explainExistence(factType: string, snippet: string): SentenceEvidence {
       existence: "no",
       reasonCn: "全文存在明确否定证据",
       matchedRule: "child_hard_negative",
+      evidenceSentence: getLeadSentences(text, 2).join(" "),
+      confidenceBucket: "strong",
+      score: 7,
+    };
+  }
+
+  if (factType === "employee" && hasPattern(text, EMPLOYEE_HARD_POSITIVE_PATTERNS)) {
+    return {
+      existence: "yes",
+      reasonCn: "全文存在明确肯定证据",
+      matchedRule: "employee_hard_positive",
+      evidenceSentence: getLeadSentences(text, 2).join(" "),
+      confidenceBucket: "strong",
+      score: 7,
+    };
+  }
+
+  if (factType === "new customer" && hasPattern(text, NEW_CUSTOMER_HARD_POSITIVE_PATTERNS)) {
+    return {
+      existence: "yes",
+      reasonCn: "全文存在明确肯定证据",
+      matchedRule: "new_customer_hard_positive",
       evidenceSentence: getLeadSentences(text, 2).join(" "),
       confidenceBucket: "strong",
       score: 7,
@@ -2886,8 +3024,8 @@ const PERCENT_VALUE_PATTERNS = [
 ];
 
 const AMOUNT_VALUE_PATTERNS_BY_SYMBOL = [
-  /\b(?:discount|off|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|gift card|newsletter|signup|sign[ -]?up|welcome|refer(?: a friend)?|referral|member(?:ship)?|loyalty|rabat\w*|zni[żz]k\w*|gutschein\w*|angebot\w*|mitarbeiter\w*|willkommensrabatt|korting|voordeel|welkomstkorting|remise|r[ée]duction)\b[^.!?]{0,40}?([$£€₩拢鈧喀])\s*([0-9][0-9.,]*)/i,
-  /([$£€₩拢鈧喀])\s*([0-9][0-9.,]*)[^.!?]{0,40}\b(?:discount|off|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|gift card|newsletter|signup|sign[ -]?up|welcome|refer(?: a friend)?|referral|member(?:ship)?|loyalty|rabat\w*|zni[żz]k\w*|gutschein\w*|angebot\w*|mitarbeiter\w*|willkommensrabatt|korting|voordeel|welkomstkorting|remise|r[ée]duction)\b/i,
+  /\b(?:discount|off|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|gift card|newsletter|signup|sign[ -]?up|welcome|refer(?: a friend)?|referral|member(?:ship)?|loyalty|rabat\w*|zni[żz]k\w*|gutschein\w*|angebot\w*|mitarbeiter\w*|willkommensrabatt|korting|voordeel|welkomstkorting|remise|r[ée]duction)\b[^.!?]{0,40}?([$£€₩])\s*([0-9][0-9.,]*)/i,
+  /([$£€₩])\s*([0-9][0-9.,]*)[^.!?]{0,40}\b(?:discount|off|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|gift card|newsletter|signup|sign[ -]?up|welcome|refer(?: a friend)?|referral|member(?:ship)?|loyalty|rabat\w*|zni[żz]k\w*|gutschein\w*|angebot\w*|mitarbeiter\w*|willkommensrabatt|korting|voordeel|welkomstkorting|remise|r[ée]duction)\b/i,
   /\b(?:discount|off|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|gift card|newsletter|signup|sign[ -]?up|welcome|refer(?: a friend)?|referral|member(?:ship)?|loyalty|rabat\w*|zni[żz]k\w*|gutschein\w*|angebot\w*|mitarbeiter\w*|willkommensrabatt|korting|voordeel|welkomstkorting|remise|r[ée]duction)\b[^.!?]{0,40}?([0-9][0-9.,]*)\s*([$£€₩])/i,
   /([0-9][0-9.,]*)\s*([$£€₩])[^.!?]{0,40}\b(?:discount|off|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|gift card|newsletter|signup|sign[ -]?up|welcome|refer(?: a friend)?|referral|member(?:ship)?|loyalty|rabat\w*|zni[żz]k\w*|gutschein\w*|angebot\w*|mitarbeiter\w*|willkommensrabatt|korting|voordeel|welkomstkorting|remise|r[ée]duction)\b/i,
 ];
@@ -3005,7 +3143,7 @@ function extractValue(factType: string, existence: GgCleaningExistence, snippet:
     }
 
     if (factType === "shipping") {
-      const bySymbol = candidate.match(/\b(?:over|above|from|orders? over|minimum order of|vanaf|d[eè]s|[àa] partir de)\s*([$£€₩拢鈧喀])\s*([0-9][0-9.,]*)/i);
+      const bySymbol = candidate.match(/\b(?:over|above|from|orders? over|minimum order of|vanaf|d[eè]s|[àa] partir de)\s*([$£€₩])\s*([0-9][0-9.,]*)/i);
       if (bySymbol) return normalizeValue(`min_free_shipping: ${bySymbol[2].replace(/[.,]+$/g, "")} ${SYMBOL_TO_CURRENCY[bySymbol[1]]}`);
       const byTrailingSymbol = candidate.match(/\b(?:over|above|from|orders? over|minimum order of|ab|ab einem bestellwert von|ab einem warenwert von|vanaf|d[eè]s|[àa] partir de)\s*([0-9][0-9.,]*)\s*([$£€₩])/i);
       if (byTrailingSymbol) return normalizeValue(`min_free_shipping: ${byTrailingSymbol[1].replace(/[.,]+$/g, "")} ${SYMBOL_TO_CURRENCY[byTrailingSymbol[2]]}`);
@@ -3347,7 +3485,7 @@ function mergeExistence(left: SideResult, right: SideResult) {
     const rightRank = confidenceRank(right.confidenceBucket);
     if (leftRank >= rightRank + 2) return { existence: left.supported, reasonCn: "强证据覆盖弱冲突" };
     if (rightRank >= leftRank + 2) return { existence: right.supported, reasonCn: "强证据覆盖弱冲突" };
-    return { existence: "unknown" as const, reasonCn: "sources conflict" };
+    return { existence: "unknown" as const, reasonCn: "双源冲突" };
   }
 
   return { existence: "unknown" as const, reasonCn: "没有足够明确证据" };
@@ -3408,7 +3546,7 @@ function reduceSideAccumulator(acc: SideAccumulator, domain: string, factType: s
   if (!acc.bestRow) {
     return {
       supported: "unknown",
-      reasonCn: "no data for this source",
+      reasonCn: "当前来源无有效数据",
       value: "",
       url: "",
       snippet: "",

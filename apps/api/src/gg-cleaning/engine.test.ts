@@ -166,7 +166,7 @@ describe("gg cleaning engine", () => {
     ]);
 
     expect(result.debugRows[0].final_supported).toBe("unknown");
-    expect(result.debugRows[0].final_reason_cn).toContain("conflict");
+    expect(result.debugRows[0].final_reason_cn).toContain("冲突");
   });
   it("uses the first two sentences to avoid later unrelated discount noise", () => {
     const result = runEval([
@@ -3581,6 +3581,146 @@ describe("gg cleaning engine", () => {
     expect(result.debugRows[0].final_supported).toBe("no");
   });
 
+  it("keeps NL app no when the snippet says there are no app-exclusive discounts", () => {
+    const result = runEval([
+      {
+        term_id: "nl-app-no-exclusive",
+        country: "NL",
+        term_name: "Sunweb",
+        domain: "sunweb.nl",
+        subclass: "app",
+        source_type: "searchlab",
+        snippet: "Uit de beschikbare informatie blijkt niet dat de Sunweb-app specifieke of exclusieve kortingen biedt die niet op de website beschikbaar zijn.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("detects NL existing customer yes from vaste klanten wording", () => {
+    const result = runEval([
+      {
+        term_id: "nl-existing-customer-yes",
+        country: "NL",
+        term_name: "Sunweb",
+        domain: "sunweb.nl",
+        subclass: "existing customer",
+        source_type: "searchlab",
+        snippet: "Sunweb stuurt exclusieve actiecodes naar hun vaste klantenbestand. Bestaande klanten ontvangen speciale aanbiedingen per e-mail.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("yes");
+  });
+
+  it("keeps NL loyalty no when there is no publicly known loyalty program", () => {
+    const result = runEval([
+      {
+        term_id: "nl-loyalty-no-public",
+        country: "NL",
+        term_name: "Sunweb",
+        domain: "sunweb.nl",
+        subclass: "loyalty program",
+        source_type: "searchlab",
+        snippet: "Sunweb heeft op dit moment geen algemeen, publiek bekend loyaliteitsprogramma of spaarsysteem voor vaste klanten.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("detects NL price guarantee yes and no from laagsteprijsgarantie wording", () => {
+    const yesResult = runEval([
+      {
+        term_id: "nl-price-guarantee-yes",
+        country: "NL",
+        term_name: "Sunweb",
+        domain: "sunweb.nl",
+        subclass: "price guarantee",
+        source_type: "searchlab",
+        snippet: "Sunweb biedt een laagsteprijsgarantie. Vind je dezelfde reis elders goedkoper, dan betaalt Sunweb het verschil terug en ontvang je een voucher van 100 euro.",
+      },
+    ]);
+    const noResult = runEval([
+      {
+        term_id: "nl-price-guarantee-no",
+        country: "NL",
+        term_name: "vidaXL",
+        domain: "vidaxl.nl",
+        subclass: "price guarantee",
+        source_type: "searchlab",
+        snippet: "vidaXL biedt geen formele laagsteprijsgarantie aan waarbij zij het verschil terugbetalen als je het product elders goedkoper vindt.",
+      },
+    ]);
+
+    expect(yesResult.debugRows[0].final_supported).toBe("yes");
+    expect(noResult.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps NL gift card no when the merchant has no own gift cards", () => {
+    const result = runEval([
+      {
+        term_id: "nl-gift-card-no-own",
+        country: "NL",
+        term_name: "vidaXL",
+        domain: "vidaxl.nl",
+        subclass: "gift card",
+        source_type: "searchlab",
+        snippet: "Op basis van de beschikbare informatie lijkt vidaXL.nl geen eigen cadeaubonnen aan te bieden op hun website.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps NL military no for no-structurele-korting wording", () => {
+    const result = runEval([
+      {
+        term_id: "nl-military-no-structurele",
+        country: "NL",
+        term_name: "Sunweb",
+        domain: "sunweb.nl",
+        subclass: "military",
+        source_type: "searchlab",
+        snippet: "Er is geen specifieke, structurele korting voor militairen bekend bij Sunweb. Er is geen permanente korting voor defensiepersoneel.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps NL child no when the snippet only mentions child products rather than a child discount", () => {
+    const result = runEval([
+      {
+        term_id: "nl-child-product-no",
+        country: "NL",
+        term_name: "Kamera Express",
+        domain: "kamera-express.nl",
+        subclass: "child",
+        source_type: "searchlab",
+        snippet: "Kamera Express verkoopt kindercamera's en creatieve tools voor kinderen. Er wordt geen specifieke kinderkorting genoemd.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("detects NL family yes from familiekorting and eerste kind gratis wording", () => {
+    const result = runEval([
+      {
+        term_id: "nl-family-first-child-free",
+        country: "NL",
+        term_name: "Sunweb",
+        domain: "sunweb.nl",
+        subclass: "family",
+        source_type: "searchlab",
+        snippet: "Sunweb biedt familiekorting via kinderkorting, waarbij het eerste kind vaak gratis verblijft in geselecteerde accommodaties.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("yes");
+  });
+
   it("detects app yes for official mobile app benefits like exclusive vouchers and early access", () => {
     const result = runEval([
       {
@@ -4241,7 +4381,7 @@ describe("gg cleaning engine", () => {
         term_id: "168",
         term_name: "Premium Bags",
         subclass: "return",
-        [GG_COLLECTED_STATUS_COLUMN]: "鎶撳彇瀹屾垚",
+        [GG_COLLECTED_STATUS_COLUMN]: "抓取完成",
         [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
         content: ["Returns are handled through the official returns policy page."],
         product_urls: ["https://www.premiumbags.com/returns"],
@@ -4732,6 +4872,97 @@ describe("gg cleaning engine", () => {
 
     expect(result.debugRows[0].final_supported).toBe("unknown");
     expect(result.debugRows[0].final_value).toBe("");
+  });
+
+  it("detects NL return no when return shipping is not free", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "nl2-return-no",
+        country: "NL",
+        domain: "123-3d.nl",
+        term_id: "nl2-return-no",
+        term_name: "123-3D",
+        subclass: "return",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: ["Nee, 123-3d.nl heeft geen standaard gratis retourneren; deze verzendkosten zijn voor de consument. De kosten voor het terugsturen zijn voor eigen rekening."],
+        product_urls: ["https://www.123-3d.nl/page/retourvw.html"],
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("detects NL employee yes from coach program benefits", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "nl2-employee-yes",
+        country: "NL",
+        domain: "tennis-point.nl",
+        term_id: "nl2-employee-yes",
+        term_name: "Tennis-Point",
+        subclass: "employee",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: ["Tennis-Point biedt specifieke kortingen aan voor tenniscoaches en trainers via hun #teamyellow coachprogramma. Coaches kunnen tot 25% korting krijgen op het gehele assortiment."],
+        product_urls: [],
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("yes");
+  });
+
+  it("detects NL app no when discounts are explicitly not via the app", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "nl2-app-no",
+        country: "NL",
+        domain: "leapp.nl",
+        term_id: "nl2-app-no",
+        term_name: "leapp",
+        subclass: "app",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: ["Nee, leapp.nl biedt geen specifieke kortingen via een app. In plaats daarvan richt leapp zich op exclusieve kortingen voor leden via hun nieuwsbrief."],
+        product_urls: ["https://leapp.nl/blogs/iphone/leapp-kortingscodes"],
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("detects NL child yes from explicit percentage discount wording", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "nl2-child-yes",
+        country: "NL",
+        domain: "prestonpalace.nl",
+        term_id: "nl2-child-yes",
+        term_name: "Preston Palace",
+        subclass: "child",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: ["Ja, Preston Palace biedt aanzienlijke kortingen voor kinderen. Kinderen van 3 t/m 17 jaar krijgen maar liefst 50% korting op het volwassen all-in tarief."],
+        product_urls: [],
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("yes");
+    expect(result.debugRows[0].final_value).toBe("50%");
+  });
+
+  it("detects NL birthday no from explicit no-birthday-discount wording", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "nl2-birthday-no",
+        country: "NL",
+        domain: "travelcard.nl",
+        term_id: "nl2-birthday-no",
+        term_name: "Travelcard",
+        subclass: "birthday",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: ["Nee, Travelcard.nl biedt geen korting op je verjaardag. Travelcard levert zakelijke tankpassen en laadpassen voor bedrijven en zzp'ers."],
+        product_urls: [],
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
   });
 
   it("does not select family product bundle pages as final_url without a true family hint page", () => {
