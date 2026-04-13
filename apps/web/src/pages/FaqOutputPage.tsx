@@ -90,6 +90,20 @@ function formatUsd(value?: number | string | null) {
   return `$${Number(value || 0).toFixed(6)}`;
 }
 
+function getReadableFaqOutputError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  const details = error as { data?: { httpStatus?: number } } | undefined;
+  const httpStatus = details?.data?.httpStatus;
+
+  if (httpStatus === 413 || /\b413\b/.test(message)) {
+    return `上传请求过大，已被网关拦截。FAQ 输出目前仅支持 ${faqOutputUploadLimitMb}MB 以内文件，请压缩后重试。`;
+  }
+  if (/Unexpected token '<'|not valid JSON|<html/i.test(message)) {
+    return "接口返回了 HTML 页面而不是 JSON，通常是上传请求过大或服务网关拦截。请检查文件大小后重试。";
+  }
+  return message || "FAQ 输出生成失败";
+}
+
 function formatJobId(value: string) {
   if (!value) return "-";
   if (value.length <= 12) return value;
@@ -178,8 +192,15 @@ function triggerBrowserDownload(url: string, fileName: string) {
 async function downloadFileFromResponse(response: Response, fallbackFileName: string) {
   if (!response.ok) {
     let message = `Download failed with status ${response.status}.`;
+    const contentType = response.headers.get("Content-Type") || "";
+    if (response.status === 413) {
+      throw new Error("下载请求过大，已被网关拦截，请稍后重试。");
+    }
+    if (/text\/html/i.test(contentType)) {
+      throw new Error("下载接口返回了 HTML 页面而不是文件，请确认 API 服务和网关配置是否正常。");
+    }
     try {
-      const payload = (await response.json()) as { error?: string };
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
       if (payload?.error) message = payload.error;
     } catch {
       // keep default message
@@ -427,7 +448,13 @@ export function FaqOutputPage() {
     }
 
     try {
+      if (nextFile.size > faqOutputUploadMaxFileBytes) {
+        throw new Error(`上传文件过大，请控制在 ${faqOutputUploadLimitMb}MB 以内后再试`);
+      }
       const parsed = await parseUploadFile(nextFile);
+      if (parsed.length > faqOutputUploadMaxRows) {
+        throw new Error(`上传行数过多，请控制在 ${faqOutputUploadMaxRows} 行以内后再试`);
+      }
       setRows(parsed);
       setFileName(nextFile.name);
       setSelectedFile(nextFile);
@@ -435,7 +462,7 @@ export function FaqOutputPage() {
       setRows([]);
       setFileName("");
       setSelectedFile(null);
-      setError(err instanceof Error ? err.message : "文件解析失败");
+      setError(getReadableFaqOutputError(err) || "File parsing failed");
     }
   }
 
@@ -477,7 +504,7 @@ export function FaqOutputPage() {
       });
       await downloadFileFromResponse(response, `faq-output-${jobId}.xlsx`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "下载 FAQ 输出结果失败，请稍后重试。");
+      setError(getReadableFaqOutputError(err));
     } finally {
       setDownloadingJobId("");
     }
@@ -505,7 +532,7 @@ export function FaqOutputPage() {
       setResultNotice(`任务已创建，已进入队列，任务 ID：${data.jobId}`);
       setQueuePage(1);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "FAQ 输出生成失败");
+      setError(getReadableFaqOutputError(err));
     }
   }
 

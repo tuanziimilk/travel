@@ -65,8 +65,8 @@ export type OutputMode = z.infer<typeof outputModeSchema>;
 
 export const qualityBatchUploadMaxFileBytes = 12 * 1024 * 1024;
 export const qualityBatchUploadMaxRows = 2000;
-export const faqOutputUploadMaxFileBytes = 12 * 1024 * 1024;
-export const faqOutputUploadMaxRows = 3000;
+export const faqOutputUploadMaxFileBytes = 20 * 1024 * 1024;
+export const faqOutputUploadMaxRows = 30000;
 export const translationUploadMaxFileBytes = 12 * 1024 * 1024;
 export const translationUploadMaxRows = 3000;
 export const translationTextMaxChars = 12000;
