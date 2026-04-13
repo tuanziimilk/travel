@@ -186,6 +186,10 @@ async function downloadFileFromResponse(response: Response, fallbackFileName: st
     }
     throw new Error(message);
   }
+  const contentType = response.headers.get("Content-Type") || "";
+  if (/text\/html/i.test(contentType)) {
+    throw new Error("下载接口返回了页面内容，结果文件未正确从 API 返回。请刷新后重试。");
+  }
   const blob = await response.blob();
   const disposition = response.headers.get("Content-Disposition") || "";
   const encodedNameMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
