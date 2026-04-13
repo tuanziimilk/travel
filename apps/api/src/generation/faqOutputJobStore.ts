@@ -1902,6 +1902,137 @@ export async function exportGenerationHistory(input: HistoryFilters & { format?:
   };
 }
 
+export async function exportGenerationCountryRollup(input: { scType?: string; country: string }) {
+  const scType = input.scType || "faq";
+  const country = normalizeCountry(input.country);
+  if (!country) {
+    throw new Error("country is required.");
+  }
+
+  const [successRows] = await pool.query<RowDataPacket[]>(
+    `
+      SELECT
+        r.country,
+        r.term_id,
+        r.term_name,
+        r.domain,
+        r.source,
+        r.subclass,
+        r.board_name,
+        r.title1,
+        r.brief_introduction,
+        r.href_kw,
+        r.href_url
+      FROM content_generation_job_rows r
+      INNER JOIN content_generation_jobs j ON j.id = r.job_id
+      WHERE j.sc_type = ? AND r.status = 'success' AND r.country = ?
+      ORDER BY COALESCE(j.finished_at, j.created_at) DESC, r.job_id ASC, r.row_index ASC
+    `,
+    [scType, country],
+  );
+
+  const [failureRows] = await pool.query<RowDataPacket[]>(
+    `
+      SELECT
+        r.job_id,
+        j.uploader,
+        j.note,
+        j.created_at,
+        j.finished_at,
+        r.row_index,
+        r.country,
+        r.term_id,
+        r.term_name,
+        r.domain,
+        r.fact_type,
+        r.subclass,
+        r.route_key,
+        r.error_reason
+      FROM content_generation_job_rows r
+      INNER JOIN content_generation_jobs j ON j.id = r.job_id
+      WHERE j.sc_type = ? AND r.status = 'error' AND r.country = ?
+      ORDER BY COALESCE(j.finished_at, j.created_at) DESC, r.job_id ASC, r.row_index ASC
+    `,
+    [scType, country],
+  );
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.json_to_sheet(
+      successRows.map((row) => ({
+        ContentType: "faq",
+        Country: String(row.country || ""),
+        TermID: String(row.term_id || ""),
+        TermName: String(row.term_name || ""),
+        Domain: String(row.domain || ""),
+        Source: String(row.source || "AI"),
+        Subclass: String(row.subclass || ""),
+        [generationBoardNameField]: String(row.board_name || "faq"),
+        Titile1: String(row.title1 || ""),
+        "Brief Introduction": String(row.brief_introduction || ""),
+        "Href Kw": String(row.href_kw || ""),
+        "Href Url": String(row.href_url || ""),
+      })),
+      { header: [...outputHeaders] },
+    ),
+    faqDownloadSheetNames.output,
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.json_to_sheet(
+      failureRows.map((row) => ({
+        jobId: String(row.job_id || ""),
+        uploader: String(row.uploader || ""),
+        note: String(row.note || ""),
+        createdAt: formatChinaIsoOffset(row.created_at instanceof Date ? row.created_at : new Date(String(row.created_at || ""))),
+        finishedAt: formatChinaIsoOffset(row.finished_at instanceof Date ? row.finished_at : row.finished_at ? new Date(String(row.finished_at)) : null),
+        rowIndex: Number(row.row_index || 0),
+        country: String(row.country || ""),
+        termId: String(row.term_id || ""),
+        termName: String(row.term_name || ""),
+        domain: String(row.domain || ""),
+        factType: String(row.fact_type || ""),
+        subclass: String(row.subclass || ""),
+        routeKey: String(row.route_key || ""),
+        error: String(row.error_reason || ""),
+      })),
+      {
+        header: [
+          "jobId",
+          "uploader",
+          "note",
+          "createdAt",
+          "finishedAt",
+          "rowIndex",
+          "country",
+          "termId",
+          "termName",
+          "domain",
+          "factType",
+          "subclass",
+          "routeKey",
+          "error",
+        ],
+      },
+    ),
+    faqDownloadSheetNames.failures,
+  );
+
+  const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+  return {
+    fileName: `faq-result-${country}.xlsx`,
+    contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer,
+    summary: {
+      country,
+      successRows: successRows.length,
+      failureRows: failureRows.length,
+    },
+  };
+}
+
 async function pathExists(targetPath: string) {
   try {
     await access(targetPath);

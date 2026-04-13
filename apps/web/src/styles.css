@@ -6346,11 +6346,15 @@ pre {
 .faq-queue-table .queue-action-group {
   justify-content: flex-start;
   gap: 6px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+}
+
+.faq-queue-action-btn {
+  width: 78px;
 }
 
 .faq-queue-action-btn-secondary {
-  min-width: 64px;
+  width: 78px;
 }
 
 @media (max-width: 1180px) {

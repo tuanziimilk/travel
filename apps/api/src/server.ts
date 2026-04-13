@@ -10,7 +10,7 @@ import {
   completeCategoryCalibrationUpload,
   initCategoryCalibrationUpload,
 } from "./category-calibration/uploadStore";
-import { getGenerationJobDownloadPayload, startGenerationHousekeeping, warmGenerationHistoryCaches } from "./generation/faqOutputJobStore";
+import { exportGenerationCountryRollup, getGenerationJobDownloadPayload, startGenerationHousekeeping, warmGenerationHistoryCaches } from "./generation/faqOutputJobStore";
 import { getGgCleaningJobDownloadPayload } from "./gg-cleaning/jobStore";
 import { appendGgCleaningUploadChunk, appendGgCleaningUploadFileChunk, completeGgCleaningUpload, initGgCleaningUpload } from "./gg-cleaning/uploadStore";
 
@@ -99,6 +99,21 @@ app.get("/generation/jobs/:jobId/download", async (req, res) => {
     res.send(result.buffer);
   } catch (error) {
     res.status(404).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.get("/generation/exports/country-rollup", async (req, res) => {
+  try {
+    const country = String(req.query.country || "").trim().toUpperCase();
+    if (!country) throw new Error("country is required.");
+    const scType = String(req.query.scType || "faq").trim() || "faq";
+    const result = await exportGenerationCountryRollup({ scType, country });
+    const safeFileName = path.basename(result.fileName || `faq-result-${country}.xlsx`);
+    res.setHeader("Content-Type", result.contentType);
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(safeFileName)}`);
+    res.send(result.buffer);
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
   }
 });
 
