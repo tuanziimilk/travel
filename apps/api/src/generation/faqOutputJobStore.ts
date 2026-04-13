@@ -790,6 +790,60 @@ function buildWorkbookForVariant(sourceBuffer: Buffer, variant: GenerationDownlo
   return XLSX.write(nextWorkbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }
 
+async function buildWorkbookFromPersistedRows(jobId: string, variant: GenerationDownloadVariant) {
+  const persistedRows = await listPersistedGenerationRows(jobId);
+  if (!persistedRows.length) {
+    return null;
+  }
+
+  const workbook = XLSX.utils.book_new();
+  if (variant === "field_extract") {
+    return null;
+  }
+
+  const successRows = persistedRows.filter((item) => item.status === "success");
+  const failureRows = persistedRows.filter((item) => item.status === "error");
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.json_to_sheet(
+      successRows.map((item) => ({
+        ContentType: "faq",
+        Country: item.country,
+        TermID: item.termId,
+        TermName: item.termName,
+        Domain: item.domain,
+        Source: item.source || "AI",
+        Subclass: item.subclass,
+        [generationBoardNameField]: item.boardName || "faq",
+        Titile1: item.title1,
+        "Brief Introduction": item.briefIntroduction,
+        "Href Kw": item.hrefKw,
+        "Href Url": item.hrefUrl,
+      })),
+      { header: [...outputHeaders] },
+    ),
+    faqDownloadSheetNames.output,
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.json_to_sheet(
+      failureRows.map((item) => ({
+        rowIndex: item.rowIndex,
+        factType: item.factType,
+        subclass: item.subclass,
+        routeKey: item.routeKey,
+        error: item.errorReason,
+      })),
+      { header: [...failureSheetHeaders] },
+    ),
+    faqDownloadSheetNames.failures,
+  );
+
+  return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+}
+
 async function rebuildGenerationResultArtifact(row: typeof contentGenerationJobs.$inferSelect) {
   if (!row.inputFileBase64) {
     return {
@@ -1540,6 +1594,13 @@ export async function getGenerationJobDownloadPayload(jobId: string, options?: {
     const rebuiltBuffer = Buffer.from(rebuiltResult.xlsxBase64, "base64");
     if (isLikelyXlsxBuffer(rebuiltBuffer)) {
       fileBuffer = rebuiltBuffer;
+    }
+  }
+
+  if (!fileBuffer) {
+    const persistedBuffer = await buildWorkbookFromPersistedRows(row.id, variant);
+    if (persistedBuffer && isLikelyXlsxBuffer(persistedBuffer)) {
+      fileBuffer = persistedBuffer;
     }
   }
 
