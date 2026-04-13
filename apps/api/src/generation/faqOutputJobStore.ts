@@ -75,6 +75,8 @@ type HistoryFilters = {
 };
 
 type GenerationHistorySummaryResult = {
+  summaryStatus?: "ready" | "building" | "stale";
+  refreshedAt?: string | null;
   summary: {
     totalRows: number;
     uniqueResultCount: number;
@@ -118,6 +120,15 @@ type GenerationHistoryRowsResult = {
 const generationHistoryCacheTtlMs = 5 * 60 * 1000;
 const generationHistorySummaryCache = new Map<string, { expiresAt: number; value: unknown }>();
 const generationHistoryRowsCache = new Map<string, { expiresAt: number; value: unknown }>();
+const generationHistorySummaryTableName = "content_generation_history_summary";
+const generationHistorySummaryVersion = 1;
+const generationHistoryAllFilter = "__ALL__";
+const generationHistorySummaryDimension = "__SUMMARY__";
+
+let generationHistorySummaryTableEnsured = false;
+let generationHistorySummaryRefreshPromise: Promise<void> | null = null;
+let generationHistorySummaryRefreshRequested = false;
+let generationHistorySummaryRefreshTimer: NodeJS.Timeout | null = null;
 
 function buildGenerationHistoryCacheKey(input: HistoryFilters) {
   return JSON.stringify({
@@ -150,6 +161,220 @@ function setHistoryCacheValue<T>(cache: Map<string, { expiresAt: number; value: 
 function clearGenerationHistoryCaches() {
   generationHistorySummaryCache.clear();
   generationHistoryRowsCache.clear();
+}
+
+async function ensureGenerationHistorySummaryTable() {
+  if (generationHistorySummaryTableEnsured) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${generationHistorySummaryTableName} (
+      sc_type varchar(32) NOT NULL,
+      summary_version int NOT NULL DEFAULT 1,
+      uploader_filter varchar(32) NOT NULL DEFAULT '${generationHistoryAllFilter}',
+      country_filter varchar(32) NOT NULL DEFAULT '${generationHistoryAllFilter}',
+      subclass_filter varchar(255) NOT NULL DEFAULT '${generationHistoryAllFilter}',
+      dimension_type varchar(16) NOT NULL,
+      dimension_value varchar(255) NOT NULL,
+      row_count int NOT NULL DEFAULT 0,
+      unique_result_count int NOT NULL DEFAULT 0,
+      merchant_count int NOT NULL DEFAULT 0,
+      country_count int NOT NULL DEFAULT 0,
+      subclass_count int NOT NULL DEFAULT 0,
+      refreshed_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (sc_type, summary_version, uploader_filter, country_filter, subclass_filter, dimension_type, dimension_value),
+      KEY idx_generation_history_summary_lookup (
+        sc_type,
+        summary_version,
+        uploader_filter,
+        country_filter,
+        subclass_filter,
+        dimension_type
+      )
+    )
+  `);
+  generationHistorySummaryTableEnsured = true;
+}
+
+function toGenerationHistoryFilterValue(value: unknown, mode: "plain" | "country" | "subclass" = "plain") {
+  const normalized = normalize(value);
+  if (!normalized) return generationHistoryAllFilter;
+  if (mode === "country") return normalized.toUpperCase();
+  if (mode === "subclass") return normalized.toLowerCase();
+  return normalized;
+}
+
+function supportsMaterializedHistorySummary(input: HistoryFilters) {
+  return !normalize(input.keyword) && !normalize(input.startDate) && !normalize(input.endDate);
+}
+
+type MaterializedAggregate = {
+  rowCount: number;
+  uniqueResults: Set<string>;
+  merchants: Set<string>;
+  countries: Set<string>;
+  subclasses: Set<string>;
+};
+
+function createEmptyHistorySummaryResult(
+  status: "ready" | "building" | "stale",
+  refreshedAt: string | null,
+): GenerationHistorySummaryResult {
+  return {
+    summaryStatus: status,
+    refreshedAt,
+    summary: {
+      totalRows: 0,
+      uniqueResultCount: 0,
+      merchantCount: 0,
+      countryCount: 0,
+      subclassCount: 0,
+    },
+    byCountry: [],
+    bySubclass: [],
+  };
+}
+
+function bumpMaterializedHistorySummary(row: StoredFaqOutputRow, aggregateMap: Map<string, MaterializedAggregate>) {
+  const uploaderFilters = [generationHistoryAllFilter, row.uploader || generationHistoryAllFilter];
+  const countryFilters = [generationHistoryAllFilter, row.Country || generationHistoryAllFilter];
+  const subclassFilters = [generationHistoryAllFilter, (row.Subclass || generationHistoryAllFilter).toLowerCase()];
+  const uniqueResultKey = `${row.Country}::${row.TermID}::${row.Subclass}`;
+  const merchantKey = `${row.Country}::${row.TermID}`;
+
+  const touch = (
+    uploaderFilter: string,
+    countryFilter: string,
+    subclassFilter: string,
+    dimensionType: "summary" | "country" | "subclass",
+    dimensionValue: string,
+  ) => {
+    const key = [
+      uploaderFilter,
+      countryFilter,
+      subclassFilter,
+      dimensionType,
+      dimensionValue,
+    ].join("::");
+    let aggregate = aggregateMap.get(key);
+    if (!aggregate) {
+      aggregate = {
+        rowCount: 0,
+        uniqueResults: new Set<string>(),
+        merchants: new Set<string>(),
+        countries: new Set<string>(),
+        subclasses: new Set<string>(),
+      };
+      aggregateMap.set(key, aggregate);
+    }
+    aggregate.rowCount += 1;
+    aggregate.uniqueResults.add(uniqueResultKey);
+    aggregate.merchants.add(merchantKey);
+    aggregate.countries.add(row.Country);
+    aggregate.subclasses.add(row.Subclass);
+  };
+
+  for (const uploaderFilter of uploaderFilters) {
+    for (const countryFilter of countryFilters) {
+      for (const subclassFilter of subclassFilters) {
+        touch(uploaderFilter, countryFilter, subclassFilter, "summary", generationHistorySummaryDimension);
+        if (countryFilter === generationHistoryAllFilter) {
+          touch(uploaderFilter, countryFilter, subclassFilter, "country", row.Country);
+        }
+        if (subclassFilter === generationHistoryAllFilter) {
+          touch(uploaderFilter, countryFilter, subclassFilter, "subclass", row.Subclass);
+        }
+      }
+    }
+  }
+}
+
+async function rebuildMaterializedHistorySummary(scType = "faq") {
+  await ensureGenerationHistorySummaryTable();
+  const rows = await listPersistedHistoryRows(scType);
+  const aggregateMap = new Map<string, MaterializedAggregate>();
+
+  for (const row of rows) {
+    bumpMaterializedHistorySummary(row, aggregateMap);
+  }
+
+  await pool.execute(
+    `DELETE FROM ${generationHistorySummaryTableName} WHERE sc_type = ? AND summary_version = ?`,
+    [scType, generationHistorySummaryVersion],
+  );
+
+  if (!aggregateMap.size) return;
+
+  const valueSql = Array.from({ length: aggregateMap.size }, () => "(?,?,?,?,?,?,?,?,?,?,?,?,?)").join(",");
+  const params: unknown[] = [];
+  const refreshedAt = new Date();
+
+  for (const [key, aggregate] of aggregateMap.entries()) {
+    const [uploaderFilter, countryFilter, subclassFilter, dimensionType, dimensionValue] = key.split("::");
+    params.push(
+      scType,
+      generationHistorySummaryVersion,
+      uploaderFilter,
+      countryFilter,
+      subclassFilter,
+      dimensionType,
+      dimensionValue,
+      aggregate.rowCount,
+      aggregate.uniqueResults.size,
+      aggregate.merchants.size,
+      aggregate.countries.size,
+      aggregate.subclasses.size,
+      refreshedAt,
+    );
+  }
+
+  await pool.execute(
+    `
+      INSERT INTO ${generationHistorySummaryTableName} (
+        sc_type,
+        summary_version,
+        uploader_filter,
+        country_filter,
+        subclass_filter,
+        dimension_type,
+        dimension_value,
+        row_count,
+        unique_result_count,
+        merchant_count,
+        country_count,
+        subclass_count,
+        refreshed_at
+      ) VALUES ${valueSql}
+    `,
+    params,
+  );
+}
+
+async function refreshMaterializedHistorySummary(scType = "faq") {
+  if (generationHistorySummaryRefreshPromise) {
+    generationHistorySummaryRefreshRequested = true;
+    return generationHistorySummaryRefreshPromise;
+  }
+
+  generationHistorySummaryRefreshPromise = (async () => {
+    do {
+      generationHistorySummaryRefreshRequested = false;
+      await rebuildMaterializedHistorySummary(scType);
+    } while (generationHistorySummaryRefreshRequested);
+  })().finally(() => {
+    generationHistorySummaryRefreshPromise = null;
+  });
+
+  return generationHistorySummaryRefreshPromise;
+}
+
+function scheduleMaterializedHistorySummaryRefresh(scType = "faq") {
+  generationHistorySummaryRefreshRequested = true;
+  if (generationHistorySummaryRefreshTimer) return;
+  generationHistorySummaryRefreshTimer = setTimeout(() => {
+    generationHistorySummaryRefreshTimer = null;
+    void refreshMaterializedHistorySummary(scType).catch((error) => {
+      console.error("refresh materialized faq history summary failed", error);
+    });
+  }, 1200);
 }
 
 function isMissingGenerationRowsTableError(error: unknown) {
@@ -200,6 +425,8 @@ function buildLegacyHistorySummary(rows: StoredFaqOutputRow[]) {
   }
 
   return {
+    summaryStatus: "ready" as const,
+    refreshedAt: new Date().toISOString(),
     summary: {
       totalRows: rows.length,
       uniqueResultCount: uniqueResultSet.size,
@@ -739,6 +966,7 @@ export async function completeGenerationJob(input: {
   errorReason?: string;
 }) {
   clearGenerationHistoryCaches();
+  scheduleMaterializedHistorySummaryRefresh("faq");
   await db
     .update(contentGenerationJobs)
     .set({
@@ -796,6 +1024,7 @@ export async function updateGenerationJobProgress(input: {
 
 export async function failGenerationJob(jobId: string, message: string) {
   clearGenerationHistoryCaches();
+  scheduleMaterializedHistorySummaryRefresh("faq");
   await db
     .update(contentGenerationJobs)
     .set({
@@ -808,19 +1037,30 @@ export async function failGenerationJob(jobId: string, message: string) {
 }
 
 export async function listGenerationJobs(page: number, pageSize: number, scType = "faq") {
+  const safePage = Math.max(1, Number(page || 1));
+  const safePageSize = Math.max(1, Number(pageSize || 20));
+  const start = (safePage - 1) * safePageSize;
+  const [countRows] = await pool.query<RowDataPacket[]>(
+    `
+      SELECT COUNT(*) AS total_count
+      FROM content_generation_jobs
+      WHERE sc_type = ?
+    `,
+    [scType],
+  );
+  const total = Number((countRows[0] as Record<string, unknown> | undefined)?.total_count || 0);
+
   const rows = await db
     .select()
     .from(contentGenerationJobs)
     .where(eq(contentGenerationJobs.scType, scType))
-    .orderBy(desc(contentGenerationJobs.createdAt));
-
-  const total = rows.length;
-  const start = (page - 1) * pageSize;
-  const sliced = rows.slice(start, start + pageSize);
+    .orderBy(desc(contentGenerationJobs.createdAt))
+    .limit(safePageSize)
+    .offset(start);
 
   return {
     total,
-    rows: sliced.map((row) => ({
+    rows: rows.map((row) => ({
       id: row.id,
       status: row.status,
       scType: row.scType,
@@ -843,6 +1083,157 @@ export async function listGenerationJobs(page: number, pageSize: number, scType 
       routeSummary: (row.routeSummaryJson as RouteSummaryRow[] | null) || [],
     })),
   };
+}
+
+async function readMaterializedHistorySummary(input: HistoryFilters): Promise<GenerationHistorySummaryResult | null> {
+  await ensureGenerationHistorySummaryTable();
+  const scType = input.scType || "faq";
+  const uploaderFilter = toGenerationHistoryFilterValue(input.uploader);
+  const countryFilter = toGenerationHistoryFilterValue(input.country, "country");
+  const subclassFilter = toGenerationHistoryFilterValue(input.subclass, "subclass");
+
+  const [globalRows] = await pool.query<RowDataPacket[]>(
+    `
+      SELECT refreshed_at
+      FROM ${generationHistorySummaryTableName}
+      WHERE sc_type = ?
+        AND summary_version = ?
+        AND uploader_filter = ?
+        AND country_filter = ?
+        AND subclass_filter = ?
+        AND dimension_type = 'summary'
+        AND dimension_value = ?
+      LIMIT 1
+    `,
+    [scType, generationHistorySummaryVersion, generationHistoryAllFilter, generationHistoryAllFilter, generationHistoryAllFilter, generationHistorySummaryDimension],
+  );
+
+  const globalRefreshedAtRaw = (globalRows[0] as Record<string, unknown> | undefined)?.refreshed_at;
+  const globalRefreshedAt =
+    globalRefreshedAtRaw instanceof Date
+      ? globalRefreshedAtRaw.toISOString()
+      : globalRefreshedAtRaw
+        ? new Date(String(globalRefreshedAtRaw)).toISOString()
+        : null;
+
+  if (!globalRefreshedAt) {
+    scheduleMaterializedHistorySummaryRefresh(scType);
+    return createEmptyHistorySummaryResult(generationHistorySummaryRefreshPromise ? "building" : "stale", null);
+  }
+
+  const [summaryRows] = await pool.query<RowDataPacket[]>(
+    `
+      SELECT *
+      FROM ${generationHistorySummaryTableName}
+      WHERE sc_type = ?
+        AND summary_version = ?
+        AND uploader_filter = ?
+        AND country_filter = ?
+        AND subclass_filter = ?
+        AND dimension_type = 'summary'
+        AND dimension_value = ?
+      LIMIT 1
+    `,
+      [scType, generationHistorySummaryVersion, uploaderFilter, countryFilter, subclassFilter, generationHistorySummaryDimension],
+  );
+
+  const summaryRow = summaryRows[0] as Record<string, unknown> | undefined;
+  if (!summaryRow) {
+    return createEmptyHistorySummaryResult("ready", globalRefreshedAt);
+  }
+
+  const baseResult: GenerationHistorySummaryResult = {
+    summaryStatus: generationHistorySummaryRefreshPromise ? "stale" : "ready",
+    refreshedAt:
+      summaryRow.refreshed_at instanceof Date
+        ? summaryRow.refreshed_at.toISOString()
+        : summaryRow.refreshed_at
+          ? new Date(String(summaryRow.refreshed_at)).toISOString()
+          : globalRefreshedAt,
+    summary: {
+      totalRows: Number(summaryRow.row_count || 0),
+      uniqueResultCount: Number(summaryRow.unique_result_count || 0),
+      merchantCount: Number(summaryRow.merchant_count || 0),
+      countryCount: Number(summaryRow.country_count || 0),
+      subclassCount: Number(summaryRow.subclass_count || 0),
+    },
+    byCountry: [],
+    bySubclass: [],
+  };
+
+  if (!baseResult.summary.totalRows) {
+    return baseResult;
+  }
+
+  if (countryFilter === generationHistoryAllFilter) {
+    const [countryRows] = await pool.query<RowDataPacket[]>(
+      `
+        SELECT *
+        FROM ${generationHistorySummaryTableName}
+        WHERE sc_type = ?
+          AND summary_version = ?
+          AND uploader_filter = ?
+          AND country_filter = ?
+          AND subclass_filter = ?
+          AND dimension_type = 'country'
+        ORDER BY unique_result_count DESC, dimension_value ASC
+      `,
+      [scType, generationHistorySummaryVersion, uploaderFilter, countryFilter, subclassFilter],
+    );
+    baseResult.byCountry = countryRows.map((row) => ({
+      country: String(row.dimension_value || ""),
+      rowCount: Number(row.row_count || 0),
+      uniqueResultCount: Number(row.unique_result_count || 0),
+      merchantCount: Number(row.merchant_count || 0),
+      subclassCount: Number(row.subclass_count || 0),
+    }));
+  } else {
+    baseResult.byCountry = [
+      {
+        country: String(input.country || ""),
+        rowCount: baseResult.summary.totalRows,
+        uniqueResultCount: baseResult.summary.uniqueResultCount,
+        merchantCount: baseResult.summary.merchantCount,
+        subclassCount: baseResult.summary.subclassCount,
+      },
+    ];
+  }
+
+  if (subclassFilter === generationHistoryAllFilter) {
+    const [subclassRows] = await pool.query<RowDataPacket[]>(
+      `
+        SELECT *
+        FROM ${generationHistorySummaryTableName}
+        WHERE sc_type = ?
+          AND summary_version = ?
+          AND uploader_filter = ?
+          AND country_filter = ?
+          AND subclass_filter = ?
+          AND dimension_type = 'subclass'
+        ORDER BY unique_result_count DESC, dimension_value ASC
+      `,
+      [scType, generationHistorySummaryVersion, uploaderFilter, countryFilter, subclassFilter],
+    );
+    baseResult.bySubclass = subclassRows.map((row) => ({
+      subclass: String(row.dimension_value || ""),
+      rowCount: Number(row.row_count || 0),
+      uniqueResultCount: Number(row.unique_result_count || 0),
+      merchantCount: Number(row.merchant_count || 0),
+      countryCount: Number(row.country_count || 0),
+    }));
+  } else {
+    baseResult.bySubclass = [
+      {
+        subclass: String(input.subclass || ""),
+        rowCount: baseResult.summary.totalRows,
+        uniqueResultCount: baseResult.summary.uniqueResultCount,
+        merchantCount: baseResult.summary.merchantCount,
+        countryCount: baseResult.summary.countryCount,
+      },
+    ];
+  }
+
+  return baseResult;
 }
 
 export async function getGenerationJobResult(jobId: string) {
@@ -921,6 +1312,15 @@ export async function getGenerationHistorySummary(input: HistoryFilters): Promis
   const cacheKey = buildGenerationHistoryCacheKey(input);
   const cached = getHistoryCacheValue<GenerationHistorySummaryResult>(generationHistorySummaryCache, cacheKey);
   if (cached) return cached;
+
+  if (supportsMaterializedHistorySummary(input)) {
+    const materialized = await readMaterializedHistorySummary(input);
+    if (materialized) {
+      setHistoryCacheValue(generationHistorySummaryCache, cacheKey, materialized);
+      return materialized;
+    }
+  }
+
   const { whereSql, params } = buildPersistedHistoryWhere(input);
 
   try {
@@ -980,6 +1380,8 @@ export async function getGenerationHistorySummary(input: HistoryFilters): Promis
 
     const summaryRow = (summaryRows[0] || {}) as Record<string, unknown>;
     const result = {
+      summaryStatus: "ready" as const,
+      refreshedAt: new Date().toISOString(),
       summary: {
         totalRows: Number(summaryRow.total_rows || 0),
         uniqueResultCount: Number(summaryRow.unique_result_count || 0),
@@ -1149,6 +1551,7 @@ export async function exportGenerationHistory(input: HistoryFilters & { format?:
 
 export function warmGenerationHistoryCaches() {
   setTimeout(() => {
+    void refreshMaterializedHistorySummary("faq").catch(() => undefined);
     void getGenerationHistorySummary({ scType: "faq" }).catch(() => undefined);
     void listGenerationHistoryRows({ scType: "faq", page: 1, pageSize: 20 }).catch(() => undefined);
   }, 1500);

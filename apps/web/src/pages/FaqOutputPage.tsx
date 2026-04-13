@@ -199,10 +199,25 @@ function safeValue(value: string | null | undefined) {
   return value && value.trim() ? value : "-";
 }
 
+function useSlowHint(active: boolean, delayMs = 3000) {
+  const [slow, setSlow] = useState(false);
+
+  useEffect(() => {
+    if (!active) {
+      setSlow(false);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setSlow(true), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [active, delayMs]);
+
+  return slow;
+}
+
 export function FaqOutputPage() {
   const scType = "faq" as const;
   const uploadInputId = "faq-output-file-input";
-  const queuePageSize = 8;
+  const queuePageSize = 20;
   const [uploader, setUploader] = useState<(typeof uploaderOptions)[number]>("Ella");
   const [note, setNote] = useState("");
   const [fileName, setFileName] = useState("");
@@ -215,11 +230,13 @@ export function FaqOutputPage() {
   const [routePreviewRows, setRoutePreviewRows] = useState<RoutePreviewRow[]>([]);
   const [showRouteDetails, setShowRouteDetails] = useState(false);
   const [queuePage, setQueuePage] = useState(1);
+  const [lastQueueTotal, setLastQueueTotal] = useState(0);
   const utils = trpc.useUtils();
 
   const queueQuery = trpc.generation.queue.useQuery(
     { scType, page: queuePage, pageSize: queuePageSize },
     {
+      placeholderData: (previousData) => previousData,
       refetchInterval: (query) => {
         const list = query.state.data?.rows ?? [];
         const hasActive = list.some((item) => {
@@ -273,9 +290,23 @@ export function FaqOutputPage() {
   }, [routePreviewRows, rows.length]);
 
   const queueTotalPages = useMemo(() => {
-    const total = queueQuery.data?.total ?? 0;
+    const total = queueQuery.data?.total ?? lastQueueTotal;
     return Math.max(1, Math.ceil(total / queuePageSize));
+  }, [lastQueueTotal, queueQuery.data?.total]);
+
+  const isQueueInitialLoading = queueQuery.isLoading && !queueQuery.data;
+  const isQueueRefreshing = queueQuery.isFetching && !!queueQuery.data;
+  const queueSlow = useSlowHint(isQueueInitialLoading || isQueueRefreshing);
+
+  useEffect(() => {
+    if (typeof queueQuery.data?.total === "number") {
+      setLastQueueTotal(queueQuery.data.total);
+    }
   }, [queueQuery.data?.total]);
+
+  useEffect(() => {
+    setQueuePage((currentPage) => Math.min(currentPage, queueTotalPages));
+  }, [queueTotalPages]);
 
   const currentProgress = useMemo(() => {
     if (!statusQuery.data) return null;
@@ -629,6 +660,9 @@ export function FaqOutputPage() {
           </button>
         </div>
 
+        {isQueueRefreshing ? <p className="muted">正在刷新第 {queuePage} 页，当前先保留上一页数据。</p> : null}
+        {queueSlow ? <p className="muted">任务较多，队列仍在加载，请稍候。</p> : null}
+
         <div className="table-scroll faq-output-table-scroll">
           <table className="history-table queue-table faq-queue-table">
             <thead>
@@ -690,7 +724,12 @@ export function FaqOutputPage() {
                   </tr>
                 );
               })}
-              {(queueQuery.data?.rows?.length ?? 0) === 0 ? (
+              {isQueueInitialLoading ? (
+                <tr>
+                  <td colSpan={10}>FAQ 输出任务加载中...</td>
+                </tr>
+              ) : null}
+              {!isQueueInitialLoading && (queueQuery.data?.rows?.length ?? 0) === 0 ? (
                 <tr>
                   <td colSpan={10}>暂无 FAQ 输出任务。</td>
                 </tr>
@@ -700,9 +739,9 @@ export function FaqOutputPage() {
         </div>
 
         <div className="upload-actions faq-pagination-row">
-          <span className="muted">共 {queueQuery.data?.total ?? 0} 条任务</span>
+          <span className="muted">共 {queueQuery.data?.total ?? lastQueueTotal} 条任务</span>
           <div className="upload-actions" style={{ gap: 8 }}>
-            <button className="btn-ghost" type="button" disabled={queuePage <= 1} onClick={() => setQueuePage((prev) => Math.max(1, prev - 1))}>
+            <button className="btn-ghost" type="button" disabled={queuePage <= 1 || isQueueRefreshing} onClick={() => setQueuePage((prev) => Math.max(1, prev - 1))}>
               上一页
             </button>
             <span className="faq-pagination-indicator">
@@ -711,7 +750,7 @@ export function FaqOutputPage() {
             <button
               className="btn-ghost"
               type="button"
-              disabled={queuePage >= queueTotalPages}
+              disabled={queuePage >= queueTotalPages || isQueueRefreshing}
               onClick={() => setQueuePage((prev) => Math.min(queueTotalPages, prev + 1))}
             >
               下一页
