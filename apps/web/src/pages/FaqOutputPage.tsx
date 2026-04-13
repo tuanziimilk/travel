@@ -49,6 +49,7 @@ type QueueRow = {
   resultFileName?: string;
   resultFilePath?: string;
   canDownload?: boolean;
+  canDownloadFieldExtract?: boolean;
   createdAt?: string | null;
   startedAt?: string | null;
   finishedAt?: string | null;
@@ -865,6 +866,7 @@ export function FaqOutputPage() {
             <tbody>
               {queueRows.map((item) => {
                 const hasResult = Boolean(item.resultFilePath) || item.canDownload || Boolean(item.resultFileName) || item.status === "done" || item.status === "failed";
+                const canDownloadFieldExtract = Boolean(item.canDownloadFieldExtract);
                 const itemProgress = getExecutionProgress(item);
                 const displayStatus = getDisplayJobStatus(item);
                 const activeDownloadVariant = downloadingStates[item.id];
@@ -906,7 +908,8 @@ export function FaqOutputPage() {
                         <button
                           className="btn-ghost faq-queue-action-btn faq-queue-action-btn-secondary"
                           type="button"
-                          disabled={!hasResult || Boolean(activeDownloadVariant)}
+                          disabled={!canDownloadFieldExtract || Boolean(activeDownloadVariant)}
+                          title={canDownloadFieldExtract ? "下载提取表" : "历史任务未保留提取表，无法下载"}
                           onClick={() => void downloadJobResult(item.id, "field_extract")}
                         >
                           {activeDownloadVariant === "field_extract" ? "下载中..." : "下载提取"}

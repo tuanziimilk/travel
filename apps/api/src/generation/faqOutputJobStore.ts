@@ -1256,6 +1256,9 @@ async function getGenerationQueueCount(scType: string) {
 }
 
 function mapGenerationQueueRow(row: Record<string, unknown>) {
+  const hasResultFilePath = Boolean(String(row.result_file_path || ""));
+  const hasResultFileBase64 = Number(row.has_result_file_base64 || 0) > 0;
+  const hasInputFileBase64 = Number(row.has_input_file_base64 || 0) > 0;
   return {
     id: String(row.id || ""),
     status: String(row.status || ""),
@@ -1274,7 +1277,8 @@ function mapGenerationQueueRow(row: Record<string, unknown>) {
     errorReason: String(row.error_reason || ""),
     resultFileName: String(row.result_file_name || ""),
     resultFilePath: String(row.result_file_path || ""),
-    canDownload: Boolean(row.result_file_path || row.result_file_name || row.status === "done" || row.status === "failed"),
+    canDownload: hasResultFilePath || Boolean(row.result_file_name || row.status === "done" || row.status === "failed"),
+    canDownloadFieldExtract: hasResultFilePath || hasResultFileBase64 || hasInputFileBase64,
     createdAt: formatChinaIsoOffset(row.created_at instanceof Date ? row.created_at : new Date(String(row.created_at || ""))),
     startedAt: formatChinaIsoOffset(row.started_at instanceof Date ? row.started_at : row.started_at ? new Date(String(row.started_at)) : null),
     finishedAt: formatChinaIsoOffset(row.finished_at instanceof Date ? row.finished_at : row.finished_at ? new Date(String(row.finished_at)) : null),
@@ -1340,6 +1344,8 @@ export async function listGenerationJobs(page: number, pageSize: number, scType 
           error_reason,
           result_file_name,
           result_file_path,
+          CASE WHEN result_file_base64 IS NULL OR result_file_base64 = '' THEN 0 ELSE 1 END AS has_result_file_base64,
+          CASE WHEN input_file_base64 IS NULL OR input_file_base64 = '' THEN 0 ELSE 1 END AS has_input_file_base64,
           created_at,
           started_at,
           finished_at
