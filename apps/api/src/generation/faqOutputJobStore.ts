@@ -303,49 +303,55 @@ async function rebuildMaterializedHistorySummary(scType = "faq") {
 
   if (!aggregateMap.size) return;
 
-  const valueSql = Array.from({ length: aggregateMap.size }, () => "(?,?,?,?,?,?,?,?,?,?,?,?,?)").join(",");
-  const params: unknown[] = [];
   const refreshedAt = new Date();
+  const entries = [...aggregateMap.entries()];
+  const batchSize = 400;
 
-  for (const [key, aggregate] of aggregateMap.entries()) {
-    const [uploaderFilter, countryFilter, subclassFilter, dimensionType, dimensionValue] = key.split("::");
-    params.push(
-      scType,
-      generationHistorySummaryVersion,
-      uploaderFilter,
-      countryFilter,
-      subclassFilter,
-      dimensionType,
-      dimensionValue,
-      aggregate.rowCount,
-      aggregate.uniqueResults.size,
-      aggregate.merchants.size,
-      aggregate.countries.size,
-      aggregate.subclasses.size,
-      refreshedAt,
+  for (let start = 0; start < entries.length; start += batchSize) {
+    const batch = entries.slice(start, start + batchSize);
+    const valueSql = batch.map(() => "(?,?,?,?,?,?,?,?,?,?,?,?,?)").join(",");
+    const params: unknown[] = [];
+
+    for (const [key, aggregate] of batch) {
+      const [uploaderFilter, countryFilter, subclassFilter, dimensionType, dimensionValue] = key.split("::");
+      params.push(
+        scType,
+        generationHistorySummaryVersion,
+        uploaderFilter,
+        countryFilter,
+        subclassFilter,
+        dimensionType,
+        dimensionValue,
+        aggregate.rowCount,
+        aggregate.uniqueResults.size,
+        aggregate.merchants.size,
+        aggregate.countries.size,
+        aggregate.subclasses.size,
+        refreshedAt,
+      );
+    }
+
+    await pool.execute(
+      `
+        INSERT INTO ${generationHistorySummaryTableName} (
+          sc_type,
+          summary_version,
+          uploader_filter,
+          country_filter,
+          subclass_filter,
+          dimension_type,
+          dimension_value,
+          row_count,
+          unique_result_count,
+          merchant_count,
+          country_count,
+          subclass_count,
+          refreshed_at
+        ) VALUES ${valueSql}
+      `,
+      params,
     );
   }
-
-  await pool.execute(
-    `
-      INSERT INTO ${generationHistorySummaryTableName} (
-        sc_type,
-        summary_version,
-        uploader_filter,
-        country_filter,
-        subclass_filter,
-        dimension_type,
-        dimension_value,
-        row_count,
-        unique_result_count,
-        merchant_count,
-        country_count,
-        subclass_count,
-        refreshed_at
-      ) VALUES ${valueSql}
-    `,
-    params,
-  );
 }
 
 async function refreshMaterializedHistorySummary(scType = "faq") {
@@ -1316,7 +1322,9 @@ export async function getGenerationHistorySummary(input: HistoryFilters): Promis
   if (supportsMaterializedHistorySummary(input)) {
     const materialized = await readMaterializedHistorySummary(input);
     if (materialized) {
-      setHistoryCacheValue(generationHistorySummaryCache, cacheKey, materialized);
+      if (materialized.summaryStatus === "ready") {
+        setHistoryCacheValue(generationHistorySummaryCache, cacheKey, materialized);
+      }
       return materialized;
     }
   }
