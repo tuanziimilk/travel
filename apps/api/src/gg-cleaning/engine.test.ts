@@ -273,6 +273,23 @@ describe("gg cleaning engine", () => {
     expect(result.debugRows[0].final_supported).toBe("yes");
   });
 
+  it("detects NL loyalty yes from bonus card wording in a lead yes sentence", () => {
+    const result = runEval([
+      {
+        term_id: "3b",
+        country: "NL",
+        term_name: "Carrefour",
+        domain: "carrefour.be",
+        subclass: "loyalty program",
+        source_type: "searchlab",
+        snippet: "Ja, via de Carrefour Bonus Card spaar je bonuspunten en krijg je persoonlijke aanbiedingen. De Bonus Card is de voornaamste manier om korting en beloningen te ontvangen.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("yes");
+    expect(result.debugRows[0].final_evidence_sentence).toContain("Bonus Card");
+  });
+
   it("keeps employee no when only swag and general benefits are mentioned", () => {
     const result = runEval([
       {
