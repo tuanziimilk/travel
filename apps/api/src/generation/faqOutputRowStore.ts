@@ -146,7 +146,8 @@ async function ensureGenerationRowsTable() {
       PRIMARY KEY (job_id, row_index),
       KEY idx_generation_rows_status (status),
       KEY idx_generation_rows_subclass (subclass),
-      KEY idx_generation_rows_country (country)
+      KEY idx_generation_rows_country (country),
+      KEY idx_generation_rows_job_status_country_subclass_term_row (job_id, status, country, subclass, term_id, row_index)
     )
   `);
   rowsTableEnsured = true;
@@ -340,8 +341,8 @@ export async function listPersistedHistoryRows(scType = "faq") {
         r.brief_introduction,
         r.href_kw,
         r.href_url
-      FROM content_generation_job_rows r
-      INNER JOIN content_generation_jobs j ON j.id = r.job_id
+      FROM content_generation_jobs j
+      INNER JOIN content_generation_job_rows r ON r.job_id = j.id
       WHERE j.sc_type = ? AND r.status = 'success'
       ORDER BY j.created_at DESC, r.row_index ASC
     `,
