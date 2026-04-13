@@ -3086,6 +3086,501 @@ describe("gg cleaning engine", () => {
     expect(result.debugRows[0].final_supported).toBe("no");
   });
 
+  it("detects NL shipping yes and extracts euro threshold from vanaf phrasing", () => {
+    const result = runEval([
+      {
+        term_id: "nl-shipping-yes",
+        country: "NL",
+        term_name: "vidaXL",
+        domain: "vidaxl.nl",
+        subclass: "shipping",
+        source_type: "searchlab",
+        snippet: "Ja, vidaXL.nl biedt gratis verzending aan. Bestellingen met een totale waarde vanaf €70 worden gratis bezorgd.",
+      },
+      {
+        term_id: "nl-shipping-yes",
+        country: "NL",
+        term_name: "vidaXL",
+        domain: "vidaxl.nl",
+        subclass: "shipping",
+        source_type: "aimode",
+        snippet: "Gratis verzending geldt vanaf €70. Onder de €70 betaal je €4,99 verzendkosten.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("yes");
+    expect(result.debugRows[0].final_value).toBe("min_free_shipping: 70 EUR");
+  });
+
+  it("keeps NL shipping no when physical shipping is not applicable", () => {
+    const result = runEval([
+      {
+        term_id: "nl-shipping-no",
+        country: "NL",
+        term_name: "Sunweb",
+        domain: "sunweb.nl",
+        subclass: "shipping",
+        source_type: "searchlab",
+        snippet: "Sunweb is een online reisorganisatie en gratis verzending is niet van toepassing. Er is geen sprake van verzendkosten voor fysieke producten.",
+      },
+      {
+        term_id: "nl-shipping-no",
+        country: "NL",
+        term_name: "Sunweb",
+        domain: "sunweb.nl",
+        subclass: "shipping",
+        source_type: "aimode",
+        snippet: "Geen gratis verzending: het gaat om digitale boekingen en niet om fysieke levering.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+    expect(result.debugRows[0].final_value).toBe("");
+  });
+
+  it("detects FR shipping yes and extracts euro threshold from a partir de phrasing", () => {
+    const result = runEval([
+      {
+        term_id: "fr-shipping-yes",
+        country: "FR",
+        term_name: "Victorinox",
+        domain: "victorinox.com",
+        subclass: "shipping",
+        source_type: "searchlab",
+        snippet: "Victorinox propose la livraison gratuite a partir de 50 EUR en France. En dessous de ce montant, des frais de port s'appliquent.",
+      },
+      {
+        term_id: "fr-shipping-yes",
+        country: "FR",
+        term_name: "Victorinox",
+        domain: "victorinox.com",
+        subclass: "shipping",
+        source_type: "aimode",
+        snippet: "Livraison offerte des 50 EUR d'achat.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("yes");
+    expect(result.debugRows[0].final_value).toBe("min_free_shipping: 50 EUR");
+  });
+
+  it("keeps FR shipping no for service-only merchants", () => {
+    const result = runEval([
+      {
+        term_id: "fr-shipping-no",
+        country: "FR",
+        term_name: "Dekra",
+        domain: "dekra-norisko.fr",
+        subclass: "shipping",
+        source_type: "searchlab",
+        snippet: "Le site dekra-norisko.fr ne propose pas de livraison gratuite car il s'agit d'un prestataire de services et non d'un site de vente de produits physiques.",
+      },
+      {
+        term_id: "fr-shipping-no",
+        country: "FR",
+        term_name: "Dekra",
+        domain: "dekra-norisko.fr",
+        subclass: "shipping",
+        source_type: "aimode",
+        snippet: "Pas de livraison gratuite: il s'agit d'un service de controle technique.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("detects NL student yes/no phrasing", () => {
+    const yesResult = runEval([
+      {
+        term_id: "nl-student-yes",
+        country: "NL",
+        term_name: "Kamera Express",
+        domain: "kamera-express.nl",
+        subclass: "student",
+        source_type: "searchlab",
+        snippet: "Kamera Express biedt studentenkorting aan. Studenten krijgen 10% korting op geselecteerde merken.",
+      },
+      {
+        term_id: "nl-student-yes",
+        country: "NL",
+        term_name: "Kamera Express",
+        domain: "kamera-express.nl",
+        subclass: "student",
+        source_type: "aimode",
+        snippet: "Er is korting voor studenten op geselecteerde producten.",
+      },
+    ]);
+    const noResult = runEval([
+      {
+        term_id: "nl-student-no",
+        country: "NL",
+        term_name: "Sunweb",
+        domain: "sunweb.nl",
+        subclass: "student",
+        source_type: "searchlab",
+        snippet: "Sunweb.nl heeft geen structurele, vaste studentenkorting.",
+      },
+      {
+        term_id: "nl-student-no",
+        country: "NL",
+        term_name: "Sunweb",
+        domain: "sunweb.nl",
+        subclass: "student",
+        source_type: "aimode",
+        snippet: "Geen officiele studentenkorting gevonden.",
+      },
+    ]);
+
+    expect(yesResult.debugRows[0].final_supported).toBe("yes");
+    expect(noResult.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("detects FR student yes/no phrasing", () => {
+    const yesResult = runEval([
+      {
+        term_id: "fr-student-yes",
+        country: "FR",
+        term_name: "Orange",
+        domain: "orange.fr",
+        subclass: "student",
+        source_type: "searchlab",
+        snippet: "La boutique Orange propose une reduction etudiante avec une remise reservee aux 18-26 ans.",
+      },
+      {
+        term_id: "fr-student-yes",
+        country: "FR",
+        term_name: "Orange",
+        domain: "orange.fr",
+        subclass: "student",
+        source_type: "aimode",
+        snippet: "Offre etudiante: remise sur certains forfaits pour les jeunes.",
+      },
+    ]);
+    const noResult = runEval([
+      {
+        term_id: "fr-student-no",
+        country: "FR",
+        term_name: "Courir",
+        domain: "courir.com",
+        subclass: "student",
+        source_type: "searchlab",
+        snippet: "Courir.com ne propose generalement pas de reduction specifique pour les etudiants.",
+      },
+      {
+        term_id: "fr-student-no",
+        country: "FR",
+        term_name: "Courir",
+        domain: "courir.com",
+        subclass: "student",
+        source_type: "aimode",
+        snippet: "Pas de reduction etudiante dediee.",
+      },
+    ]);
+
+    expect(yesResult.debugRows[0].final_supported).toBe("yes");
+    expect(noResult.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("detects NL newsletter yes with euro sign-up discount", () => {
+    const result = runEval([
+      {
+        term_id: "nl-newsletter-yes",
+        country: "NL",
+        term_name: "vidaXL",
+        domain: "vidaxl.nl",
+        subclass: "newsletter/first order/sign up/",
+        source_type: "searchlab",
+        snippet: "Bij vidaXL.nl ontvang je een korting van €5 zodra je je inschrijft voor de nieuwsbrief.",
+      },
+      {
+        term_id: "nl-newsletter-yes",
+        country: "NL",
+        term_name: "vidaXL",
+        domain: "vidaxl.nl",
+        subclass: "newsletter/first order/sign up/",
+        source_type: "aimode",
+        snippet: "Schrijf je in voor de nieuwsbrief en ontvang €5 korting op je eerste bestelling.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("yes");
+    expect(result.debugRows[0].final_value).toBe("5 EUR");
+  });
+
+  it("detects FR newsletter yes and prefers FR-localized official URL", () => {
+    const result = runEval([
+      {
+        term_id: "fr-newsletter-yes",
+        country: "FR",
+        term_name: "Courir",
+        domain: "courir.com",
+        subclass: "newsletter/first order/sign up/",
+        source_type: "searchlab",
+        snippet: "Courir offre generalement une reduction de 10% sur la premiere commande lors de l'inscription a la newsletter.",
+        url: "https://www.courir.com/en-ww/newsletter",
+      },
+      {
+        term_id: "fr-newsletter-yes",
+        country: "FR",
+        term_name: "Courir",
+        domain: "courir.com",
+        subclass: "newsletter/first order/sign up/",
+        source_type: "aimode",
+        snippet: "Inscrivez-vous a la newsletter pour profiter d'une offre de bienvenue.",
+        url: "https://www.courir.com/fr-fr/newsletter-inscription",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("yes");
+    expect(result.debugRows[0].final_value).toBe("10%");
+    expect(result.debugRows[0].final_url).toBe("https://www.courir.com/fr-fr/newsletter-inscription");
+  });
+
+  it("keeps NL newsletter no when the snippet says the discount is not directly confirmed", () => {
+    const result = runEval([
+      {
+        term_id: "nl-newsletter-no-confirmed",
+        country: "NL",
+        term_name: "100%Hardcore",
+        domain: "100procenthardcore.com",
+        subclass: "newsletter/first order/sign up/",
+        source_type: "searchlab",
+        snippet: "Op basis van de beschikbare informatie is niet direct bevestigd dat 100procenthardcore.com een automatische korting geeft bij inschrijving voor de nieuwsbrief.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps FR newsletter no when another entity offers the newsletter discount", () => {
+    const result = runEval([
+      {
+        term_id: "fr-newsletter-cross-entity-no",
+        country: "FR",
+        term_name: "Terrésens",
+        domain: "terressens.com",
+        subclass: "newsletter/first order/sign up/",
+        source_type: "searchlab",
+        snippet: "Il semble y avoir une confusion entre deux entites distinctes: Terres de France propose une reduction pour l'inscription a leur newsletter, mais Terrésens n'indique pas de reduction directe systematique pour sa propre newsletter.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("detects FR student yes when the offer is explicitly available via student verification partners", () => {
+    const result = runEval([
+      {
+        term_id: "fr-student-partner-yes",
+        country: "FR",
+        term_name: "& other stories",
+        domain: "stories.com",
+        subclass: "student",
+        source_type: "searchlab",
+        snippet: "& Other Stories propose une reduction etudiant de 12 % accessible via UNiDAYS ou Student Beans.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("yes");
+  });
+
+  it("keeps FR shipping no when only standard shipping fees are described", () => {
+    const result = runEval([
+      {
+        term_id: "fr-shipping-standard-fee-no",
+        country: "FR",
+        term_name: "Terrésens",
+        domain: "terressens.com",
+        subclass: "shipping",
+        source_type: "searchlab",
+        snippet: "Le site utilise une plateforme Spreadshop, ce qui implique des frais de port standards plutot qu'une livraison gratuite automatique sur tout.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps NL shipping no when shipping is not applicable to digital courses", () => {
+    const result = runEval([
+      {
+        term_id: "nl-shipping-digital-no",
+        country: "NL",
+        term_name: "123-theorie",
+        domain: "123-theorie.nl",
+        subclass: "shipping",
+        source_type: "searchlab",
+        snippet: "Aangezien het hier gaat om digitale diensten en cursussen, is gratis verzending niet van toepassing op fysieke producten.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps NL student no when school-themed promo codes are only comparable to student discounts", () => {
+    const result = runEval([
+      {
+        term_id: "nl-student-school-code-no",
+        country: "NL",
+        term_name: "123-theorie",
+        domain: "123-theorie.nl",
+        subclass: "student",
+        source_type: "searchlab",
+        snippet: "123-theorie.nl biedt regelmatig kortingen aan, waaronder acties die vergelijkbaar zijn met studentenkortingen. Er is geen dedicated studentenkorting bevestigd.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps FR student no when the merchant is not in student discount programs", () => {
+    const result = runEval([
+      {
+        term_id: "fr-student-program-no",
+        country: "FR",
+        term_name: "1001 Casquettes",
+        domain: "1001casquettes.com",
+        subclass: "student",
+        source_type: "searchlab",
+        snippet: "Pas de partenariat etudiant : le site ne figure pas dans les programmes de reduction etudiants courants comme UNiDAYS.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps FR newsletter no when the offer is not explicitly confirmed", () => {
+    const result = runEval([
+      {
+        term_id: "fr-newsletter-not-confirmed-no",
+        country: "FR",
+        term_name: "100percent",
+        domain: "100percent.eu",
+        subclass: "newsletter/first order/sign up/",
+        source_type: "searchlab",
+        snippet: "Il n'est pas explicitement confirme que 100percent.eu offre une reduction systematique uniquement pour l'inscription a la newsletter.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps FR newsletter no for explicit 'not indicated' and 'not mentioned' variants from addon residuals", () => {
+    const result = runEval([
+      {
+        term_id: "fr-newsletter-residual-no-1",
+        country: "FR",
+        term_name: "1001 Coffres",
+        domain: "1001coffres.com",
+        subclass: "newsletter/first order/sign up/",
+        source_type: "searchlab",
+        snippet: "D'apres les informations disponibles, il n'est pas explicitement indique que 1001coffres.com offre une reduction immediate pour l'inscription a la newsletter.",
+      },
+      {
+        term_id: "fr-newsletter-residual-no-2",
+        country: "FR",
+        term_name: "1001 deguisement",
+        domain: "1001deguisement.fr",
+        subclass: "newsletter/first order/sign up/",
+        source_type: "searchlab",
+        snippet: "1001deguisement.fr ne mentionne pas explicitement une reduction liee specifiquement a l'inscription a la newsletter. Une offre Facebook de 5% existe separement.",
+      },
+      {
+        term_id: "fr-newsletter-residual-no-3",
+        country: "FR",
+        term_name: "1001 Lits",
+        domain: "1001lits.com",
+        subclass: "newsletter/first order/sign up/",
+        source_type: "searchlab",
+        snippet: "1001lits.com ne mentionne pas explicitement de reduction immediate offerte specifiquement pour l'inscription a la newsletter.",
+      },
+      {
+        term_id: "fr-newsletter-residual-no-4",
+        country: "FR",
+        term_name: "1001 montres",
+        domain: "1001-montres.fr",
+        subclass: "newsletter/first order/sign up/",
+        source_type: "searchlab",
+        snippet: "Il n'est pas indique de reduction automatique ou permanente offerte specifiquement pour l'inscription a la newsletter sur 1001-montres.fr.",
+      },
+      {
+        term_id: "fr-newsletter-residual-no-5",
+        country: "FR",
+        term_name: "1001 Nuits enchantees",
+        domain: "1001-nuits-enchantees.fr",
+        subclass: "newsletter/first order/sign up/",
+        source_type: "searchlab",
+        snippet: "Les resultats de recherche ne confirment pas specifiquement une reduction immediate pour l'inscription a la newsletter sur 1001-nuits-enchantees.fr.",
+      },
+    ]);
+
+    expect(result.debugRows.every((row) => row.final_supported === "no")).toBe(true);
+    expect(result.debugRows[1].final_value).toBe("");
+  });
+
+  it("keeps NL newsletter no when no direct information confirms a fixed sign-up discount", () => {
+    const result = runEval([
+      {
+        term_id: "nl-newsletter-no-direct-info",
+        country: "NL",
+        term_name: "123-theorie",
+        domain: "123-theorie.nl",
+        subclass: "newsletter/first order/sign up/",
+        source_type: "searchlab",
+        snippet: "Er is geen directe informatie beschikbaar die bevestigt dat 123-theorie.nl een vaste korting geeft specifiek voor het inschrijven op de nieuwsbrief.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps NL newsletter no for no-direct-indication wording from addon residuals", () => {
+    const result = runEval([
+      {
+        term_id: "nl-newsletter-no-direct-indication",
+        country: "NL",
+        term_name: "123Apparatuur",
+        domain: "123apparatuur.nl",
+        subclass: "newsletter/first order/sign up/",
+        source_type: "searchlab",
+        snippet: "Op basis van de beschikbare informatie is er geen directe aanwijzing dat 123apparatuur.nl een specifieke korting biedt bij inschrijving voor de nieuwsbrief.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps FR student no when there is no specific information confirming a student discount", () => {
+    const result = runEval([
+      {
+        term_id: "fr-student-no-specific-info",
+        country: "FR",
+        term_name: "100 percent",
+        domain: "100percent.eu",
+        subclass: "student",
+        source_type: "searchlab",
+        snippet: "Il n'y a pas d'information specifique confirmant une reduction etudiant sur le site officiel europeen actuel.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps FR student no when no student-specific offer is currently mentioned", () => {
+    const result = runEval([
+      {
+        term_id: "fr-student-currently-mentioned-no",
+        country: "FR",
+        term_name: "1001 montres",
+        domain: "1001-montres.fr",
+        subclass: "student",
+        source_type: "searchlab",
+        snippet: "Il n'y a pas d'offre etudiante specifique actuellement mentionnee sur 1001-montres.fr.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
   it("detects app yes for official mobile app benefits like exclusive vouchers and early access", () => {
     const result = runEval([
       {

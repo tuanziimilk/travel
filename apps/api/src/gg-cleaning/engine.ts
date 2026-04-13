@@ -428,8 +428,34 @@ const FACT_FALLBACK_CLUES: Record<string, FactFallbackClues> = {
     ],
   },
   "newsletter/first order/sign up/": {
-    positive: ["newsletter-rabatt", "newsletter rabatt", "zapis do newslettera", "newsletter signup", "sign up for the newsletter", "pierwsze zakupy", "first order discount", "welcome coupon"],
-    negative: ["no newsletter discount", "no sign up discount", "no first order discount"],
+    positive: [
+      "newsletter-rabatt",
+      "newsletter rabatt",
+      "zapis do newslettera",
+      "newsletter signup",
+      "sign up for the newsletter",
+      "pierwsze zakupy",
+      "first order discount",
+      "welcome coupon",
+      "newsletter",
+      "nieuwsbrief",
+      "inschrijving",
+      "nieuwsbrief korting",
+      "inschrijven voor de nieuwsbrief",
+      "welkomstkorting",
+      "offre de bienvenue",
+      "inscription newsletter",
+      "premiere commande",
+    ],
+    negative: [
+      "no newsletter discount",
+      "no sign up discount",
+      "no first order discount",
+      "geen nieuwsbriefkorting",
+      "geen korting bij inschrijving",
+      "pas de reduction newsletter",
+      "pas d offre de bienvenue",
+    ],
   },
   "new customer": {
     positive: ["new customer discount", "nuevo cliente", "new customer offer", "welcome benefit", "신규 회원 혜택", "웰컴 쿠폰"],
@@ -502,8 +528,15 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
     positive: [
       /\bfree (?:standard )?(?:shipping|delivery)\b/i,
       /\b(?:shipping|delivery) is free\b/i,
+      /\blivraison standard gratuite\b/i,
+      /\bexp[eé]dition standard gratuite\b/i,
       /\bkostenloser versand\b/i,
       /\bversandkostenfrei\b/i,
+      /\bgratis (?:verzending|bezorging|levering)\b/i,
+      /\b(?:gratis|kosteloos) (?:bezorgd|geleverd)\b/i,
+      /\blivraison gratuite\b/i,
+      /\blivraison offerte\b/i,
+      /\bfrais de port offerts?\b/i,
       /\benv[ií]o gratis\b/i,
       /\bdarmowa dostawa\b/i,
       /\b무료 배송\b/i,
@@ -512,6 +545,16 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
       /\bno free (?:shipping|delivery)\b/i,
       /\bdoes not offer free (?:shipping|delivery)\b/i,
       /\bkeinen? kostenlosen versand\b/i,
+      /\bgeen gratis (?:verzending|bezorging|levering)\b/i,
+      /\bniet van toepassing\b.{0,30}\b(?:verzend|bezorg|lever)\w*\b/i,
+      /\bgeen sprake van\b.{0,25}\bverzendkosten\b/i,
+      /\bdigitale diensten?\b.{0,35}\b(?:gratis )?(?:verzending|bezorging|levering)\b.{0,25}\bniet van toepassing\b/i,
+      /\bcursussen?\b.{0,35}\b(?:gratis )?(?:verzending|bezorging|levering)\b.{0,25}\bniet van toepassing\b/i,
+      /\b(?:gratis )?(?:verzending|bezorging|levering)\b.{0,35}\bniet van toepassing\b.{0,25}\bfysieke producten\b/i,
+      /\bpas de livraison gratuite\b/i,
+      /\bne propose pas de livraison gratuite\b/i,
+      /\bne propose généralement pas de livraison gratuite\b/i,
+      /\bil s'?agit d'?un prestataire de services\b/i,
       /\bno ofrece env[ií]o gratis\b/i,
       /\bnie oferuje darmowej dostawy\b/i,
       /\b무료 배송\S* 없\S*/i,
@@ -860,6 +903,12 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
   "newsletter/first order/sign up/": {
     positive: [
       /\b(?:newsletter|sign ?up|signup|subscribe|first order|welcome code|suscripci[oó]n|newsletter-anmeldung)\b.{0,35}\b(?:discount|offer|code|coupon|rabat|zniżk|할인)\b/i,
+      /\bnieuwsbrief\b.{0,35}\b(?:korting|welkomstkorting|aanbieding|actie(?:code)?|kortingscode)\b/i,
+      /\b(?:schrijf je in|inschrijven|aanmelden)\b.{0,35}\b(?:nieuwsbrief|mail(?:ing)?lijst)\b.{0,35}\b(?:korting|welkomstkorting|code)\b/i,
+      /\beerste bestelling\b.{0,35}\b(?:korting|welkomstkorting|kortingscode)\b/i,
+      /\b(?:r[ée]duction|offre|code promo|remise)\b.{0,35}\b(?:newsletter|inscription|premi[èe]re commande|offre de bienvenue)\b/i,
+      /\b(?:newsletter|inscription|inscrivez-vous|abonnez-vous)\b.{0,35}\b(?:r[ée]duction|offre|code promo|remise|avantage)\b/i,
+      /\boffre de bienvenue\b/i,
       /\bdescuento de bienvenida\b.{0,35}\b(?:primer pedido|registrarse|primera vez)\b/i,
       /\bprimer pedido\b.{0,25}\b(?:al registrarse|por registrarte|bienvenida)\b/i,
       /\bnewsletter-rabatt\b/i,
@@ -880,6 +929,30 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
     ],
     negative: [
       /\bno\b.{0,25}\b(?:newsletter|sign ?up|first order)\b.{0,15}\b(?:discount|offer)\b/i,
+      /\bgeen\b.{0,30}\b(?:nieuwsbriefkorting|korting bij inschrijving|welkomstkorting)\b/i,
+      /\bgeen korting\b.{0,35}\b(?:bij|na)\b.{0,20}\b(?:inschrijving|aanmelding|de nieuwsbrief|eerste bestelling)\b/i,
+      /\bniet direct\b.{0,30}\b(?:te bevestigen|bevestigd)\b.{0,25}\b(?:of )?.{0,30}\b(?:korting|welkomstkorting|nieuwsbrief)\b/i,
+      /\bgeen directe informatie beschikbaar\b.{0,35}\bbevestigt\b.{0,30}\b(?:vaste )?korting\b/i,
+      /\bgeen directe bevestiging\b.{0,35}\b(?:korting|welkomstkorting|nieuwsbrief)\b/i,
+      /\bgeen directe korting\b.{0,35}\b(?:bij|aan)\b.{0,20}\b(?:inschrijving|aanmelding|nieuwsbrief)\b/i,
+      /\bwordt niet expliciet vermeld\b.{0,35}\b(?:dat|of)\b.{0,30}\b(?:korting|welkomstkorting|nieuwsbrief)\b/i,
+      /\bzonder melding van een korting\b/i,
+      /\bgeen directe aanwijzing\b.{0,30}\b(?:korting|nieuwsbrief)\b/i,
+      /\bgeen directe aanwijzing\b.{0,60}\b(?:specifieke|vaste)?\b.{0,20}\bkorting\b.{0,30}\b(?:biedt|geeft)\b.{0,35}\b(?:inschrijving|nieuwsbrief)\b/i,
+      /\bpas de r[ée]duction\b.{0,35}\b(?:newsletter|[àa] l'?inscription|premi[èe]re commande|offre de bienvenue)\b/i,
+      /\baucune?\b.{0,35}\b(?:r[ée]duction|offre)\b.{0,20}\b(?:newsletter|de bienvenue|[àa] l'?inscription|premi[èe]re commande)\b/i,
+      /\bil n'?est pas explicitement mentionn[ée]?\b.{0,35}\b(?:que )?.{0,30}\b(?:newsletter|inscription|r[ée]duction|offre)\b/i,
+      /\bil n'?est pas explicitement confirm[ée]?\b.{0,35}\b(?:que )?.{0,30}\b(?:newsletter|inscription|r[ée]duction|offre)\b/i,
+      /\bil n'?est pas explicitement indiqu[ée]?\b.{0,60}\b(?:que )?.{0,40}\br[ée]duction imm[ée]diate\b.{0,40}\bnewsletter\b/i,
+      /\bne mentionne pas explicitement\b.{0,70}\br[ée]duction\b.{0,30}\bli[ée]e sp[ée]cifiquement\b.{0,35}\bnewsletter\b/i,
+      /\bne mentionne pas explicitement\b.{0,70}\br[ée]duction imm[ée]diate\b.{0,40}\bofferte sp[ée]cifiquement\b.{0,35}\bnewsletter\b/i,
+      /\bil n'?est pas indiqu[ée]?\b.{0,70}\br[ée]duction automatique ou permanente\b.{0,40}\bofferte sp[ée]cifiquement\b.{0,35}\bnewsletter\b/i,
+      /\bles r[ée]sultats de recherche ne confirment pas sp[ée]cifiquement\b.{0,70}\br[ée]duction imm[ée]diate\b.{0,35}\bnewsletter\b/i,
+      /\bne met pas explicitement en avant\b.{0,35}\b(?:une )?(?:r[ée]duction|offre|code promo)\b/i,
+      /\bil n'?est pas explicitement indiqu[ée]?\b.{0,35}\bqu['’]une r[ée]duction\b/i,
+      /\bn'?indiquent pas\b.{0,35}\b(?:de )?r[ée]duction directe\b.{0,25}\bsyst[ée]matique\b/i,
+      /\bconfusion entre deux entit[ée]s distinctes\b/i,
+      /\bterres de france\b.{0,50}\bterr[ée]sens\b/i,
       /\bno\b.{0,35}\b(?:direct|specific)\b.{0,20}\binformation\b.{0,20}\b(?:newsletter|sign ?up)\b.{0,15}\b(?:discount|offer)\b/i,
       /\bkeine?\b.{0,35}\bexpliziten?\b.{0,20}\binformationen?\b.{0,20}\b(?:[uü]ber )?(?:einen )?(?:direkten )?rabatt\b.{0,20}\bbei\b.{0,20}\bnewsletter/i,
       /\bdoes not\b.{0,30}\b(?:currently )?(?:advertise|offer)\b.{0,20}\b(?:a )?(?:standard )?(?:first order|newsletter sign[- ]?up|sign up)\b.{0,15}\b(?:discount|offer)\b/i,
@@ -951,13 +1024,43 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
     ],
   },
   student: {
-    positive: [/\b(?:student|studenten|estudiante|uczni\w*|학생)\b.{0,35}\b(?:discount|offer|rabat|zniżk|할인)\b/i],
+    positive: [
+      /\b(?:student|studenten|studentenkorting|estudiante|uczni\w*|학생)\b.{0,35}\b(?:discount|offer|rabat|zniżk|korting|voordeel|할인)\b/i,
+      /\b(?:korting|voordeel)\b.{0,35}\b(?:voor )?studenten\b/i,
+      /\b(?:r[ée]duction|offre|tarif|remise)\b.{0,35}\b[ée]tudiant\w*\b/i,
+      /\b[ée]tudiant\w*\b.{0,35}\b(?:r[ée]duction|offre|tarif|remise)\b/i,
+      /\b(?:unidays|student beans)\b.{0,45}\b(?:r[ée]duction|code|offre)\b/i,
+      /\b(?:r[ée]duction|code|offre)\b.{0,45}\b(?:unidays|student beans)\b/i,
+      /\b(?:unidays|student beans)\b.{0,45}\b(?:12\s*%|10\s*%)\b/i,
+    ],
     negative: [
       /\bno\b.{0,25}\b(?:student|student discount)\b/i,
       /\bno\b.{0,25}\b(?:official|public|specific)\b.{0,20}\bstudent\b.{0,20}\b(?:discount|offer)\b/i,
       /\bkeinen?\b.{0,30}\b(?:spezifischen|offiziellen|öffentlich bekannten)\b.{0,20}\bstudentenrabatt\b/i,
       /\bes gibt\b.{0,25}\bkeinen?\b.{0,35}\b(?:spezifischen|offiziellen|öffentlich bekannten)\b.{0,20}\bstudentenrabatt\b/i,
       /es gibt derzeit keinen spezifischen,\s*öffentlich bekannten studentenrabatt/i,
+      /\bgeen\b.{0,30}\b(?:structurele|vaste|publieke|specifieke)?\b.{0,20}\bstudentenkorting\b/i,
+      /\bgeen\b.{0,35}\b(?:offici[eë]le|publieke)\b.{0,20}\bstudentenkorting\b/i,
+      /\bvergelijkbaar met studentenkortingen\b/i,
+      /\bvergelijkbaar zijn met studentenkortingen\b/i,
+      /\bgeen speciale studentenkortingen via bekende platforms gevonden\b/i,
+      /\b(?:ne propose pas|aucune?|ne mentionne pas explicitement)\b.{0,35}\b(?:de )?(?:r[ée]duction|offre|tarif)\b.{0,20}[ée]tudiant\w*\b/i,
+      /\bpas d['’]?offre\b.{0,30}\b(?:de )?(?:r[ée]duction|offre|tarif)\b.{0,25}\bsp[ée]cifiquement d[ée]di[ée]e aux [ée]tudiant\w*\b/i,
+      /\baucune?\b.{0,30}\boffre [ée]tudiant\w*\b.{0,25}\bsp[ée]cifique\b.{0,25}\bactuellement mentionn\w*\b/i,
+      /\bpas d['’]?offre [ée]tudiant\w*\b.{0,25}\bsp[ée]cifique\b.{0,25}\bexplicitement mentionn\w*\b/i,
+      /\bil n['’]?y a pas d['’]?offre [ée]tudiant\w*\b.{0,25}\bsp[ée]cifique\b.{0,25}\bactuellement mentionn\w*\b/i,
+      /\bpas de r[ée]duction\b.{0,25}[ée]tudiant\w*\b/i,
+      /\baucune?\b.{0,35}\br[ée]duction\b.{0,20}[ée]tudiant\w*\b/i,
+      /\bil n'?existe pas d'?information sp[ée]cifique confirmant\b.{0,35}\b(?:une )?r[ée]duction [ée]tudiant/i,
+      /\bil n['’]y a pas d['’]information sp[ée]cifique confirmant\b.{0,35}\b(?:une )?r[ée]duction [ée]tudiant/i,
+      /\bne propose pas de r[ée]duction sp[ée]cifiquement d[ée]di[ée]e aux [ée]tudiants\b/i,
+      /\bne propose pas explicitement de r[ée]duction [ée]tudiant\b/i,
+      /\bil n['’]est pas explicitement mentionn[ée]?\b.{0,35}\b(?:de )?r[ée]duction [ée]tudiant/i,
+      /\bprix discount\b.{0,35}\bplut[oô]t qu['’]une r[ée]duction [ée]tudiant\b/i,
+      /\bpas de partenariat [ée]tudiant\b/i,
+      /\bne figure pas dans les programmes de r[ée]duction [ée]tudiants\b/i,
+      /\bil n'?y a pas d'?indication claire\b.{0,25}\br[ée]duction [ée]tudiant\b/i,
+      /\bil n'?est pas explicitement mentionn[ée]?\b.{0,35}\br[ée]duction [ée]tudiant\b/i,
       /\bno hay\b.{0,35}\b(?:informaci[oó]n|confirmaci[oó]n)\b.{0,25}\b(?:que confirme|de)\b.{0,25}\bdescuentos?\b.{0,20}\bpara estudiantes\b/i,
       /\bno hay informaci[oó]n espec[ií]fica\b.{0,35}\bque confirme\b.{0,25}\bdescuentos?\b.{0,20}\bpara estudiantes\b/i,
       /no hay informaci[oó]n espec[ií]fica que confirme descuentos para estudiantes/i,
@@ -1096,6 +1199,10 @@ const NEWSLETTER_STRONG_POSITIVE_PATTERNS = [
   /\bsign(?:ing)? up\b.{0,35}\b(?:discount code|welcome discount|10% off|15% off|free delivery)\b/i,
   /\bnew subscribers?\b.{0,35}\b(?:10% off|15% off|discount code|welcome discount|free delivery)\b/i,
   /\bfirst order\b.{0,35}\b(?:discount code|welcome discount|10% off|15% off)\b/i,
+  /\bnieuwsbrief\b.{0,35}\b(?:korting|welkomstkorting|aanbieding|actie(?:code)?|kortingscode)\b/i,
+  /\b(?:schrijf je in|inschrijven|aanmelden)\b.{0,35}\b(?:nieuwsbrief|mail(?:ing)?lijst)\b.{0,35}\b(?:korting|welkomstkorting|code)\b/i,
+  /\b(?:newsletter|inscription|inscrivez-vous|abonnez-vous)\b.{0,35}\b(?:r[ée]duction|offre|code promo|remise|avantage)\b/i,
+  /\boffre de bienvenue\b/i,
   /(?:新订阅者|新用户).{0,24}(?:首单优惠|首单折扣|折扣代码|欢迎优惠|欢迎邮件)/,
   /(?:订阅电子邮件|注册电子邮件|邮件订阅).{0,24}(?:首单|折扣码|优惠码|欢迎邮件)/,
 ];
@@ -1131,6 +1238,8 @@ const SHIPPING_INFERENCE_ONLY_PATTERNS = [
   /\btracking\b.{0,25}\bis standard\b/i,
   /\bsuelen realizarse\b/i,
   /\bpart of specific promotions or past incentives\b/i,
+  /\bmeestal\b.{0,25}\bvia\b.{0,20}\b(?:codes?|acties|promoties)\b/i,
+  /\bg[eé]n[eé]ralement\b.{0,25}\bvia\b.{0,20}\b(?:codes?|offres ponctuelles|promotions)\b/i,
 ];
 
 const SHIPPING_HARD_NEGATIVE_PATTERNS = [
@@ -1138,6 +1247,14 @@ const SHIPPING_HARD_NEGATIVE_PATTERNS = [
   /\bno\b.{0,25}\b(?:standing|standard|regular|current)\b.{0,20}\bfree (?:shipping|delivery)\b/i,
   /\bfree (?:shipping|delivery)\b.{0,50}\b(?:only )?(?:through|via)\b.{0,25}\b(?:third-?party|marketplaces?|retailers?)\b/i,
   /\boccasional\b.{0,20}\bfree (?:shipping|delivery)\b.{0,35}\b(?:promotion|promotions|campaigns?)\b.{0,35}\b(?:rather than|not)\b.{0,20}\b(?:a )?(?:standard|regular|standing)\b/i,
+  /\bgeen standaard gratis (?:verzending|bezorging|levering)\b/i,
+  /\b(?:gratis|kosteloze) (?:verzending|bezorging|levering)\b.{0,40}\b(?:alleen|soms|via)\b.{0,20}\b(?:acties|promoties|codes?)\b/i,
+  /\bpas de livraison gratuite\b.{0,40}\b(?:standard|g[ée]n[ée]rale|hors promotion)\b/i,
+  /\blivraison gratuite\b.{0,50}\b(?:principalement|uniquement|parfois)\b.{0,25}\b(?:via|gr[aâ]ce [àa]|avec)\b.{0,20}\b(?:codes?|promotions|offres ponctuelles)\b/i,
+  /\bfrais de port standards?\b.{0,40}\b(?:plut[oô]t que|et non)\b.{0,25}\b(?:une )?livraison gratuite\b/i,
+  /\bplutot qu['’]?une livraison gratuite\b/i,
+  /\bnon mentionn[ée]e?\b.{0,30}\bcomme syst[eé]matique\b/i,
+  /\bne mentionne pas\b.{0,35}\b(?:de )?livraison gratuite\b/i,
 ];
 
 const CROSS_ENTITY_CONTRAST_PATTERNS = [
@@ -2660,11 +2777,11 @@ const VALUE_REQUIRE_FACT_SIGNAL = new Set([
 ]);
 
 const VALUE_CONTEXT_PATTERNS = [
-  /\b(?:discount|off|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|deal|sale|commission|perks?)\b/i,
-  /\b(?:newsletter|sign[ -]?up|signup|welcome|first order|first purchase|new customer|existing customer|loyalty|membership|member(?:ship)?|refer(?: a friend)?|referral)\b/i,
-  /\b(?:student|teacher|military|veteran|senior|birthday|employee|staff|family|child|kids?|app)\b/i,
-  /\b(?:free shipping|shipping|delivery)\b/i,
-  /\b(?:rabat\w*|zni[żz]k\w*|voucher|gutschein\w*|angebot\w*|willkommensrabatt|newsletter-rabatt|mitarbeiter\w*|versand\w*|versandkostenfrei)\b/i,
+  /\b(?:discount|off|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|deal|sale|commission|perks?|korting|voordeel|remise|r[ée]duction)\b/i,
+  /\b(?:newsletter|sign[ -]?up|signup|welcome|first order|first purchase|new customer|existing customer|loyalty|membership|member(?:ship)?|refer(?: a friend)?|referral|nieuwsbrief|inschrijving|aanmelding|offre de bienvenue|premi[èe]re commande)\b/i,
+  /\b(?:student|teacher|military|veteran|senior|birthday|employee|staff|family|child|kids?|app|studenten|[ée]tudiant\w*)\b/i,
+  /\b(?:free shipping|shipping|delivery|gratis verzending|gratis bezorging|gratis levering|gratis bezorgd|gratis geleverd|livraison gratuite|livraison offerte)\b/i,
+  /\b(?:rabat\w*|zni[żz]k\w*|voucher|gutschein\w*|angebot\w*|willkommensrabatt|newsletter-rabatt|mitarbeiter\w*|versand\w*|versandkostenfrei|welkomstkorting|studentenkorting)\b/i,
   /(?:优惠|折扣|券|返现|积分|礼包|会员)/,
   /\b(?:할인|혜택|쿠폰|포인트|적립)\b/i,
 ];
@@ -2744,6 +2861,15 @@ const APP_VALUE_POSITIVE_PATTERNS = [
 const NEWSLETTER_VALUE_PATTERNS = [
   /\b(?:newsletter|email(?:s)?|mailing list|welcome)\b[^.!?]{0,60}?([0-9]{1,2}(?:[.,][0-9]{1,2})?)\s*%/i,
   /([0-9]{1,2}(?:[.,][0-9]{1,2})?)\s*%[^.!?]{0,60}\b(?:newsletter|email(?:s)?|mailing list|welcome)\b/i,
+  /\b(?:nieuwsbrief|welkomstkorting|inschrijving|aanmelding|newsletter|offre de bienvenue|inscription)\b[^.!?]{0,60}?([0-9]{1,2}(?:[.,][0-9]{1,2})?)\s*%/i,
+  /([0-9]{1,2}(?:[.,][0-9]{1,2})?)\s*%[^.!?]{0,60}\b(?:nieuwsbrief|welkomstkorting|inschrijving|aanmelding|newsletter|offre de bienvenue|inscription)\b/i,
+];
+
+const NEWSLETTER_AMOUNT_VALUE_PATTERNS = [
+  /\b(?:nieuwsbrief|welkomstkorting|inschrijving|aanmelding|newsletter|offre de bienvenue|inscription|premi[èe]re commande)\b[^.!?]{0,60}?([$£€₩])\s*([0-9][0-9.,]*)/i,
+  /([$£€₩])\s*([0-9][0-9.,]*)[^.!?]{0,60}\b(?:nieuwsbrief|welkomstkorting|inschrijving|aanmelding|newsletter|offre de bienvenue|inscription|premi[èe]re commande)\b/i,
+  /\b(?:nieuwsbrief|welkomstkorting|inschrijving|aanmelding|newsletter|offre de bienvenue|inscription|premi[èe]re commande)\b[^.!?]{0,60}?([0-9][0-9.,]*)\s*(USD|GBP|EUR|PLN|KRW)\b/i,
+  /([0-9][0-9.,]*)\s*(USD|GBP|EUR|PLN|KRW)\b[^.!?]{0,60}\b(?:nieuwsbrief|welkomstkorting|inschrijving|aanmelding|newsletter|offre de bienvenue|inscription|premi[èe]re commande)\b/i,
 ];
 
 const NEWSLETTER_VALUE_SKIP_PATTERNS = [
@@ -2754,21 +2880,21 @@ const NEWSLETTER_VALUE_SKIP_PATTERNS = [
 ];
 
 const PERCENT_VALUE_PATTERNS = [
-  /\b(?:discount|off|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|deal|sale|commission|newsletter|signup|sign[ -]?up|welcome|refer(?: a friend)?|referral|member(?:ship)?|loyalty|student|teacher|military|veteran|senior|birthday|employee|staff|family|child|kids?|app|rabat\w*|zni[żz]k\w*|gutschein\w*|angebot\w*|mitarbeiter\w*|willkommensrabatt|newsletter-rabatt)\b[^.!?]{0,40}?([0-9]{1,3}(?:[.,][0-9]{1,2})?)\s*%/i,
-  /([0-9]{1,3}(?:[.,][0-9]{1,2})?)\s*%[^.!?]{0,40}\b(?:off|discount|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|deal|sale|commission|newsletter|signup|sign[ -]?up|welcome|refer(?: a friend)?|referral|member(?:ship)?|loyalty|student|teacher|military|veteran|senior|birthday|employee|staff|family|child|kids?|app|rabat\w*|zni[żz]k\w*|gutschein\w*|angebot\w*|mitarbeiter\w*|willkommensrabatt|newsletter-rabatt)\b/i,
+  /\b(?:discount|off|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|deal|sale|commission|newsletter|signup|sign[ -]?up|welcome|refer(?: a friend)?|referral|member(?:ship)?|loyalty|student|teacher|military|veteran|senior|birthday|employee|staff|family|child|kids?|app|rabat\w*|zni[żz]k\w*|gutschein\w*|angebot\w*|mitarbeiter\w*|willkommensrabatt|newsletter-rabatt|korting|voordeel|welkomstkorting|remise|r[ée]duction)\b[^.!?]{0,40}?([0-9]{1,3}(?:[.,][0-9]{1,2})?)\s*%/i,
+  /([0-9]{1,3}(?:[.,][0-9]{1,2})?)\s*%[^.!?]{0,40}\b(?:off|discount|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|deal|sale|commission|newsletter|signup|sign[ -]?up|welcome|refer(?: a friend)?|referral|member(?:ship)?|loyalty|student|teacher|military|veteran|senior|birthday|employee|staff|family|child|kids?|app|rabat\w*|zni[żz]k\w*|gutschein\w*|angebot\w*|mitarbeiter\w*|willkommensrabatt|newsletter-rabatt|korting|voordeel|welkomstkorting|remise|r[ée]duction)\b/i,
   /\b(?:up to|from|between|upwards of|save)\b[^.!?]{0,20}?([0-9]{1,3}(?:[.,][0-9]{1,2})?)\s*(?:-|to|–)\s*[0-9]{1,3}(?:[.,][0-9]{1,2})?\s*%/i,
 ];
 
 const AMOUNT_VALUE_PATTERNS_BY_SYMBOL = [
-  /\b(?:discount|off|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|gift card|newsletter|signup|sign[ -]?up|welcome|refer(?: a friend)?|referral|member(?:ship)?|loyalty|rabat\w*|zni[żz]k\w*|gutschein\w*|angebot\w*|mitarbeiter\w*|willkommensrabatt)\b[^.!?]{0,40}?([$拢鈧喀])\s*([0-9][0-9.,]*)/i,
-  /([$拢鈧喀])\s*([0-9][0-9.,]*)[^.!?]{0,40}\b(?:discount|off|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|gift card|newsletter|signup|sign[ -]?up|welcome|refer(?: a friend)?|referral|member(?:ship)?|loyalty|rabat\w*|zni[żz]k\w*|gutschein\w*|angebot\w*|mitarbeiter\w*|willkommensrabatt)\b/i,
-  /\b(?:discount|off|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|gift card|newsletter|signup|sign[ -]?up|welcome|refer(?: a friend)?|referral|member(?:ship)?|loyalty|rabat\w*|zni[żz]k\w*|gutschein\w*|angebot\w*|mitarbeiter\w*|willkommensrabatt)\b[^.!?]{0,40}?([0-9][0-9.,]*)\s*([$£€₩])/i,
-  /([0-9][0-9.,]*)\s*([$£€₩])[^.!?]{0,40}\b(?:discount|off|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|gift card|newsletter|signup|sign[ -]?up|welcome|refer(?: a friend)?|referral|member(?:ship)?|loyalty|rabat\w*|zni[żz]k\w*|gutschein\w*|angebot\w*|mitarbeiter\w*|willkommensrabatt)\b/i,
+  /\b(?:discount|off|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|gift card|newsletter|signup|sign[ -]?up|welcome|refer(?: a friend)?|referral|member(?:ship)?|loyalty|rabat\w*|zni[żz]k\w*|gutschein\w*|angebot\w*|mitarbeiter\w*|willkommensrabatt|korting|voordeel|welkomstkorting|remise|r[ée]duction)\b[^.!?]{0,40}?([$£€₩拢鈧喀])\s*([0-9][0-9.,]*)/i,
+  /([$£€₩拢鈧喀])\s*([0-9][0-9.,]*)[^.!?]{0,40}\b(?:discount|off|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|gift card|newsletter|signup|sign[ -]?up|welcome|refer(?: a friend)?|referral|member(?:ship)?|loyalty|rabat\w*|zni[żz]k\w*|gutschein\w*|angebot\w*|mitarbeiter\w*|willkommensrabatt|korting|voordeel|welkomstkorting|remise|r[ée]duction)\b/i,
+  /\b(?:discount|off|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|gift card|newsletter|signup|sign[ -]?up|welcome|refer(?: a friend)?|referral|member(?:ship)?|loyalty|rabat\w*|zni[żz]k\w*|gutschein\w*|angebot\w*|mitarbeiter\w*|willkommensrabatt|korting|voordeel|welkomstkorting|remise|r[ée]duction)\b[^.!?]{0,40}?([0-9][0-9.,]*)\s*([$£€₩])/i,
+  /([0-9][0-9.,]*)\s*([$£€₩])[^.!?]{0,40}\b(?:discount|off|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|gift card|newsletter|signup|sign[ -]?up|welcome|refer(?: a friend)?|referral|member(?:ship)?|loyalty|rabat\w*|zni[żz]k\w*|gutschein\w*|angebot\w*|mitarbeiter\w*|willkommensrabatt|korting|voordeel|welkomstkorting|remise|r[ée]duction)\b/i,
 ];
 
 const AMOUNT_VALUE_PATTERNS_BY_CODE = [
-  /\b(?:discount|off|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|gift card|newsletter|signup|sign[ -]?up|welcome|refer(?: a friend)?|referral|member(?:ship)?|loyalty|rabat\w*|zni[żz]k\w*|gutschein\w*|angebot\w*|mitarbeiter\w*|willkommensrabatt)\b[^.!?]{0,40}?([0-9][0-9.,]*)\s*(USD|GBP|EUR|PLN|KRW)\b/i,
-  /([0-9][0-9.,]*)\s*(USD|GBP|EUR|PLN|KRW)\b[^.!?]{0,40}\b(?:discount|off|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|gift card|newsletter|signup|sign[ -]?up|welcome|refer(?: a friend)?|referral|member(?:ship)?|loyalty|rabat\w*|zni[żz]k\w*|gutschein\w*|angebot\w*|mitarbeiter\w*|willkommensrabatt)\b/i,
+  /\b(?:discount|off|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|gift card|newsletter|signup|sign[ -]?up|welcome|refer(?: a friend)?|referral|member(?:ship)?|loyalty|rabat\w*|zni[żz]k\w*|gutschein\w*|angebot\w*|mitarbeiter\w*|willkommensrabatt|korting|voordeel|welkomstkorting|remise|r[ée]duction)\b[^.!?]{0,40}?([0-9][0-9.,]*)\s*(USD|GBP|EUR|PLN|KRW)\b/i,
+  /([0-9][0-9.,]*)\s*(USD|GBP|EUR|PLN|KRW)\b[^.!?]{0,40}\b(?:discount|off|save|voucher|coupon|promo(?:tion)?|code|offer|benefit|reward|credit|cashback|rebate|bonus|gift card|newsletter|signup|sign[ -]?up|welcome|refer(?: a friend)?|referral|member(?:ship)?|loyalty|rabat\w*|zni[żz]k\w*|gutschein\w*|angebot\w*|mitarbeiter\w*|willkommensrabatt|korting|voordeel|welkomstkorting|remise|r[ée]duction)\b/i,
 ];
 
 function buildValueCandidateTexts(factType: string, text: string) {
@@ -2858,17 +2984,35 @@ function extractValue(factType: string, existence: GgCleaningExistence, snippet:
         })
         .find(Boolean);
       if (newsletterMatch?.[1]) return normalizeValue(`${newsletterMatch[1]}%`);
+      const newsletterAmountMatch = NEWSLETTER_AMOUNT_VALUE_PATTERNS
+        .map((pattern) => {
+          const match = pattern.exec(candidate);
+          if (match) pattern.lastIndex = 0;
+          return match;
+        })
+        .find(Boolean);
+      if (newsletterAmountMatch?.[1] && newsletterAmountMatch?.[2]) {
+        if (SYMBOL_TO_CURRENCY[newsletterAmountMatch[1]]) {
+          return normalizeValue(`${newsletterAmountMatch[2]} ${SYMBOL_TO_CURRENCY[newsletterAmountMatch[1]]}`);
+        }
+        if (SYMBOL_TO_CURRENCY[newsletterAmountMatch[2]]) {
+          return normalizeValue(`${newsletterAmountMatch[1]} ${SYMBOL_TO_CURRENCY[newsletterAmountMatch[2]]}`);
+        }
+        if (/^(USD|GBP|EUR|PLN|KRW)$/i.test(newsletterAmountMatch[2])) {
+          return normalizeValue(`${newsletterAmountMatch[1]} ${newsletterAmountMatch[2].toUpperCase()}`);
+        }
+      }
     }
 
     if (factType === "shipping") {
-      const bySymbol = candidate.match(/\b(?:over|above|from|orders? over|minimum order of)\s*([$拢鈧喀])\s*([0-9][0-9.,]*)/i);
+      const bySymbol = candidate.match(/\b(?:over|above|from|orders? over|minimum order of|vanaf|d[eè]s|[àa] partir de)\s*([$£€₩拢鈧喀])\s*([0-9][0-9.,]*)/i);
       if (bySymbol) return normalizeValue(`min_free_shipping: ${bySymbol[2].replace(/[.,]+$/g, "")} ${SYMBOL_TO_CURRENCY[bySymbol[1]]}`);
-      const byTrailingSymbol = candidate.match(/\b(?:over|above|from|orders? over|minimum order of|ab|ab einem bestellwert von|ab einem warenwert von)\s*([0-9][0-9.,]*)\s*([$£€₩])/i);
+      const byTrailingSymbol = candidate.match(/\b(?:over|above|from|orders? over|minimum order of|ab|ab einem bestellwert von|ab einem warenwert von|vanaf|d[eè]s|[àa] partir de)\s*([0-9][0-9.,]*)\s*([$£€₩])/i);
       if (byTrailingSymbol) return normalizeValue(`min_free_shipping: ${byTrailingSymbol[1].replace(/[.,]+$/g, "")} ${SYMBOL_TO_CURRENCY[byTrailingSymbol[2]]}`);
-      const byCode = candidate.match(/\b(?:over|above|from|orders? over|minimum order of)\s*([0-9][0-9.,]*)\s*(USD|GBP|EUR|PLN|KRW)\b/i);
+      const byCode = candidate.match(/\b(?:over|above|from|orders? over|minimum order of|vanaf|d[eè]s|[àa] partir de)\s*([0-9][0-9.,]*)\s*(USD|GBP|EUR|PLN|KRW)\b/i);
       if (byCode) return normalizeValue(`min_free_shipping: ${byCode[1].replace(/[.,]+$/g, "")} ${byCode[2].toUpperCase()}`);
       const inferredCurrency = defaultCurrencyForCountry(country);
-      const byBareAmount = candidate.match(/\b(?:over|above|from|orders? over|minimum order of|ab|ab einem bestellwert von|ab einem warenwert von)\s*([0-9][0-9.,]*[0-9]|[0-9])(?:[.,]+)?(?!\d)/i);
+      const byBareAmount = candidate.match(/\b(?:over|above|from|orders? over|minimum order of|ab|ab einem bestellwert von|ab einem warenwert von|vanaf|d[eè]s|[àa] partir de)\s*([0-9][0-9.,]*[0-9]|[0-9])(?:[.,]+)?(?!\d)/i);
       if (byBareAmount && inferredCurrency) return normalizeValue(`min_free_shipping: ${byBareAmount[1].replace(/[.,]+$/g, "")} ${inferredCurrency}`);
       continue;
     }
@@ -2931,15 +3075,15 @@ const URL_STRONG_HINTS: Partial<Record<string, string[]>> = {
   "gift card": ["gift-card", "giftcard"],
   "loyalty program": ["loyalty", "rewards", "member", "vip", "loyalty-offer"],
   military: ["military"],
-  "newsletter/first order/sign up/": ["newsletter", "subscribe", "signup", "sign-up", "sign_up", "welcome"],
+  "newsletter/first order/sign up/": ["newsletter", "subscribe", "signup", "sign-up", "sign_up", "welcome", "nieuwsbrief", "aanmelden", "inschrijven", "inscription", "abonnement", "abonnez-vous", "premiere-commande", "premier-achat", "offre-bienvenue"],
   nhs: ["nhs"],
   "price guanrantee": ["money-back", "guarantee", "return-refund", "refund", "returns"],
   "price guarantee": ["money-back", "guarantee", "return-refund", "refund", "returns"],
   referral: ["refer-a-friend", "referral", "invite"],
   return: ["return-refund", "returns", "refund", "money-back", "guarantee"],
   senior: ["senior"],
-  shipping: ["shipping", "delivery", "delivery-methods", "postage"],
-  student: ["student-discount", "student", "education", "voucher-codes", "discount-code"],
+  shipping: ["shipping", "delivery", "delivery-methods", "postage", "verzending", "bezorging", "levering", "livraison", "expedition"],
+  student: ["student-discount", "student", "education", "voucher-codes", "discount-code", "studentenkorting", "etudiant", "etudiante", "reduction-etudiant"],
   teacher: ["teacher", "teachers", "discountsforteachers"],
 };
 
@@ -2961,7 +3105,7 @@ const URL_NEGATIVE_HINTS: Partial<Record<string, string[]>> = {
   "price guarantee": ["faq", "student-discount", "career"],
   referral: ["student-discount", "career"],
   return: ["student-discount", "career"],
-  shipping: ["student-discount", "career"],
+  shipping: ["student-discount", "career", "carriere", "emploi", "carrieres"],
   senior: ["student-discount", "career", "discount-code", "voucher-codes", "offer"],
   teacher: ["career", "student-discount"],
 };
