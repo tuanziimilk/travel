@@ -1,9 +1,9 @@
 import * as Select from "@radix-ui/react-select";
 import * as XLSX from "xlsx";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import { faqOutputUploadMaxFileBytes, faqOutputUploadMaxRows, uploaderOptions } from "@about-demo/trpc";
-import { trpc } from "../lib/trpc";
+import { trpc, trpcClient } from "../lib/trpc";
 import { formatChinaDateTime } from "../utils/time";
 
 type ParsedFaqOutputRow = {
@@ -31,6 +31,29 @@ type RoutePreviewRow = {
   status: string;
 };
 
+type RoutePreviewCacheEntry = Omit<RoutePreviewRow, "count" | "factType">;
+
+type QueueRow = {
+  id: string;
+  status: string;
+  uploader: string;
+  note: string;
+  totalRows: number;
+  executableRows: number;
+  successRows: number;
+  failedRows: number;
+  skippedRows: number;
+  totalTokensSum: number;
+  estimatedCostUsdSum: number;
+  errorReason: string;
+  resultFileName?: string;
+  resultFilePath?: string;
+  canDownload?: boolean;
+  createdAt?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+};
+
 const faqOutputUploadLimitMb = Math.round(faqOutputUploadMaxFileBytes / 1024 / 1024);
 const faqOutputApiBase = (() => {
   const trpcUrl = import.meta.env.VITE_TRPC_URL || "/trpc";
@@ -54,14 +77,50 @@ const faqOutputTemplateCsv = [
 ].join("\n");
 
 const queueStatusText: Record<string, string> = {
-  queued: "\u6392\u961f\u4e2d",
-  pending: "\u6392\u961f\u4e2d",
-  running: "\u6267\u884c\u4e2d",
-  done: "\u5df2\u5b8c\u6210",
-  partial_failed: "\u90e8\u5206\u5931\u8d25",
-  failed: "\u5931\u8d25",
-  cancelled: "\u5df2\u53d6\u6d88",
+  queued: "排队中",
+  pending: "排队中",
+  running: "执行中",
+  done: "已完成",
+  partial_failed: "部分失败",
+  failed: "失败",
+  cancelled: "已取消",
 };
+
+function normalizeHeader(value: string) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function formatUsd(value?: number | string | null) {
+  return `$${Number(value || 0).toFixed(6)}`;
+}
+
+function formatDateTime(value?: string | Date | null) {
+  return formatChinaDateTime(value);
+}
+
+function formatJobId(value: string) {
+  if (!value) return "-";
+  if (value.length <= 12) return value;
+  return `${value.slice(0, 8)}...${value.slice(-4)}`;
+}
+
+function safeValue(value: string | null | undefined) {
+  return value && value.trim() ? value : "-";
+}
+
+function getReadableFaqOutputError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  const details = error as { data?: { httpStatus?: number } } | undefined;
+  const httpStatus = details?.data?.httpStatus;
+
+  if (httpStatus === 413 || /\b413\b/.test(message)) {
+    return `上传请求过大，当前 FAQ 输出仅支持 ${faqOutputUploadLimitMb}MB 以内文件，请压缩后重试。`;
+  }
+  if (/Unexpected token '<'|not valid JSON|<html/i.test(message)) {
+    return "接口返回了 HTML 页面而不是 JSON，通常是请求过大或网关拦截，请检查文件大小后重试。";
+  }
+  return message || "FAQ 输出生成失败";
+}
 
 function getDisplayJobStatus(item: {
   status: string;
@@ -82,36 +141,25 @@ function getDisplayJobStatus(item: {
   return item.status;
 }
 
-function normalizeHeader(value: string) {
-  return String(value || "").trim().toLowerCase();
+function getExecutionProgress(item: {
+  executableRows: number;
+  successRows: number;
+  failedRows: number;
+}) {
+  const processedRows = item.successRows + item.failedRows;
+  const percent = item.executableRows > 0 ? Math.min(100, Math.round((processedRows / item.executableRows) * 100)) : 0;
+  return { processedRows, percent };
 }
 
-function formatUsd(value?: number | string | null) {
-  return `$${Number(value || 0).toFixed(6)}`;
-}
-
-function getReadableFaqOutputError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error || "");
-  const details = error as { data?: { httpStatus?: number } } | undefined;
-  const httpStatus = details?.data?.httpStatus;
-
-  if (httpStatus === 413 || /\b413\b/.test(message)) {
-    return `上传请求过大，已被网关拦截。FAQ 输出目前仅支持 ${faqOutputUploadLimitMb}MB 以内文件，请压缩后重试。`;
-  }
-  if (/Unexpected token '<'|not valid JSON|<html/i.test(message)) {
-    return "接口返回了 HTML 页面而不是 JSON，通常是上传请求过大或服务网关拦截。请检查文件大小后重试。";
-  }
-  return message || "FAQ 输出生成失败";
-}
-
-function formatJobId(value: string) {
-  if (!value) return "-";
-  if (value.length <= 12) return value;
-  return `${value.slice(0, 8)}...${value.slice(-4)}`;
-}
-
-function formatDateTime(value?: string | Date | null) {
-  return formatChinaDateTime(value);
+function getCompactSummaryText(item: {
+  executableRows: number;
+  totalRows: number;
+  successRows: number;
+  failedRows: number;
+  skippedRows: number;
+}) {
+  const { processedRows, percent } = getExecutionProgress(item);
+  return `${processedRows}/${item.executableRows} (${percent}%)，跳过 ${item.skippedRows}，总计 ${item.totalRows}`;
 }
 
 function formatDuration(start?: string | Date | null, end?: string | Date | null) {
@@ -131,7 +179,9 @@ function formatDuration(start?: string | Date | null, end?: string | Date | null
 
 function mapOutputRow(row: Record<string, unknown>): ParsedFaqOutputRow {
   const mapped = new Map<string, unknown>();
-  for (const [key, value] of Object.entries(row)) mapped.set(normalizeHeader(key), value);
+  for (const [key, value] of Object.entries(row)) {
+    mapped.set(normalizeHeader(key), value);
+  }
   const pick = (key: string) => String(mapped.get(key) ?? "").trim();
   return {
     term_id: pick("term_id"),
@@ -197,7 +247,7 @@ async function downloadFileFromResponse(response: Response, fallbackFileName: st
       throw new Error("下载请求过大，已被网关拦截，请稍后重试。");
     }
     if (/text\/html/i.test(contentType)) {
-      throw new Error("下载接口返回了 HTML 页面而不是文件，请确认 API 服务和网关配置是否正常。");
+      throw new Error("下载接口返回了 HTML 页面而不是文件，请检查 API 和网关代理配置。");
     }
     try {
       const payload = (await response.json().catch(() => ({}))) as { error?: string };
@@ -207,10 +257,12 @@ async function downloadFileFromResponse(response: Response, fallbackFileName: st
     }
     throw new Error(message);
   }
+
   const contentType = response.headers.get("Content-Type") || "";
   if (/text\/html/i.test(contentType)) {
-    throw new Error("下载接口返回了页面内容，结果文件未正确从 API 返回。请刷新后重试。");
+    throw new Error("下载接口返回了页面内容，结果文件没有从 API 正确返回，请刷新后重试。");
   }
+
   const blob = await response.blob();
   const disposition = response.headers.get("Content-Disposition") || "";
   const encodedNameMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
@@ -221,43 +273,6 @@ async function downloadFileFromResponse(response: Response, fallbackFileName: st
   const url = URL.createObjectURL(blob);
   triggerBrowserDownload(url, fileName);
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-function getSummaryText(item: {
-  executableRows: number;
-  totalRows: number;
-  successRows: number;
-  failedRows: number;
-  skippedRows: number;
-}) {
-  const processedRows = item.successRows + item.failedRows;
-  const percent = item.executableRows > 0 ? Math.round((processedRows / item.executableRows) * 100) : 0;
-  return `${processedRows}/${item.executableRows} 已处理（${percent}%），总计 ${item.totalRows}，跳过 ${item.skippedRows}`;
-}
-
-function getExecutionProgress(item: {
-  executableRows: number;
-  successRows: number;
-  failedRows: number;
-}) {
-  const processedRows = item.successRows + item.failedRows;
-  const percent = item.executableRows > 0 ? Math.min(100, Math.round((processedRows / item.executableRows) * 100)) : 0;
-  return { processedRows, percent };
-}
-
-function getCompactSummaryText(item: {
-  executableRows: number;
-  totalRows: number;
-  successRows: number;
-  failedRows: number;
-  skippedRows: number;
-}) {
-  const { processedRows, percent } = getExecutionProgress(item);
-  return `${processedRows}/${item.executableRows} (${percent}%)，跳过 ${item.skippedRows}`;
-}
-
-function safeValue(value: string | null | undefined) {
-  return value && value.trim() ? value : "-";
 }
 
 function useSlowHint(active: boolean, delayMs = 3000) {
@@ -275,10 +290,27 @@ function useSlowHint(active: boolean, delayMs = 3000) {
   return slow;
 }
 
+function usePageVisible() {
+  const [visible, setVisible] = useState(() => {
+    if (typeof document === "undefined") return true;
+    return document.visibilityState === "visible";
+  });
+
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const onVisibilityChange = () => setVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
+
+  return visible;
+}
+
 export function FaqOutputPage() {
   const scType = "faq" as const;
   const uploadInputId = "faq-output-file-input";
   const queuePageSize = 20;
+  const isPageVisible = usePageVisible();
   const [uploader, setUploader] = useState<(typeof uploaderOptions)[number]>("Ella");
   const [note, setNote] = useState("");
   const [fileName, setFileName] = useState("");
@@ -293,19 +325,22 @@ export function FaqOutputPage() {
   const [showRouteDetails, setShowRouteDetails] = useState(false);
   const [queuePage, setQueuePage] = useState(1);
   const [lastQueueTotal, setLastQueueTotal] = useState(0);
-  const utils = trpc.useUtils();
+  const [routePreviewPendingCount, setRoutePreviewPendingCount] = useState(0);
+  const routeCacheRef = useRef(new Map<string, RoutePreviewCacheEntry>());
 
   const queueQuery = trpc.generation.queue.useQuery(
     { scType, page: queuePage, pageSize: queuePageSize },
     {
       placeholderData: (previousData) => previousData,
+      refetchOnWindowFocus: false,
       refetchInterval: (query) => {
-        const list = query.state.data?.rows ?? [];
+        if (!isPageVisible) return false;
+        const list = (query.state.data?.rows ?? []) as QueueRow[];
         const hasActive = list.some((item) => {
           const displayStatus = getDisplayJobStatus(item);
           return displayStatus === "queued" || displayStatus === "pending" || displayStatus === "running";
         });
-        return hasActive ? 1500 : 4000;
+        return hasActive ? 2000 : 8000;
       },
     },
   );
@@ -319,8 +354,10 @@ export function FaqOutputPage() {
   const statusQuery = trpc.generation.status.useQuery(
     { jobId: currentJobId },
     {
-      enabled: Boolean(currentJobId),
+      enabled: Boolean(currentJobId) && isPageVisible,
+      refetchOnWindowFocus: false,
       refetchInterval: (query) => {
+        if (!isPageVisible) return false;
         const status = query.state.data?.status;
         if (!status) return 1500;
         return status === "done" || status === "failed" || status === "cancelled" ? false : 1500;
@@ -339,30 +376,120 @@ export function FaqOutputPage() {
       .sort((a, b) => b.count - a.count || a.factType.localeCompare(b.factType));
   }, [rows]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const orderedFactTypes = factTypeStats.map((item) => item.factType);
+    const buildRows = () => {
+      const nextRows = factTypeStats
+        .map((item) => {
+          const cached = routeCacheRef.current.get(item.factType);
+          if (!cached) return null;
+          return {
+            factType: item.factType,
+            count: item.count,
+            ...cached,
+          } satisfies RoutePreviewRow;
+        })
+        .filter(Boolean) as RoutePreviewRow[];
+      setRoutePreviewRows(nextRows);
+    };
+
+    if (!orderedFactTypes.length) {
+      setRoutePreviewRows([]);
+      setRoutePreviewPendingCount(0);
+      return undefined;
+    }
+
+    buildRows();
+    const unresolved = orderedFactTypes.filter((factType) => !routeCacheRef.current.has(factType));
+    setRoutePreviewPendingCount(unresolved.length);
+    if (!unresolved.length) return undefined;
+
+    const batchSize = showRouteDetails ? 12 : 6;
+    const loadBatch = async (startIndex: number) => {
+      const batch = unresolved.slice(startIndex, startIndex + batchSize);
+      if (!batch.length || cancelled) return;
+      let resolved: Array<RoutePreviewCacheEntry & { factType: string }> = [];
+      try {
+        resolved = await Promise.all(
+          batch.map(async (factType) => {
+            const data = await trpcClient.generation.resolveSkill.query({
+              capability: "generation",
+              scType,
+              subclass: factType === "(empty)" ? "" : factType,
+            });
+            return {
+              factType,
+              skillLabel: data.skillLabel,
+              skillKey: data.skillKey,
+              source: data.source,
+              notes: data.notes,
+              status: data.status,
+            };
+          }),
+        );
+      } catch (err) {
+        if (!cancelled) {
+          setError(getReadableFaqOutputError(err));
+          setRoutePreviewPendingCount(0);
+        }
+        return;
+      }
+
+      if (cancelled) return;
+      for (const item of resolved) {
+        routeCacheRef.current.set(item.factType, {
+          skillLabel: item.skillLabel,
+          skillKey: item.skillKey,
+          source: item.source,
+          notes: item.notes,
+          status: item.status,
+        });
+      }
+      buildRows();
+      const remaining = Math.max(0, unresolved.length - (startIndex + batch.length));
+      setRoutePreviewPendingCount(remaining);
+      if (remaining > 0) {
+        window.setTimeout(() => {
+          void loadBatch(startIndex + batch.length);
+        }, showRouteDetails ? 0 : 160);
+      }
+    };
+
+    void loadBatch(0);
+    return () => {
+      cancelled = true;
+    };
+  }, [factTypeStats, scType, showRouteDetails]);
+
   const routeSummary = useMemo(() => {
     const executableCount = routePreviewRows
       .filter((item) => item.status === "active")
       .reduce((sum, item) => sum + item.count, 0);
     return {
-      factTypeCount: routePreviewRows.length,
+      factTypeCount: factTypeStats.length,
       executableCount,
       skippedCount: Math.max(0, rows.length - executableCount),
       activeSkillCount: routePreviewRows.filter((item) => item.status === "active").length,
     };
-  }, [routePreviewRows, rows.length]);
+  }, [factTypeStats.length, routePreviewRows, rows.length]);
 
+  const queueRows = (queueQuery.data?.rows ?? []) as QueueRow[];
+  const queueHasMore = Boolean((queueQuery.data as { hasMore?: boolean } | undefined)?.hasMore);
+  const queueTotalIsEstimated = Boolean((queueQuery.data as { totalIsEstimated?: boolean } | undefined)?.totalIsEstimated);
+  const queueKnownTotal = queueQuery.data?.total ?? lastQueueTotal;
   const queueTotalPages = useMemo(() => {
-    const total = queueQuery.data?.total ?? lastQueueTotal;
-    return Math.max(1, Math.ceil(total / queuePageSize));
-  }, [lastQueueTotal, queueQuery.data?.total]);
+    if (queueKnownTotal > 0) return Math.max(1, Math.ceil(queueKnownTotal / queuePageSize));
+    return Math.max(1, queuePage + (queueHasMore ? 1 : 0));
+  }, [queueHasMore, queueKnownTotal, queuePage, queuePageSize]);
 
   const isQueueInitialLoading = queueQuery.isLoading && !queueQuery.data;
   const isQueueRefreshing = queueQuery.isFetching && !!queueQuery.data;
   const queueSlow = useSlowHint(isQueueInitialLoading || isQueueRefreshing);
 
   useEffect(() => {
-    if (typeof queueQuery.data?.total === "number") {
-      setLastQueueTotal(queueQuery.data.total);
+    if (typeof queueQuery.data?.total === "number" && queueQuery.data.total >= 0) {
+      setLastQueueTotal((current) => Math.max(current, queueQuery.data?.total ?? 0));
     }
   }, [queueQuery.data?.total]);
 
@@ -379,43 +506,6 @@ export function FaqOutputPage() {
     if (!statusQuery.data) return "";
     return getDisplayJobStatus(statusQuery.data);
   }, [statusQuery.data]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadRoutes() {
-      if (!factTypeStats.length) {
-        setRoutePreviewRows([]);
-        return;
-      }
-
-      const next = await Promise.all(
-        factTypeStats.slice(0, 50).map(async (item) => {
-          const data = await utils.client.generation.resolveSkill.query({
-            capability: "generation",
-            scType,
-            subclass: item.factType === "(empty)" ? "" : item.factType,
-          });
-          return {
-            factType: item.factType,
-            count: item.count,
-            skillLabel: data.skillLabel,
-            skillKey: data.skillKey,
-            source: data.source,
-            notes: data.notes,
-            status: data.status,
-          };
-        }),
-      );
-
-      if (!cancelled) setRoutePreviewRows(next);
-    }
-
-    void loadRoutes();
-    return () => {
-      cancelled = true;
-    };
-  }, [factTypeStats, scType, utils.client]);
 
   useEffect(() => {
     if (!statusQuery.data) return;
@@ -444,16 +534,18 @@ export function FaqOutputPage() {
       setRows([]);
       setFileName("");
       setSelectedFile(null);
+      setRoutePreviewRows([]);
+      setRoutePreviewPendingCount(0);
       return;
     }
 
     try {
       if (nextFile.size > faqOutputUploadMaxFileBytes) {
-        throw new Error(`上传文件过大，请控制在 ${faqOutputUploadLimitMb}MB 以内后再试`);
+        throw new Error(`上传文件过大，请控制在 ${faqOutputUploadLimitMb}MB 以内后再试。`);
       }
       const parsed = await parseUploadFile(nextFile);
       if (parsed.length > faqOutputUploadMaxRows) {
-        throw new Error(`上传行数过多，请控制在 ${faqOutputUploadMaxRows} 行以内后再试`);
+        throw new Error(`上传行数过多，请控制在 ${faqOutputUploadMaxRows} 行以内后再试。`);
       }
       setRows(parsed);
       setFileName(nextFile.name);
@@ -536,6 +628,9 @@ export function FaqOutputPage() {
     }
   }
 
+  const routePreviewLoading = routePreviewPendingCount > 0;
+  const canRun = Boolean(selectedFile) && !runMutation.isPending && routeSummary.executableCount > 0;
+
   return (
     <div className="grid faq-output-page">
       <section className="section-header faq-output-header faq-poster-header">
@@ -573,6 +668,21 @@ export function FaqOutputPage() {
           </div>
         </div>
 
+        <div className="output-status-row faq-output-status-row">
+          <div className="output-status-chip" title={fileName || "未上传"}>
+            <span>当前文件</span>
+            <strong>{fileName || "未上传"}</strong>
+          </div>
+          <div className="output-status-chip">
+            <span>识别行数</span>
+            <strong>{rows.length}</strong>
+          </div>
+          <div className="output-status-chip">
+            <span>可执行行数</span>
+            <strong>{routeSummary.executableCount}</strong>
+          </div>
+        </div>
+
         <div className="output-upload-bar">
           <div
             className={`field faq-output-upload-field${isDragActive ? " is-drag-active" : ""}`}
@@ -591,7 +701,7 @@ export function FaqOutputPage() {
             <label className="output-dropzone faq-output-dropzone" htmlFor={uploadInputId} title={fileName || "点击或拖拽文件到此处上传"}>
               <span className="output-dropzone-copy">
                 <strong>{fileName || "点击或拖拽文件到此处上传"}</strong>
-                <span>支持 `.csv` 和 `.xlsx`，系统会读取首个工作表</span>
+                <span>支持 `.csv` 和 `.xlsx`，系统会读取第一个工作表。</span>
               </span>
             </label>
             <input
@@ -603,23 +713,10 @@ export function FaqOutputPage() {
             />
             <div className="upload-limit-banner" role="note">
               <span className="upload-limit-banner-kicker">上传上限</span>
-              <p>建议不超过 {faqOutputUploadLimitMb}MB / 约 {faqOutputUploadMaxRows} 条，超过将直接拦截。</p>
+              <p>
+                建议不超过 {faqOutputUploadLimitMb}MB / 约 {faqOutputUploadMaxRows} 行，超过将直接拦截。
+              </p>
             </div>
-          </div>
-        </div>
-
-        <div className="output-status-row faq-output-status-row">
-          <div className="output-status-chip" title={fileName || "未上传"}>
-            <span>当前文件</span>
-            <strong>{fileName || "未上传"}</strong>
-          </div>
-          <div className="output-status-chip">
-            <span>识别行数</span>
-            <strong>{rows.length}</strong>
-          </div>
-          <div className="output-status-chip">
-            <span>可执行行数</span>
-            <strong>{routeSummary.executableCount}</strong>
           </div>
         </div>
 
@@ -648,12 +745,7 @@ export function FaqOutputPage() {
         ) : null}
 
         <div className="upload-actions faq-output-primary-action">
-          <button
-            className="btn-primary"
-            type="button"
-            disabled={!selectedFile || runMutation.isPending || routeSummary.executableCount === 0}
-            onClick={() => void runGeneration()}
-          >
+          <button className="btn-primary" type="button" disabled={!canRun} onClick={() => void runGeneration()}>
             {runMutation.isPending ? "生成中..." : "开始生成"}
           </button>
         </div>
@@ -664,9 +756,9 @@ export function FaqOutputPage() {
           <div>
             <h3>路由摘要</h3>
             <p className="muted output-summary-copy">
-              {routePreviewRows.length
-                ? `识别到 ${routeSummary.factTypeCount} 种 fact_type，可执行 ${routeSummary.executableCount} 行，将跳过 ${routeSummary.skippedCount} 行。`
-                : "上传文件后，这里会告诉你哪些 fact_type 已接入真实执行，哪些会被跳过。"}
+              {factTypeStats.length
+                ? `识别到 ${routeSummary.factTypeCount} 种 fact_type，当前已确认可执行 ${routeSummary.executableCount} 行，将跳过 ${routeSummary.skippedCount} 行。`
+                : "上传文件后，这里会展示 fact_type 命中的 skill 路由情况。"}
             </p>
           </div>
           <button className="btn-ghost output-inline-btn faq-poster-btn-small" type="button" onClick={() => setShowRouteDetails((prev) => !prev)}>
@@ -692,6 +784,12 @@ export function FaqOutputPage() {
             <strong>{routeSummary.activeSkillCount}</strong>
           </div>
         </div>
+
+        {routePreviewLoading ? (
+          <p className="muted" style={{ marginTop: 14 }}>
+            正在分批解析路由，已优先加载当前可见内容，剩余 {routePreviewPendingCount} 项继续补充中。
+          </p>
+        ) : null}
 
         {showRouteDetails ? (
           <div className="table-scroll faq-output-table-scroll">
@@ -756,7 +854,7 @@ export function FaqOutputPage() {
               </tr>
             </thead>
             <tbody>
-              {(queueQuery.data?.rows ?? []).map((item) => {
+              {queueRows.map((item) => {
                 const hasResult = Boolean(item.resultFilePath) || item.canDownload || Boolean(item.resultFileName) || item.status === "done" || item.status === "failed";
                 const itemProgress = getExecutionProgress(item);
                 const displayStatus = getDisplayJobStatus(item);
@@ -805,7 +903,7 @@ export function FaqOutputPage() {
                   <td colSpan={10}>FAQ 输出任务加载中...</td>
                 </tr>
               ) : null}
-              {!isQueueInitialLoading && (queueQuery.data?.rows?.length ?? 0) === 0 ? (
+              {!isQueueInitialLoading && queueRows.length === 0 ? (
                 <tr>
                   <td colSpan={10}>暂无 FAQ 输出任务。</td>
                 </tr>
@@ -815,13 +913,18 @@ export function FaqOutputPage() {
         </div>
 
         <div className="upload-actions faq-pagination-row">
-          <span className="muted">共 {queueQuery.data?.total ?? lastQueueTotal} 条任务</span>
-          <span className="muted" style={{ minHeight: 20, flex: 1, textAlign: "center" }}>
+          <span className="muted">
+            共 {queueKnownTotal}
+            {queueTotalIsEstimated ? "+" : ""} 条任务
+          </span>
+          <span className="muted faq-pagination-footnote">
             {isQueueRefreshing
-              ? `正在刷新第 ${queuePage} 页，当前先保留上一页数据。`
+              ? `正在加载第 ${queuePage} 页，当前先保留上一页数据。`
               : queueSlow
-                ? "任务较多，队列仍在加载，请稍候。"
-                : ""}
+                ? "任务较多，队列仍在刷新，请稍候。"
+                : !isPageVisible
+                  ? "页面失焦时已暂停自动刷新。"
+                  : ""}
           </span>
           <div className="upload-actions" style={{ gap: 8 }}>
             <button className="btn-ghost" type="button" disabled={queuePage <= 1 || isQueueRefreshing} onClick={() => setQueuePage((prev) => Math.max(1, prev - 1))}>
@@ -833,8 +936,8 @@ export function FaqOutputPage() {
             <button
               className="btn-ghost"
               type="button"
-              disabled={queuePage >= queueTotalPages || isQueueRefreshing}
-              onClick={() => setQueuePage((prev) => Math.min(queueTotalPages, prev + 1))}
+              disabled={(!queueHasMore && queuePage >= queueTotalPages) || isQueueRefreshing}
+              onClick={() => setQueuePage((prev) => Math.min(queueTotalPages + (queueHasMore ? 1 : 0), prev + 1))}
             >
               下一页
             </button>
