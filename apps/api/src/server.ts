@@ -10,6 +10,7 @@ import {
   completeCategoryCalibrationUpload,
   initCategoryCalibrationUpload,
 } from "./category-calibration/uploadStore";
+import { warmGenerationHistoryCaches } from "./generation/faqOutputJobStore";
 import { getGgCleaningJobDownloadPayload } from "./gg-cleaning/jobStore";
 import { appendGgCleaningUploadChunk, appendGgCleaningUploadFileChunk, completeGgCleaningUpload, initGgCleaningUpload } from "./gg-cleaning/uploadStore";
 
@@ -136,4 +137,5 @@ app.get("/health", (_, res) => {
 
 app.listen(env.apiPort, () => {
   console.log(`API running on http://localhost:${env.apiPort}`);
+  warmGenerationHistoryCaches();
 });

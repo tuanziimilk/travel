@@ -74,6 +74,84 @@ type HistoryFilters = {
   pageSize?: number;
 };
 
+type GenerationHistorySummaryResult = {
+  summary: {
+    totalRows: number;
+    uniqueResultCount: number;
+    merchantCount: number;
+    countryCount: number;
+    subclassCount: number;
+  };
+  byCountry: Array<{
+    country: string;
+    rowCount: number;
+    uniqueResultCount: number;
+    merchantCount: number;
+    subclassCount: number;
+  }>;
+  bySubclass: Array<{
+    subclass: string;
+    rowCount: number;
+    uniqueResultCount: number;
+    merchantCount: number;
+    countryCount: number;
+  }>;
+};
+
+type GenerationHistoryRowsResult = {
+  total: number;
+  rows: Array<{
+    jobId: string;
+    uploader: string;
+    createdAt: string;
+    finishedAt: string | null;
+    Country: string;
+    TermID: string;
+    TermName: string;
+    Domain: string;
+    Subclass: string;
+    Titile1: string;
+    "Brief Introduction": string;
+  }>;
+};
+
+const generationHistoryCacheTtlMs = 5 * 60 * 1000;
+const generationHistorySummaryCache = new Map<string, { expiresAt: number; value: unknown }>();
+const generationHistoryRowsCache = new Map<string, { expiresAt: number; value: unknown }>();
+
+function buildGenerationHistoryCacheKey(input: HistoryFilters) {
+  return JSON.stringify({
+    scType: input.scType || "faq",
+    country: input.country || "",
+    subclass: input.subclass || "",
+    uploader: input.uploader || "",
+    keyword: input.keyword || "",
+    startDate: input.startDate || "",
+    endDate: input.endDate || "",
+    page: Number(input.page || 1),
+    pageSize: Number(input.pageSize || 20),
+  });
+}
+
+function getHistoryCacheValue<T>(cache: Map<string, { expiresAt: number; value: unknown }>, key: string) {
+  const cached = cache.get(key);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    cache.delete(key);
+    return null;
+  }
+  return cached.value as T;
+}
+
+function setHistoryCacheValue<T>(cache: Map<string, { expiresAt: number; value: unknown }>, key: string, value: T) {
+  cache.set(key, { expiresAt: Date.now() + generationHistoryCacheTtlMs, value });
+}
+
+function clearGenerationHistoryCaches() {
+  generationHistorySummaryCache.clear();
+  generationHistoryRowsCache.clear();
+}
+
 function isMissingGenerationRowsTableError(error: unknown) {
   const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code || "") : "";
   const message = error instanceof Error ? error.message : String(error || "");
@@ -567,6 +645,7 @@ export async function createGenerationJob(input: {
 }
 
 export async function markGenerationJobQueued(jobId: string) {
+  clearGenerationHistoryCaches();
   const persisted = await getPersistedGenerationSummary(jobId);
   await db
     .update(contentGenerationJobs)
@@ -590,6 +669,7 @@ export async function markGenerationJobQueued(jobId: string) {
 }
 
 export async function markGenerationJobRunning(jobId: string) {
+  clearGenerationHistoryCaches();
   const persisted = await getPersistedGenerationSummary(jobId);
   await db
     .update(contentGenerationJobs)
@@ -658,6 +738,7 @@ export async function completeGenerationJob(input: {
   rowResults: RowRuntimeResult[];
   errorReason?: string;
 }) {
+  clearGenerationHistoryCaches();
   await db
     .update(contentGenerationJobs)
     .set({
@@ -714,6 +795,7 @@ export async function updateGenerationJobProgress(input: {
 }
 
 export async function failGenerationJob(jobId: string, message: string) {
+  clearGenerationHistoryCaches();
   await db
     .update(contentGenerationJobs)
     .set({
@@ -835,7 +917,10 @@ export async function getGenerationJobForRetry(jobId: string) {
   };
 }
 
-export async function getGenerationHistorySummary(input: HistoryFilters) {
+export async function getGenerationHistorySummary(input: HistoryFilters): Promise<GenerationHistorySummaryResult> {
+  const cacheKey = buildGenerationHistoryCacheKey(input);
+  const cached = getHistoryCacheValue<GenerationHistorySummaryResult>(generationHistorySummaryCache, cacheKey);
+  if (cached) return cached;
   const { whereSql, params } = buildPersistedHistoryWhere(input);
 
   try {
@@ -894,7 +979,7 @@ export async function getGenerationHistorySummary(input: HistoryFilters) {
     );
 
     const summaryRow = (summaryRows[0] || {}) as Record<string, unknown>;
-    return {
+    const result = {
       summary: {
         totalRows: Number(summaryRow.total_rows || 0),
         uniqueResultCount: Number(summaryRow.unique_result_count || 0),
@@ -917,13 +1002,20 @@ export async function getGenerationHistorySummary(input: HistoryFilters) {
         countryCount: Number(row.country_count || 0),
       })),
     };
+    setHistoryCacheValue(generationHistorySummaryCache, cacheKey, result);
+    return result;
   } catch (error) {
     if (!isMissingGenerationRowsTableError(error)) throw error;
-    return buildLegacyHistorySummary(await loadLegacyHistoryRows(input));
+    const result = buildLegacyHistorySummary(await loadLegacyHistoryRows(input));
+    setHistoryCacheValue(generationHistorySummaryCache, cacheKey, result);
+    return result;
   }
 }
 
-export async function listGenerationHistoryRows(input: HistoryFilters) {
+export async function listGenerationHistoryRows(input: HistoryFilters): Promise<GenerationHistoryRowsResult> {
+  const cacheKey = buildGenerationHistoryCacheKey(input);
+  const cached = getHistoryCacheValue<GenerationHistoryRowsResult>(generationHistoryRowsCache, cacheKey);
+  if (cached) return cached;
   const page = Math.max(1, Number(input.page || 1));
   const pageSize = Math.max(1, Number(input.pageSize || 20));
   const start = (page - 1) * pageSize;
@@ -944,7 +1036,7 @@ export async function listGenerationHistoryRows(input: HistoryFilters) {
     if (total === 0) {
       const legacyRows = await loadLegacyHistoryRows(input);
       const pagedRows = legacyRows.slice(start, start + pageSize);
-      return {
+      const result = {
         total: legacyRows.length,
         rows: pagedRows.map((row) => ({
           jobId: row.jobId,
@@ -960,6 +1052,8 @@ export async function listGenerationHistoryRows(input: HistoryFilters) {
           "Brief Introduction": row["Brief Introduction"],
         })),
       };
+      setHistoryCacheValue(generationHistoryRowsCache, cacheKey, result);
+      return result;
     }
 
     const [rows] = await pool.query<RowDataPacket[]>(
@@ -985,7 +1079,7 @@ export async function listGenerationHistoryRows(input: HistoryFilters) {
       [...params, pageSize, start],
     );
 
-    return {
+    const result = {
       total,
       rows: rows.map((row) => ({
         jobId: String(row.job_id || ""),
@@ -1001,11 +1095,13 @@ export async function listGenerationHistoryRows(input: HistoryFilters) {
         "Brief Introduction": String(row.brief_introduction || ""),
       })),
     };
+    setHistoryCacheValue(generationHistoryRowsCache, cacheKey, result);
+    return result;
   } catch (error) {
     if (!isMissingGenerationRowsTableError(error)) throw error;
     const legacyRows = await loadLegacyHistoryRows(input);
     const pagedRows = legacyRows.slice(start, start + pageSize);
-    return {
+    const result = {
       total: legacyRows.length,
       rows: pagedRows.map((row) => ({
         jobId: row.jobId,
@@ -1021,6 +1117,8 @@ export async function listGenerationHistoryRows(input: HistoryFilters) {
         "Brief Introduction": row["Brief Introduction"],
       })),
     };
+    setHistoryCacheValue(generationHistoryRowsCache, cacheKey, result);
+    return result;
   }
 }
 
@@ -1047,4 +1145,11 @@ export async function exportGenerationHistory(input: HistoryFilters & { format?:
     mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     contentBase64: Buffer.from(buffer).toString("base64"),
   };
+}
+
+export function warmGenerationHistoryCaches() {
+  setTimeout(() => {
+    void getGenerationHistorySummary({ scType: "faq" }).catch(() => undefined);
+    void listGenerationHistoryRows({ scType: "faq", page: 1, pageSize: 20 }).catch(() => undefined);
+  }, 1500);
 }
