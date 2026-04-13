@@ -660,9 +660,6 @@ export function FaqOutputPage() {
           </button>
         </div>
 
-        {isQueueRefreshing ? <p className="muted">正在刷新第 {queuePage} 页，当前先保留上一页数据。</p> : null}
-        {queueSlow ? <p className="muted">任务较多，队列仍在加载，请稍候。</p> : null}
-
         <div className="table-scroll faq-output-table-scroll">
           <table className="history-table queue-table faq-queue-table">
             <thead>
@@ -740,6 +737,13 @@ export function FaqOutputPage() {
 
         <div className="upload-actions faq-pagination-row">
           <span className="muted">共 {queueQuery.data?.total ?? lastQueueTotal} 条任务</span>
+          <span className="muted" style={{ minHeight: 20, flex: 1, textAlign: "center" }}>
+            {isQueueRefreshing
+              ? `正在刷新第 ${queuePage} 页，当前先保留上一页数据。`
+              : queueSlow
+                ? "任务较多，队列仍在加载，请稍候。"
+                : ""}
+          </span>
           <div className="upload-actions" style={{ gap: 8 }}>
             <button className="btn-ghost" type="button" disabled={queuePage <= 1 || isQueueRefreshing} onClick={() => setQueuePage((prev) => Math.max(1, prev - 1))}>
               上一页
