@@ -847,8 +847,8 @@ export async function getGenerationHistorySummary(input: HistoryFilters) {
           COUNT(DISTINCT CONCAT(r.country, '::', r.term_id)) AS merchant_count,
           COUNT(DISTINCT r.country) AS country_count,
           COUNT(DISTINCT r.subclass) AS subclass_count
-        FROM content_generation_jobs j
-        INNER JOIN content_generation_job_rows r ON r.job_id = j.id
+        FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_id, idx_generation_jobs_sc_type_uploader_id)
+        INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_job_status_country_subclass_term_row) ON r.job_id = j.id
         ${whereSql}
       `,
       params,
@@ -867,8 +867,8 @@ export async function getGenerationHistorySummary(input: HistoryFilters) {
           COUNT(DISTINCT CONCAT(r.term_id, '::', r.subclass)) AS unique_result_count,
           COUNT(DISTINCT r.term_id) AS merchant_count,
           COUNT(DISTINCT r.subclass) AS subclass_count
-        FROM content_generation_jobs j
-        INNER JOIN content_generation_job_rows r ON r.job_id = j.id
+        FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_id, idx_generation_jobs_sc_type_uploader_id)
+        INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_job_status_country_subclass_term_row) ON r.job_id = j.id
         ${whereSql}
         GROUP BY r.country
         ORDER BY unique_result_count DESC, country ASC
@@ -884,8 +884,8 @@ export async function getGenerationHistorySummary(input: HistoryFilters) {
           COUNT(DISTINCT CONCAT(r.country, '::', r.term_id, '::', r.subclass)) AS unique_result_count,
           COUNT(DISTINCT CONCAT(r.country, '::', r.term_id)) AS merchant_count,
           COUNT(DISTINCT r.country) AS country_count
-        FROM content_generation_jobs j
-        INNER JOIN content_generation_job_rows r ON r.job_id = j.id
+        FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_id, idx_generation_jobs_sc_type_uploader_id)
+        INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_job_status_country_subclass_term_row) ON r.job_id = j.id
         ${whereSql}
         GROUP BY r.subclass
         ORDER BY unique_result_count DESC, subclass ASC
@@ -933,8 +933,8 @@ export async function listGenerationHistoryRows(input: HistoryFilters) {
     const [countRows] = await pool.query<RowDataPacket[]>(
       `
         SELECT COUNT(*) AS total_count
-        FROM content_generation_jobs j
-        INNER JOIN content_generation_job_rows r ON r.job_id = j.id
+        FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_id, idx_generation_jobs_sc_type_uploader_id)
+        INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_job_status_country_subclass_term_row) ON r.job_id = j.id
         ${whereSql}
       `,
       params,
@@ -976,8 +976,8 @@ export async function listGenerationHistoryRows(input: HistoryFilters) {
           r.subclass,
           r.title1,
           r.brief_introduction
-        FROM content_generation_jobs j
-        INNER JOIN content_generation_job_rows r ON r.job_id = j.id
+        FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_id, idx_generation_jobs_sc_type_uploader_id)
+        INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_job_status_country_subclass_term_row) ON r.job_id = j.id
         ${whereSql}
         ORDER BY COALESCE(j.finished_at, j.created_at) DESC, r.row_index ASC
         LIMIT ? OFFSET ?
