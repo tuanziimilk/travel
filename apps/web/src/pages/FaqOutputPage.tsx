@@ -866,9 +866,10 @@ export function FaqOutputPage() {
             <tbody>
               {queueRows.map((item) => {
                 const hasResult = Boolean(item.resultFilePath) || item.canDownload || Boolean(item.resultFileName) || item.status === "done" || item.status === "failed";
-                const canDownloadFieldExtract = Boolean(item.canDownloadFieldExtract);
                 const itemProgress = getExecutionProgress(item);
                 const displayStatus = getDisplayJobStatus(item);
+                const isTerminalStatus = displayStatus === "done" || displayStatus === "failed" || displayStatus === "cancelled";
+                const canDownloadFieldExtract = isTerminalStatus && Boolean(item.canDownloadFieldExtract);
                 const activeDownloadVariant = downloadingStates[item.id];
                 return (
                   <tr key={item.id}>
@@ -909,7 +910,7 @@ export function FaqOutputPage() {
                           className="btn-ghost faq-queue-action-btn faq-queue-action-btn-secondary"
                           type="button"
                           disabled={!canDownloadFieldExtract || Boolean(activeDownloadVariant)}
-                          title={canDownloadFieldExtract ? "下载提取表" : "历史任务未保留提取表，无法下载"}
+                          title={canDownloadFieldExtract ? "下载提取表" : isTerminalStatus ? "历史任务未保留提取表，无法下载" : "任务完成后才能下载提取表"}
                           onClick={() => void downloadJobResult(item.id, "field_extract")}
                         >
                           {activeDownloadVariant === "field_extract" ? "下载中..." : "下载提取"}
