@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { RowDataPacket } from "mysql2/promise";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
@@ -104,6 +104,8 @@ type GenerationHistorySummaryResult = {
 
 type GenerationHistoryRowsResult = {
   total: number;
+  hasMore?: boolean;
+  totalIsEstimated?: boolean;
   rows: Array<{
     jobId: string;
     uploader: string;
@@ -122,6 +124,9 @@ type GenerationHistoryRowsResult = {
 const generationHistoryCacheTtlMs = 5 * 60 * 1000;
 const generationHistorySummaryCache = new Map<string, { expiresAt: number; value: unknown }>();
 const generationHistoryRowsCache = new Map<string, { expiresAt: number; value: unknown }>();
+const generationHistoryCountCache = new Map<string, { expiresAt: number; value: unknown }>();
+const generationQueueCountCache = new Map<string, { expiresAt: number; value: unknown }>();
+const generationHistoryCountInFlight = new Map<string, Promise<number>>();
 const generationHistorySummaryTableName = "content_generation_history_summary";
 const generationHistorySummaryVersion = 1;
 const generationHistoryAllFilter = "__ALL__";
@@ -131,7 +136,12 @@ let generationHistorySummaryTableEnsured = false;
 let generationHistorySummaryRefreshPromise: Promise<void> | null = null;
 let generationHistorySummaryRefreshRequested = false;
 let generationHistorySummaryRefreshTimer: NodeJS.Timeout | null = null;
+let generationHousekeepingTimer: NodeJS.Timeout | null = null;
 const FAQ_RESULT_DIR = path.resolve(process.cwd(), ".runtime", "faq-output-results");
+const generationCountCacheTtlMs = 30 * 1000;
+const generationQueueCountCacheTtlMs = 15 * 1000;
+const faqResultRetentionMs = 14 * 24 * 60 * 60 * 1000;
+const faqTmpRetentionMs = 2 * 24 * 60 * 60 * 1000;
 
 function buildGenerationHistoryCacheKey(input: HistoryFilters) {
   return JSON.stringify({
@@ -145,6 +155,22 @@ function buildGenerationHistoryCacheKey(input: HistoryFilters) {
     page: Number(input.page || 1),
     pageSize: Number(input.pageSize || 20),
   });
+}
+
+function buildGenerationCountCacheKey(input: HistoryFilters) {
+  return JSON.stringify({
+    scType: input.scType || "faq",
+    country: input.country || "",
+    subclass: input.subclass || "",
+    uploader: input.uploader || "",
+    keyword: input.keyword || "",
+    startDate: input.startDate || "",
+    endDate: input.endDate || "",
+  });
+}
+
+function buildGenerationQueueCountCacheKey(scType: string) {
+  return `queue::${scType || "faq"}`;
 }
 
 function getHistoryCacheValue<T>(cache: Map<string, { expiresAt: number; value: unknown }>, key: string) {
@@ -161,9 +187,22 @@ function setHistoryCacheValue<T>(cache: Map<string, { expiresAt: number; value: 
   cache.set(key, { expiresAt: Date.now() + generationHistoryCacheTtlMs, value });
 }
 
+function setTimedCacheValue<T>(cache: Map<string, { expiresAt: number; value: unknown }>, key: string, value: T, ttlMs: number) {
+  cache.set(key, { expiresAt: Date.now() + ttlMs, value });
+}
+
+function logGenerationPerf(label: string, meta: Record<string, unknown>) {
+  const payload = Object.entries(meta)
+    .map(([key, value]) => `${key}=${String(value)}`)
+    .join(" ");
+  console.log(`[faq-generation] ${label} ${payload}`.trim());
+}
+
 function clearGenerationHistoryCaches() {
   generationHistorySummaryCache.clear();
   generationHistoryRowsCache.clear();
+  generationHistoryCountCache.clear();
+  generationQueueCountCache.clear();
 }
 
 async function ensureGenerationHistorySummaryTable() {
@@ -1082,54 +1121,141 @@ export async function failGenerationJob(jobId: string, message: string) {
     .where(eq(contentGenerationJobs.id, jobId));
 }
 
-export async function listGenerationJobs(page: number, pageSize: number, scType = "faq") {
-  const safePage = Math.max(1, Number(page || 1));
-  const safePageSize = Math.max(1, Number(pageSize || 20));
-  const start = (safePage - 1) * safePageSize;
+async function getGenerationQueueCount(scType: string) {
+  const cacheKey = buildGenerationQueueCountCacheKey(scType);
+  const cached = getHistoryCacheValue<number>(generationQueueCountCache, cacheKey);
+  if (typeof cached === "number") return { total: cached, totalIsEstimated: false };
+
   const [countRows] = await pool.query<RowDataPacket[]>(
     `
       SELECT COUNT(*) AS total_count
-      FROM content_generation_jobs
+      FROM content_generation_jobs FORCE INDEX (idx_generation_jobs_sc_type_id)
       WHERE sc_type = ?
     `,
     [scType],
   );
   const total = Number((countRows[0] as Record<string, unknown> | undefined)?.total_count || 0);
+  setTimedCacheValue(generationQueueCountCache, cacheKey, total, generationQueueCountCacheTtlMs);
+  return { total, totalIsEstimated: false };
+}
 
-  const rows = await db
-    .select()
-    .from(contentGenerationJobs)
-    .where(eq(contentGenerationJobs.scType, scType))
-    .orderBy(desc(contentGenerationJobs.createdAt))
-    .limit(safePageSize)
-    .offset(start);
+function mapGenerationQueueRow(row: Record<string, unknown>) {
+  return {
+    id: String(row.id || ""),
+    status: String(row.status || ""),
+    scType: String(row.sc_type || ""),
+    uploader: String(row.uploader || ""),
+    note: String(row.note || ""),
+    inputFileName: String(row.input_file_name || ""),
+    totalRows: Number(row.total_rows || 0),
+    executableRows: Number(row.executable_rows || 0),
+    successRows: Number(row.success_rows || 0),
+    failedRows: Number(row.failed_rows || 0),
+    skippedRows: Number(row.skipped_rows || 0),
+    totalTokensSum: Number(row.total_tokens_sum || 0),
+    estimatedCostUsdSum: Number(row.estimated_cost_usd_sum || 0),
+    aiModel: String(row.ai_model || ""),
+    errorReason: String(row.error_reason || ""),
+    resultFileName: String(row.result_file_name || ""),
+    resultFilePath: String(row.result_file_path || ""),
+    canDownload: Boolean(row.result_file_path || row.result_file_name || row.status === "done" || row.status === "failed"),
+    createdAt: formatChinaIsoOffset(row.created_at instanceof Date ? row.created_at : new Date(String(row.created_at || ""))),
+    startedAt: formatChinaIsoOffset(row.started_at instanceof Date ? row.started_at : row.started_at ? new Date(String(row.started_at)) : null),
+    finishedAt: formatChinaIsoOffset(row.finished_at instanceof Date ? row.finished_at : row.finished_at ? new Date(String(row.finished_at)) : null),
+  };
+}
+
+function getCachedGenerationHistoryCount(input: HistoryFilters) {
+  const cacheKey = buildGenerationCountCacheKey(input);
+  const cached = getHistoryCacheValue<number>(generationHistoryCountCache, cacheKey);
+  return typeof cached === "number" ? cached : null;
+}
+
+function primeGenerationHistoryCount(input: HistoryFilters, whereSql: string, params: unknown[]) {
+  const cacheKey = buildGenerationCountCacheKey(input);
+  if (generationHistoryCountInFlight.has(cacheKey)) {
+    return generationHistoryCountInFlight.get(cacheKey)!;
+  }
+  const promise = pool
+    .query<RowDataPacket[]>(
+      `
+        SELECT COUNT(*) AS total_count
+        FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_id, idx_generation_jobs_sc_type_uploader_id)
+        INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_status_country_subclass_job_row) ON r.job_id = j.id
+        ${whereSql}
+      `,
+      params,
+    )
+    .then(([countRows]) => {
+      const total = Number((countRows[0] as Record<string, unknown> | undefined)?.total_count || 0);
+      setTimedCacheValue(generationHistoryCountCache, cacheKey, total, generationCountCacheTtlMs);
+      return total;
+    })
+    .finally(() => {
+      generationHistoryCountInFlight.delete(cacheKey);
+    });
+  generationHistoryCountInFlight.set(cacheKey, promise);
+  return promise;
+}
+
+export async function listGenerationJobs(page: number, pageSize: number, scType = "faq") {
+  const startedAt = Date.now();
+  const safePage = Math.max(1, Number(page || 1));
+  const safePageSize = Math.max(1, Number(pageSize || 20));
+  const start = (safePage - 1) * safePageSize;
+  const [rawRows, countInfo] = await Promise.all([
+    pool.query<RowDataPacket[]>(
+      `
+        SELECT
+          id,
+          status,
+          sc_type,
+          uploader,
+          note,
+          input_file_name,
+          total_rows,
+          executable_rows,
+          success_rows,
+          failed_rows,
+          skipped_rows,
+          total_tokens_sum,
+          estimated_cost_usd_sum,
+          ai_model,
+          error_reason,
+          result_file_name,
+          result_file_path,
+          created_at,
+          started_at,
+          finished_at
+        FROM content_generation_jobs FORCE INDEX (idx_generation_jobs_sc_type_id)
+        WHERE sc_type = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT ? OFFSET ?
+      `,
+      [scType, safePageSize + 1, start],
+    ),
+    getGenerationQueueCount(scType),
+  ]);
+
+  const rows = rawRows[0].slice(0, safePageSize);
+  const hasMore = rawRows[0].length > safePageSize;
+  const total = countInfo.total;
+  const totalIsEstimated = countInfo.totalIsEstimated;
+
+  logGenerationPerf("queue", {
+    scType,
+    page: safePage,
+    pageSize: safePageSize,
+    rows: rows.length,
+    total,
+    durationMs: Date.now() - startedAt,
+  });
 
   return {
     total,
-    rows: rows.map((row) => ({
-      id: row.id,
-      status: row.status,
-      scType: row.scType,
-      uploader: row.uploader,
-      note: row.note,
-      inputFileName: row.inputFileName,
-      totalRows: row.totalRows,
-      executableRows: row.executableRows,
-      successRows: row.successRows,
-      failedRows: row.failedRows,
-      skippedRows: row.skippedRows,
-      totalTokensSum: row.totalTokensSum,
-      estimatedCostUsdSum: Number(row.estimatedCostUsdSum || 0),
-      aiModel: row.aiModel,
-      errorReason: row.errorReason || "",
-      resultFileName: row.resultFileName,
-      resultFilePath: row.resultFilePath || "",
-      canDownload: Boolean(row.resultFilePath || row.resultFileBase64 || row.status === "done" || row.status === "failed"),
-      createdAt: formatChinaIsoOffset(row.createdAt),
-      startedAt: formatChinaIsoOffset(row.startedAt),
-      finishedAt: formatChinaIsoOffset(row.finishedAt),
-      routeSummary: (row.routeSummaryJson as RouteSummaryRow[] | null) || [],
-    })),
+    hasMore,
+    totalIsEstimated,
+    rows: rows.map((row) => mapGenerationQueueRow(row as unknown as Record<string, unknown>)),
   };
 }
 
@@ -1396,6 +1522,7 @@ export async function getGenerationHistorySummary(input: HistoryFilters): Promis
   const cacheKey = buildGenerationHistoryCacheKey(input);
   const cached = getHistoryCacheValue<GenerationHistorySummaryResult>(generationHistorySummaryCache, cacheKey);
   if (cached) return cached;
+  const startedAt = Date.now();
 
   if (supportsMaterializedHistorySummary(input)) {
     const materialized = await readMaterializedHistorySummary(input);
@@ -1419,7 +1546,7 @@ export async function getGenerationHistorySummary(input: HistoryFilters): Promis
           COUNT(DISTINCT r.country) AS country_count,
           COUNT(DISTINCT r.subclass) AS subclass_count
         FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_id, idx_generation_jobs_sc_type_uploader_id)
-        INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_job_status_country_subclass_term_row) ON r.job_id = j.id
+        INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_status_country_subclass_job_row) ON r.job_id = j.id
         ${whereSql}
       `,
       params,
@@ -1439,7 +1566,7 @@ export async function getGenerationHistorySummary(input: HistoryFilters): Promis
           COUNT(DISTINCT r.term_id) AS merchant_count,
           COUNT(DISTINCT r.subclass) AS subclass_count
         FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_id, idx_generation_jobs_sc_type_uploader_id)
-        INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_job_status_country_subclass_term_row) ON r.job_id = j.id
+        INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_status_country_subclass_job_row) ON r.job_id = j.id
         ${whereSql}
         GROUP BY r.country
         ORDER BY unique_result_count DESC, country ASC
@@ -1456,7 +1583,7 @@ export async function getGenerationHistorySummary(input: HistoryFilters): Promis
           COUNT(DISTINCT CONCAT(r.country, '::', r.term_id)) AS merchant_count,
           COUNT(DISTINCT r.country) AS country_count
         FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_id, idx_generation_jobs_sc_type_uploader_id)
-        INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_job_status_country_subclass_term_row) ON r.job_id = j.id
+        INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_status_country_subclass_job_row) ON r.job_id = j.id
         ${whereSql}
         GROUP BY r.subclass
         ORDER BY unique_result_count DESC, subclass ASC
@@ -1490,6 +1617,11 @@ export async function getGenerationHistorySummary(input: HistoryFilters): Promis
         countryCount: Number(row.country_count || 0),
       })),
     };
+    logGenerationPerf("historySummary", {
+      totalRows: result.summary.totalRows,
+      durationMs: Date.now() - startedAt,
+      materialized: false,
+    });
     setHistoryCacheValue(generationHistorySummaryCache, cacheKey, result);
     return result;
   } catch (error) {
@@ -1504,28 +1636,44 @@ export async function listGenerationHistoryRows(input: HistoryFilters): Promise<
   const cacheKey = buildGenerationHistoryCacheKey(input);
   const cached = getHistoryCacheValue<GenerationHistoryRowsResult>(generationHistoryRowsCache, cacheKey);
   if (cached) return cached;
+  const startedAt = Date.now();
   const page = Math.max(1, Number(input.page || 1));
   const pageSize = Math.max(1, Number(input.pageSize || 20));
   const start = (page - 1) * pageSize;
   const { whereSql, params } = buildPersistedHistoryWhere(input);
 
   try {
-    const [countRows] = await pool.query<RowDataPacket[]>(
-      `
-        SELECT COUNT(*) AS total_count
-        FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_id, idx_generation_jobs_sc_type_uploader_id)
-        INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_job_status_country_subclass_term_row) ON r.job_id = j.id
-        ${whereSql}
-      `,
-      params,
-    );
+    const cachedTotal = getCachedGenerationHistoryCount(input);
+    void primeGenerationHistoryCount(input, whereSql, params).catch(() => undefined);
+    const [pageKeyRows] = await Promise.all([
+      pool.query<RowDataPacket[]>(
+        `
+          SELECT
+            r.job_id,
+            r.row_index
+          FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_id, idx_generation_jobs_sc_type_uploader_id)
+          INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_status_country_subclass_job_row) ON r.job_id = j.id
+          ${whereSql}
+          ORDER BY COALESCE(j.finished_at, j.created_at) DESC, r.row_index ASC
+          LIMIT ? OFFSET ?
+        `,
+        [...params, pageSize + 1, start],
+      ),
+    ]);
 
-    const total = Number((countRows[0] as Record<string, unknown> | undefined)?.total_count || 0);
-    if (total === 0) {
+    const pageKeys = pageKeyRows[0].slice(0, pageSize).map((row) => ({
+      jobId: String(row.job_id || ""),
+      rowIndex: Number(row.row_index || 0),
+    }));
+    const hasMore = pageKeyRows[0].length > pageSize;
+
+    if (!pageKeys.length && cachedTotal === 0) {
       const legacyRows = await loadLegacyHistoryRows(input);
       const pagedRows = legacyRows.slice(start, start + pageSize);
       const result = {
         total: legacyRows.length,
+        hasMore: start + pagedRows.length < legacyRows.length,
+        totalIsEstimated: false,
         rows: pagedRows.map((row) => ({
           jobId: row.jobId,
           uploader: row.uploader,
@@ -1544,31 +1692,43 @@ export async function listGenerationHistoryRows(input: HistoryFilters): Promise<
       return result;
     }
 
-    const [rows] = await pool.query<RowDataPacket[]>(
-      `
-        SELECT
-          r.job_id,
-          j.uploader,
-          j.created_at AS created_at,
-          j.finished_at AS finished_at,
-          r.country,
-          r.term_id,
-          r.term_name,
-          r.domain,
-          r.subclass,
-          r.title1,
-          r.brief_introduction
-        FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_id, idx_generation_jobs_sc_type_uploader_id)
-        INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_job_status_country_subclass_term_row) ON r.job_id = j.id
-        ${whereSql}
-        ORDER BY COALESCE(j.finished_at, j.created_at) DESC, r.row_index ASC
-        LIMIT ? OFFSET ?
-      `,
-      [...params, pageSize, start],
-    );
+    let rows: RowDataPacket[] = [];
+    if (pageKeys.length) {
+      const tuplePlaceholders = pageKeys.map(() => "(?, ?)").join(", ");
+      const tupleParams = pageKeys.flatMap((item) => [item.jobId, item.rowIndex]);
+      const orderedKeys = pageKeys.map((item) => `${item.jobId}:${item.rowIndex}`);
+      const fieldPlaceholders = orderedKeys.map(() => "?").join(", ");
+      const [detailRows] = await pool.query<RowDataPacket[]>(
+        `
+          SELECT
+            r.job_id,
+            j.uploader,
+            j.created_at AS created_at,
+            j.finished_at AS finished_at,
+            r.country,
+            r.term_id,
+            r.term_name,
+            r.domain,
+            r.subclass,
+            r.title1,
+            r.brief_introduction,
+            r.row_index
+          FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_id, idx_generation_jobs_sc_type_uploader_id)
+          INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_status_country_subclass_job_row) ON r.job_id = j.id
+          WHERE (r.job_id, r.row_index) IN (${tuplePlaceholders})
+          ORDER BY FIELD(CONCAT(r.job_id, ':', r.row_index), ${fieldPlaceholders})
+        `,
+        [...tupleParams, ...orderedKeys],
+      );
+      rows = detailRows;
+    }
 
+    const estimatedTotal = start + pageKeys.length + (hasMore ? 1 : 0);
+    const total = cachedTotal ?? estimatedTotal;
     const result = {
       total,
+      hasMore,
+      totalIsEstimated: cachedTotal == null,
       rows: rows.map((row) => ({
         jobId: String(row.job_id || ""),
         uploader: String(row.uploader || ""),
@@ -1583,6 +1743,15 @@ export async function listGenerationHistoryRows(input: HistoryFilters): Promise<
         "Brief Introduction": String(row.brief_introduction || ""),
       })),
     };
+    logGenerationPerf("historyRows", {
+      page,
+      pageSize,
+      rows: result.rows.length,
+      total,
+      hasMore,
+      totalIsEstimated: result.totalIsEstimated,
+      durationMs: Date.now() - startedAt,
+    });
     setHistoryCacheValue(generationHistoryRowsCache, cacheKey, result);
     return result;
   } catch (error) {
@@ -1591,6 +1760,8 @@ export async function listGenerationHistoryRows(input: HistoryFilters): Promise<
     const pagedRows = legacyRows.slice(start, start + pageSize);
     const result = {
       total: legacyRows.length,
+      hasMore: start + pagedRows.length < legacyRows.length,
+      totalIsEstimated: false,
       rows: pagedRows.map((row) => ({
         jobId: row.jobId,
         uploader: row.uploader,
@@ -1605,6 +1776,13 @@ export async function listGenerationHistoryRows(input: HistoryFilters): Promise<
         "Brief Introduction": row["Brief Introduction"],
       })),
     };
+    logGenerationPerf("historyRows-legacy", {
+      page,
+      pageSize,
+      rows: result.rows.length,
+      total: result.total,
+      durationMs: Date.now() - startedAt,
+    });
     setHistoryCacheValue(generationHistoryRowsCache, cacheKey, result);
     return result;
   }
@@ -1635,10 +1813,148 @@ export async function exportGenerationHistory(input: HistoryFilters & { format?:
   };
 }
 
+async function pathExists(targetPath: string) {
+  try {
+    await access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function collectDirectoryStats(targetPath: string) {
+  if (!(await pathExists(targetPath))) {
+    return { files: 0, bytes: 0 };
+  }
+
+  const entries = await readdir(targetPath, { withFileTypes: true });
+  let files = 0;
+  let bytes = 0;
+
+  for (const entry of entries) {
+    const fullPath = path.join(targetPath, entry.name);
+    if (entry.isDirectory()) {
+      const nested = await collectDirectoryStats(fullPath);
+      files += nested.files;
+      bytes += nested.bytes;
+      continue;
+    }
+    const fileStat = await stat(fullPath).catch(() => null);
+    if (!fileStat?.isFile()) continue;
+    files += 1;
+    bytes += fileStat.size;
+  }
+
+  return { files, bytes };
+}
+
+async function cleanupDirectoryByAge(targetPath: string, retentionMs: number) {
+  if (!(await pathExists(targetPath))) return { removedFiles: 0, removedBytes: 0 };
+  const now = Date.now();
+  const entries = await readdir(targetPath, { withFileTypes: true });
+  let removedFiles = 0;
+  let removedBytes = 0;
+
+  for (const entry of entries) {
+    const fullPath = path.join(targetPath, entry.name);
+    if (entry.isDirectory()) {
+      const nested = await cleanupDirectoryByAge(fullPath, retentionMs);
+      removedFiles += nested.removedFiles;
+      removedBytes += nested.removedBytes;
+      const remaining = await readdir(fullPath).catch(() => []);
+      if (!remaining.length) {
+        await rm(fullPath, { recursive: true, force: true });
+      }
+      continue;
+    }
+
+    const fileStat = await stat(fullPath).catch(() => null);
+    if (!fileStat?.isFile()) continue;
+    if (now - fileStat.mtimeMs < retentionMs) continue;
+    removedFiles += 1;
+    removedBytes += fileStat.size;
+    await rm(fullPath, { force: true });
+  }
+
+  return { removedFiles, removedBytes };
+}
+
+async function cleanupFaqResultFiles() {
+  await mkdir(FAQ_RESULT_DIR, { recursive: true });
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `
+      SELECT result_file_path
+      FROM content_generation_jobs
+      WHERE sc_type = 'faq' AND result_file_path IS NOT NULL AND result_file_path <> ''
+    `,
+  );
+  const referenced = new Set(rows.map((row) => String((row as Record<string, unknown>).result_file_path || "")));
+  const entries = await readdir(FAQ_RESULT_DIR, { withFileTypes: true });
+  const now = Date.now();
+  let removedFiles = 0;
+  let removedBytes = 0;
+
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const fullPath = path.join(FAQ_RESULT_DIR, entry.name);
+    const fileStat = await stat(fullPath).catch(() => null);
+    if (!fileStat?.isFile()) continue;
+    const isReferenced = referenced.has(fullPath);
+    const expired = now - fileStat.mtimeMs >= faqResultRetentionMs;
+    if (isReferenced && !expired) continue;
+    if (isReferenced && expired) continue;
+    removedFiles += 1;
+    removedBytes += fileStat.size;
+    await rm(fullPath, { force: true });
+  }
+
+  return { removedFiles, removedBytes };
+}
+
+export async function runGenerationHousekeeping() {
+  const startedAt = Date.now();
+  const runtimeRoot = path.resolve(process.cwd(), ".runtime");
+  const tmpRoot = path.resolve(process.cwd(), "tmp");
+  const [runtimeStats, faqResultStats, tmpStats, faqResultCleanup, tmpCleanup] = await Promise.all([
+    collectDirectoryStats(runtimeRoot),
+    collectDirectoryStats(FAQ_RESULT_DIR),
+    collectDirectoryStats(tmpRoot),
+    cleanupFaqResultFiles(),
+    cleanupDirectoryByAge(tmpRoot, faqTmpRetentionMs),
+  ]);
+
+  logGenerationPerf("housekeeping", {
+    runtimeFiles: runtimeStats.files,
+    runtimeBytes: runtimeStats.bytes,
+    faqResultFiles: faqResultStats.files,
+    faqResultBytes: faqResultStats.bytes,
+    tmpFiles: tmpStats.files,
+    tmpBytes: tmpStats.bytes,
+    removedResultFiles: faqResultCleanup.removedFiles,
+    removedResultBytes: faqResultCleanup.removedBytes,
+    removedTmpFiles: tmpCleanup.removedFiles,
+    removedTmpBytes: tmpCleanup.removedBytes,
+    durationMs: Date.now() - startedAt,
+  });
+}
+
+export function startGenerationHousekeeping() {
+  if (generationHousekeepingTimer) return;
+  void runGenerationHousekeeping().catch((error) => {
+    console.error("faq generation housekeeping failed", error);
+  });
+  generationHousekeepingTimer = setInterval(() => {
+    void runGenerationHousekeeping().catch((error) => {
+      console.error("faq generation housekeeping failed", error);
+    });
+  }, 24 * 60 * 60 * 1000);
+}
+
 export function warmGenerationHistoryCaches() {
   setTimeout(() => {
     void refreshMaterializedHistorySummary("faq").catch(() => undefined);
     void getGenerationHistorySummary({ scType: "faq" }).catch(() => undefined);
     void listGenerationHistoryRows({ scType: "faq", page: 1, pageSize: 20 }).catch(() => undefined);
+    void getGenerationQueueCount("faq").catch(() => undefined);
   }, 1500);
 }

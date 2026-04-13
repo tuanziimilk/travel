@@ -147,7 +147,8 @@ async function ensureGenerationRowsTable() {
       KEY idx_generation_rows_status (status),
       KEY idx_generation_rows_subclass (subclass),
       KEY idx_generation_rows_country (country),
-      KEY idx_generation_rows_job_status_country_subclass_term_row (job_id, status, country, subclass, term_id, row_index)
+      KEY idx_generation_rows_job_status_country_subclass_term_row (job_id, status, country, subclass, term_id, row_index),
+      KEY idx_generation_rows_status_country_subclass_job_row (status, country, subclass, job_id, row_index)
     )
   `);
   rowsTableEnsured = true;

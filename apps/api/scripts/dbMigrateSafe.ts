@@ -344,11 +344,19 @@ async function ensureContentGenerationHistoryIndexes(connection: mysql.Connectio
 
   await addIndexIfMissing(connection, "content_generation_jobs", "idx_generation_jobs_sc_type_id", `(\`sc_type\`, \`id\`)`);
   await addIndexIfMissing(connection, "content_generation_jobs", "idx_generation_jobs_sc_type_uploader_id", `(\`sc_type\`, \`uploader\`, \`id\`)`);
+  await addIndexIfMissing(connection, "content_generation_jobs", "idx_generation_jobs_sc_type_created_id", `(\`sc_type\`, \`created_at\`, \`id\`)`);
+  await addIndexIfMissing(connection, "content_generation_jobs", "idx_generation_jobs_sc_type_status_created_id", `(\`sc_type\`, \`status\`, \`created_at\`, \`id\`)`);
   await addIndexIfMissing(
     connection,
     "content_generation_job_rows",
     "idx_generation_rows_job_status_country_subclass_term_row",
     `(\`job_id\`, \`status\`, \`country\`, \`subclass\`, \`term_id\`, \`row_index\`)`,
+  );
+  await addIndexIfMissing(
+    connection,
+    "content_generation_job_rows",
+    "idx_generation_rows_status_country_subclass_job_row",
+    `(\`status\`, \`country\`, \`subclass\`, \`job_id\`, \`row_index\`)`,
   );
 }
 

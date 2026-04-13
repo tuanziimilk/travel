@@ -77,13 +77,13 @@ const faqOutputTemplateCsv = [
 ].join("\n");
 
 const queueStatusText: Record<string, string> = {
-  queued: "排队中",
-  pending: "排队中",
-  running: "执行中",
-  done: "已完成",
-  partial_failed: "部分失败",
-  failed: "失败",
-  cancelled: "已取消",
+  queued: "???",
+  pending: "???",
+  running: "???",
+  done: "???",
+  partial_failed: "????",
+  failed: "??",
+  cancelled: "???",
 };
 
 function normalizeHeader(value: string) {
@@ -114,12 +114,12 @@ function getReadableFaqOutputError(error: unknown) {
   const httpStatus = details?.data?.httpStatus;
 
   if (httpStatus === 413 || /\b413\b/.test(message)) {
-    return `上传请求过大，当前 FAQ 输出仅支持 ${faqOutputUploadLimitMb}MB 以内文件，请压缩后重试。`;
+    return `????????? FAQ ????? ${faqOutputUploadLimitMb}MB ????????????`;
   }
   if (/Unexpected token '<'|not valid JSON|<html/i.test(message)) {
-    return "接口返回了 HTML 页面而不是 JSON，通常是请求过大或网关拦截，请检查文件大小后重试。";
+    return "????? HTML ????? JSON?????????????????????????";
   }
-  return message || "FAQ 输出生成失败";
+  return message || "FAQ ??????";
 }
 
 function getDisplayJobStatus(item: {

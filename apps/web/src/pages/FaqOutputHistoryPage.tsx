@@ -31,6 +31,13 @@ type HistorySummaryResponse = {
   }>;
 };
 
+type HistoryRowsResponse = {
+  total: number;
+  hasMore?: boolean;
+  totalIsEstimated?: boolean;
+  rows: HistoryRow[];
+};
+
 type HistoryRow = {
   jobId: string;
   uploader: string;
@@ -50,6 +57,15 @@ type ShareDatum = {
   value: number;
   pct: number;
   color: string;
+};
+
+type HistoryFilters = {
+  country: string;
+  subclass: string;
+  uploader: string;
+  keyword: string;
+  startDate: string;
+  endDate: string;
 };
 
 const chartPalette = ["#004ffe", "#17b890", "#ffcf33", "#ff6b6b", "#7c4dff", "#111111"];
@@ -78,6 +94,15 @@ const faqSubclassOptions = [
   "price guarantee",
   "return",
 ] as const;
+
+const emptyFilters: HistoryFilters = {
+  country: "",
+  subclass: "",
+  uploader: "all",
+  keyword: "",
+  startDate: "",
+  endDate: "",
+};
 
 function formatDateTime(value?: string | Date | null) {
   return formatChinaDateTime(value);
@@ -205,7 +230,7 @@ function DonutCard({
           aria-label={`${title}${expanded ? "收起" : "展开"}详细分布`}
           title={expanded ? "收起" : "展开"}
         >
-          <span className={`history-chart-toggle-arrow ${expanded ? "open" : ""}`}>▾</span>
+          <span className={`history-chart-toggle-arrow ${expanded ? "open" : ""}`}>▼</span>
         </button>
       ) : null}
     </div>
@@ -257,12 +282,8 @@ export function FaqOutputHistoryPage() {
   const scType = "faq" as const;
   const pageSize = 20;
   const [page, setPage] = useState(1);
-  const [country, setCountry] = useState("");
-  const [subclass, setSubclass] = useState("");
-  const [uploader, setUploader] = useState<string>("all");
-  const [keyword, setKeyword] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [draftFilters, setDraftFilters] = useState<HistoryFilters>(emptyFilters);
+  const [appliedFilters, setAppliedFilters] = useState<HistoryFilters>(emptyFilters);
   const [exporting, setExporting] = useState(false);
   const [detailRow, setDetailRow] = useState<HistoryRow | null>(null);
   const [activeTab, setActiveTab] = useState<"analytics" | "list">("analytics");
@@ -272,19 +293,16 @@ export function FaqOutputHistoryPage() {
   const filterInput = useMemo(
     () => ({
       scType,
-      country,
-      subclass,
-      uploader: uploader === "all" ? undefined : (uploader as (typeof uploaderOptions)[number]),
-      keyword: keyword.trim(),
-      startDate,
-      endDate,
+      country: appliedFilters.country,
+      subclass: appliedFilters.subclass,
+      uploader: appliedFilters.uploader === "all" ? undefined : (appliedFilters.uploader as (typeof uploaderOptions)[number]),
+      keyword: appliedFilters.keyword.trim(),
+      startDate: appliedFilters.startDate,
+      endDate: appliedFilters.endDate,
     }),
-    [country, endDate, keyword, scType, startDate, subclass, uploader],
+    [appliedFilters, scType],
   );
 
-  const summaryQuery = trpc.generation.historySummary.useQuery(filterInput, {
-    placeholderData: (previousData) => previousData,
-  });
   const rowsQuery = trpc.generation.historyRows.useQuery(
     {
       ...filterInput,
@@ -293,38 +311,41 @@ export function FaqOutputHistoryPage() {
     },
     {
       placeholderData: (previousData) => previousData,
+      refetchOnWindowFocus: false,
     },
   );
 
-  useEffect(() => {
-    setPage(1);
-  }, [country, subclass, uploader, keyword, startDate, endDate]);
+  const summaryQuery = trpc.generation.historySummary.useQuery(filterInput, {
+    enabled: rowsQuery.isFetched && activeTab === "analytics",
+    placeholderData: (previousData) => previousData,
+    refetchOnWindowFocus: false,
+  });
 
   useEffect(() => {
     if (typeof rowsQuery.data?.total === "number") {
-      setLastRowsTotal(rowsQuery.data.total);
+      setLastRowsTotal((current) => Math.max(current, rowsQuery.data?.total ?? 0));
     }
   }, [rowsQuery.data?.total]);
 
+  const rowsData = rowsQuery.data as HistoryRowsResponse | undefined;
   const summaryData = summaryQuery.data as HistorySummaryResponse | undefined;
   const summary = summaryData?.summary;
   const byCountry = summaryData?.byCountry ?? [];
   const bySubclass = summaryData?.bySubclass ?? [];
-  const rows = (rowsQuery.data?.rows ?? []) as HistoryRow[];
-  const totalRows = rowsQuery.data?.total ?? lastRowsTotal;
-  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+  const rows = rowsData?.rows ?? [];
+  const totalRows = rowsData?.total ?? lastRowsTotal;
+  const hasMore = Boolean(rowsData?.hasMore);
+  const totalIsEstimated = Boolean(rowsData?.totalIsEstimated);
+  const totalPages = totalRows > 0 ? Math.max(1, Math.ceil(totalRows / pageSize)) : Math.max(1, page + (hasMore ? 1 : 0));
   const queryError = summaryQuery.error || rowsQuery.error;
   const isRowsInitialLoading = rowsQuery.isLoading && !rowsQuery.data;
   const isRowsRefreshing = rowsQuery.isFetching && !!rowsQuery.data;
   const isSummaryInitialLoading = summaryQuery.isLoading && !summaryQuery.data;
   const isSummaryRefreshing = summaryQuery.isFetching && !!summaryQuery.data;
-  const rowsSlow = useSlowHint(isRowsInitialLoading || isRowsRefreshing);
-  const summarySlow = useSlowHint(isSummaryInitialLoading || isSummaryRefreshing);
+  const rowsSlow = useSlowHint(isRowsInitialLoading || isRowsRefreshing, 2800);
+  const summarySlow = useSlowHint(isSummaryInitialLoading || isSummaryRefreshing, 2800);
   const summaryStatus = summaryData?.summaryStatus ?? "ready";
-
-  useEffect(() => {
-    setPage((currentPage) => Math.min(currentPage, totalPages));
-  }, [totalPages]);
+  const showEmptyState = !isRowsInitialLoading && !isRowsRefreshing && rowsQuery.isFetched && rows.length === 0;
 
   const countryShare = useMemo(
     () => buildShareData(byCountry.map((item) => ({ label: item.country, value: item.merchantCount }))),
@@ -357,6 +378,24 @@ export function FaqOutputHistoryPage() {
     [bySubclass],
   );
 
+  function applyFilters() {
+    setAppliedFilters({
+      country: draftFilters.country,
+      subclass: draftFilters.subclass,
+      uploader: draftFilters.uploader,
+      keyword: draftFilters.keyword,
+      startDate: draftFilters.startDate,
+      endDate: draftFilters.endDate,
+    });
+    setPage(1);
+  }
+
+  function resetFilters() {
+    setDraftFilters(emptyFilters);
+    setAppliedFilters(emptyFilters);
+    setPage(1);
+  }
+
   async function exportHistory(format: "xlsx" | "csv") {
     setExporting(true);
     try {
@@ -369,6 +408,12 @@ export function FaqOutputHistoryPage() {
       setExporting(false);
     }
   }
+
+  const rowsStatusHint = isRowsRefreshing
+    ? `正在刷新第 ${page} 页，当前先保留上一页结果。`
+    : rowsSlow
+      ? "历史结果较多，仍在加载，请稍候。"
+      : "";
 
   return (
     <>
@@ -387,7 +432,10 @@ export function FaqOutputHistoryPage() {
           <div className="grid grid-2">
             <div className="field">
               <label>国家</label>
-              <Select.Root value={country || "all"} onValueChange={(value) => setCountry(value === "all" ? "" : value)}>
+              <Select.Root
+                value={draftFilters.country || "all"}
+                onValueChange={(value) => setDraftFilters((current) => ({ ...current, country: value === "all" ? "" : value }))}
+              >
                 <Select.Trigger className="select-trigger" aria-label="history-country">
                   <Select.Value placeholder="全部国家" />
                 </Select.Trigger>
@@ -410,7 +458,10 @@ export function FaqOutputHistoryPage() {
 
             <div className="field">
               <label>Subclass</label>
-              <Select.Root value={subclass || "all"} onValueChange={(value) => setSubclass(value === "all" ? "" : value)}>
+              <Select.Root
+                value={draftFilters.subclass || "all"}
+                onValueChange={(value) => setDraftFilters((current) => ({ ...current, subclass: value === "all" ? "" : value }))}
+              >
                 <Select.Trigger className="select-trigger" aria-label="history-subclass">
                   <Select.Value placeholder="全部 subclass" />
                 </Select.Trigger>
@@ -433,7 +484,7 @@ export function FaqOutputHistoryPage() {
 
             <div className="field">
               <label>输出人</label>
-              <Select.Root value={uploader} onValueChange={setUploader}>
+              <Select.Root value={draftFilters.uploader} onValueChange={(value) => setDraftFilters((current) => ({ ...current, uploader: value }))}>
                 <Select.Trigger className="select-trigger" aria-label="history-uploader">
                   <Select.Value placeholder="全部输出人" />
                 </Select.Trigger>
@@ -456,34 +507,38 @@ export function FaqOutputHistoryPage() {
 
             <div className="field">
               <label>关键词</label>
-              <input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="TermID / TermName / Domain / 标题" />
+              <input
+                value={draftFilters.keyword}
+                onChange={(event) => setDraftFilters((current) => ({ ...current, keyword: event.target.value }))}
+                placeholder="TermID / TermName / Domain / 标题"
+              />
             </div>
 
             <div className="field">
               <label>开始日期</label>
-              <PopDatePicker value={startDate} onChange={setStartDate} placeholder="开始日期" />
+              <PopDatePicker
+                value={draftFilters.startDate}
+                onChange={(value) => setDraftFilters((current) => ({ ...current, startDate: value }))}
+                placeholder="开始日期"
+              />
             </div>
 
             <div className="field">
               <label>结束日期</label>
-              <PopDatePicker value={endDate} onChange={setEndDate} placeholder="结束日期" />
+              <PopDatePicker
+                value={draftFilters.endDate}
+                onChange={(value) => setDraftFilters((current) => ({ ...current, endDate: value }))}
+                placeholder="结束日期"
+              />
             </div>
           </div>
 
           <div className="filter-actions">
-            <button
-              className="btn-clear-pop"
-              type="button"
-              onClick={() => {
-                setCountry("");
-                setSubclass("");
-                setUploader("all");
-                setKeyword("");
-                setStartDate("");
-                setEndDate("");
-              }}
-            >
+            <button className="btn-clear-pop" type="button" onClick={resetFilters}>
               清空筛选
+            </button>
+            <button className="btn-clear-pop" type="button" onClick={applyFilters}>
+              应用筛选
             </button>
             <button className="btn-clear-pop" type="button" disabled={exporting} onClick={() => void exportHistory("xlsx")}>
               导出 XLSX
@@ -521,8 +576,9 @@ export function FaqOutputHistoryPage() {
           <div className="results-section-title history-dashboard-title">结果分析</div>
 
           {queryError ? <p className="error-text">结果历史加载失败：{queryError.message}</p> : null}
-          {summaryStatus === "building" ? <p className="muted">汇总表正在准备中，历史结果会很快出现。</p> : null}
-          {summaryStatus === "stale" || isSummaryRefreshing ? <p className="muted">统计数据正在刷新，当前先展示上一版结果。</p> : null}
+          {rowsQuery.isLoading && !rowsQuery.data ? <p className="muted">正在优先加载历史列表，统计摘要稍后补齐。</p> : null}
+          {summaryStatus === "building" ? <p className="muted">汇总表正在准备中，历史列表已可先查看。</p> : null}
+          {summaryStatus === "stale" || isSummaryRefreshing ? <p className="muted">统计摘要正在刷新，当前先展示上一版结果。</p> : null}
           {summarySlow ? <p className="muted">历史结果较多，汇总仍在加载，请稍候。</p> : null}
           {summaryData?.refreshedAt ? <p className="muted">汇总更新时间：{formatDateTime(summaryData.refreshedAt)}</p> : null}
 
@@ -573,8 +629,6 @@ export function FaqOutputHistoryPage() {
             </div>
 
             {queryError ? <p className="error-text">结果历史加载失败：{queryError.message}</p> : null}
-            {isRowsRefreshing ? <p className="muted">正在刷新第 {page} 页，列表先保留上一页结果。</p> : null}
-            {rowsSlow ? <p className="muted">历史结果较多，列表仍在加载，请稍候。</p> : null}
 
             <table className="history-table history-dashboard-table">
               <thead>
@@ -609,12 +663,16 @@ export function FaqOutputHistoryPage() {
                   </tr>
                 ))}
                 {isRowsInitialLoading ? <LoadingRows colSpan={9} label="历史结果加载中..." /> : null}
-                {!isRowsInitialLoading && !rows.length ? <LoadingRows colSpan={9} label="暂无符合筛选条件的 FAQ 输出结果。" /> : null}
+                {showEmptyState ? <LoadingRows colSpan={9} label="暂无符合筛选条件的 FAQ 输出结果。" /> : null}
               </tbody>
             </table>
 
             <div className="upload-actions faq-pagination-row">
-              <span className="muted">共 {totalRows} 条结果</span>
+              <span className="muted">
+                共 {totalRows}
+                {totalIsEstimated ? "+" : ""} 条结果
+              </span>
+              <span className="muted faq-pagination-footnote">{rowsStatusHint}</span>
               <div className="upload-actions" style={{ gap: 8 }}>
                 <button className="btn-ghost" type="button" disabled={page <= 1 || isRowsRefreshing} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>
                   上一页
@@ -625,8 +683,8 @@ export function FaqOutputHistoryPage() {
                 <button
                   className="btn-ghost"
                   type="button"
-                  disabled={page >= totalPages || isRowsRefreshing}
-                  onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                  disabled={(!hasMore && page >= totalPages) || isRowsRefreshing}
+                  onClick={() => setPage((prev) => Math.min(totalPages + (hasMore ? 1 : 0), prev + 1))}
                 >
                   下一页
                 </button>
