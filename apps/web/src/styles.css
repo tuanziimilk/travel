@@ -6327,34 +6327,40 @@ pre {
 
 .faq-queue-table th:nth-child(9),
 .faq-queue-table td:nth-child(9) {
-  width: 13%;
+  width: 15%;
 }
 
 .faq-queue-table th:nth-child(10),
 .faq-queue-table td:nth-child(10) {
-  width: 12%;
+  width: 9%;
   text-align: left;
 }
 
 .faq-queue-table .queue-action-cell {
-  text-align: left;
-  padding-left: 6px;
-  padding-right: 6px;
-  min-width: 148px;
+  text-align: center;
+  padding-left: 3px;
+  padding-right: 3px;
+  min-width: 68px;
 }
 
 .faq-queue-table .queue-action-group {
-  justify-content: flex-start;
-  gap: 6px;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 4px;
   flex-wrap: nowrap;
 }
 
 .faq-queue-action-btn {
-  width: 78px;
+  width: 100%;
+  min-width: 0;
+  padding: 4px 6px;
+  font-size: 10px;
+  line-height: 1.1;
 }
 
 .faq-queue-action-btn-secondary {
-  width: 78px;
+  width: 100%;
 }
 
 @media (max-width: 1180px) {

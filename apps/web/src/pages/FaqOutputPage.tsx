@@ -892,10 +892,10 @@ export function FaqOutputPage() {
                     </td>
                     <td title={String(item.totalTokensSum)}>{item.totalTokensSum}</td>
                     <td title={formatUsd(item.estimatedCostUsdSum)}>{formatUsd(item.estimatedCostUsdSum)}</td>
-                    <td title={formatDuration(item.startedAt || item.createdAt, item.finishedAt)}>
-                      {formatDuration(item.startedAt || item.createdAt, item.finishedAt)}
+                    <td title={formatDuration(item.createdAt || item.startedAt, item.finishedAt)}>
+                      {formatDuration(item.createdAt || item.startedAt, item.finishedAt)}
                     </td>
-                    <td title={formatDateTime(item.startedAt || item.createdAt)}>{formatDateTime(item.startedAt || item.createdAt)}</td>
+                    <td title={formatDateTime(item.createdAt || item.startedAt)}>{formatDateTime(item.createdAt || item.startedAt)}</td>
                     <td className="queue-action-cell">
                       <div className="queue-action-group">
                         <button
