@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import { createReadStream } from "node:fs";
 import path from "node:path";
 import { env } from "./env";
 import { appRouter } from "./trpc/router";
@@ -10,7 +11,16 @@ import {
   completeCategoryCalibrationUpload,
   initCategoryCalibrationUpload,
 } from "./category-calibration/uploadStore";
-import { exportGenerationCountryRollup, getGenerationJobDownloadPayload, startGenerationHousekeeping, warmGenerationHistoryCaches } from "./generation/faqOutputJobStore";
+import {
+  createGenerationDownloadTask,
+  createGenerationHistoryExportDownloadTask,
+  exportGenerationCountryRollup,
+  getGenerationDownloadTask,
+  getGenerationDownloadTaskFile,
+  getGenerationJobDownloadPayload,
+  startGenerationHousekeeping,
+  warmGenerationHistoryCaches,
+} from "./generation/faqOutputJobStore";
 import { getGgCleaningJobDownloadPayload } from "./gg-cleaning/jobStore";
 import { appendGgCleaningUploadChunk, appendGgCleaningUploadFileChunk, completeGgCleaningUpload, initGgCleaningUpload } from "./gg-cleaning/uploadStore";
 
@@ -97,6 +107,64 @@ app.get("/generation/jobs/:jobId/download", async (req, res) => {
     res.setHeader("Content-Type", result.contentType);
     res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(safeFileName)}`);
     res.send(result.buffer);
+  } catch (error) {
+    res.status(404).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.post("/generation/jobs/:jobId/download-tasks", async (req, res) => {
+  try {
+    const jobId = String(req.params.jobId || "").trim();
+    if (!jobId) throw new Error("jobId is required.");
+    const requestedVariant = String(req.body?.variant || req.query.variant || "").trim();
+    const variant = requestedVariant === "field_extract" || requestedVariant === "full" ? requestedVariant : "main";
+    res.json(await createGenerationDownloadTask({ jobId, variant }));
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.post("/generation/history-export-tasks", async (req, res) => {
+  try {
+    const format = String(req.body?.format || "xlsx").trim() === "csv" ? "csv" : "xlsx";
+    res.json(
+      await createGenerationHistoryExportDownloadTask({
+        scType: String(req.body?.scType || "faq").trim() || "faq",
+        country: String(req.body?.country || "").trim(),
+        subclass: String(req.body?.subclass || "").trim(),
+        uploader: String(req.body?.uploader || "").trim(),
+        keyword: String(req.body?.keyword || "").trim(),
+        startDate: String(req.body?.startDate || "").trim(),
+        endDate: String(req.body?.endDate || "").trim(),
+        format,
+      }),
+    );
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.get("/generation/download-tasks/:taskId", async (req, res) => {
+  try {
+    const taskId = String(req.params.taskId || "").trim();
+    if (!taskId) throw new Error("taskId is required.");
+    res.json(await getGenerationDownloadTask(taskId));
+  } catch (error) {
+    res.status(404).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.get("/generation/download-tasks/:taskId/file", async (req, res) => {
+  try {
+    const taskId = String(req.params.taskId || "").trim();
+    if (!taskId) throw new Error("taskId is required.");
+    const result = await getGenerationDownloadTaskFile(taskId);
+    const safeFileName = path.basename(result.fileName || `faq-download-${taskId}.xlsx`);
+    res.setHeader("Content-Type", result.contentType);
+    res.setHeader("Content-Length", String(result.fileSizeBytes));
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(safeFileName)}`);
+    res.setHeader("Cache-Control", "no-store");
+    createReadStream(result.resultFilePath).pipe(res);
   } catch (error) {
     res.status(404).json({ error: error instanceof Error ? error.message : String(error) });
   }

@@ -126,6 +126,7 @@ export const contentGenerationJobs = mysqlTable("content_generation_jobs", {
   marketGroup: varchar("market_group", { length: 32 }).notNull().default(""),
   status: varchar("status", { length: 32 }).notNull().default("pending"),
   inputFileName: varchar("input_file_name", { length: 255 }).notNull().default(""),
+  inputFilePath: varchar("input_file_path", { length: 512 }),
   inputFileBase64: longtext("input_file_base64"),
   totalRows: int("total_rows").notNull().default(0),
   executableRows: int("executable_rows").notNull().default(0),
@@ -148,6 +149,25 @@ export const contentGenerationJobs = mysqlTable("content_generation_jobs", {
   elapsedExecutionMs: bigint("elapsed_execution_ms", { mode: "number" }).notNull().default(0),
   startedAt: timestamp("started_at"),
   finishedAt: timestamp("finished_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .notNull()
+    .$onUpdateFn(() => new Date()),
+});
+
+export const contentGenerationDownloadTasks = mysqlTable("content_generation_download_tasks", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  jobId: varchar("job_id", { length: 36 }).notNull(),
+  variant: varchar("variant", { length: 32 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("queued"),
+  progressPercent: int("progress_percent").notNull().default(0),
+  statusText: varchar("status_text", { length: 255 }).notNull().default(""),
+  fileName: varchar("file_name", { length: 255 }).notNull().default(""),
+  resultFilePath: varchar("result_file_path", { length: 512 }),
+  fileSizeBytes: int("file_size_bytes").notNull().default(0),
+  errorMessage: varchar("error_message", { length: 512 }),
+  expiresAt: timestamp("expires_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()

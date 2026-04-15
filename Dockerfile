@@ -36,7 +36,7 @@ COPY --from=builder /app/skills ./skills
 
 EXPOSE 3001
 
-CMD ["node", "--max-old-space-size=896", "dist/server.js"]
+CMD ["node", "dist/server.js"]
 
 
 # ============================================================

@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import { faqOutputUploadMaxFileBytes, faqOutputUploadMaxRows, uploaderOptions } from "@about-demo/trpc";
+import { createFaqJobDownloadTask, useDownloadCenter } from "../components/DownloadCenter";
 import { trpc, trpcClient } from "../lib/trpc";
 import { formatChinaDateTime } from "../utils/time";
 
@@ -57,22 +58,7 @@ type QueueRow = {
 };
 
 type DownloadVariant = "main" | "field_extract";
-
 const faqOutputUploadLimitMb = Math.round(faqOutputUploadMaxFileBytes / 1024 / 1024);
-const faqOutputApiBase = (() => {
-  const trpcUrl = import.meta.env.VITE_TRPC_URL || "/trpc";
-  if (/^https?:\/\//i.test(trpcUrl)) {
-    try {
-      return new URL(trpcUrl).origin;
-    } catch {
-      return trpcUrl.replace(/\/trpc\/?$/, "");
-    }
-  }
-  if (typeof window !== "undefined") {
-    return window.location.origin;
-  }
-  return trpcUrl.replace(/\/trpc\/?$/, "");
-})();
 
 const faqOutputTemplateCsv = [
   "term_id,country,domain,term_name,fact_type,supported,status,discount_type,discount_value,currency,discount_details,url",
@@ -248,52 +234,6 @@ function toBase64(file: File) {
   });
 }
 
-function triggerBrowserDownload(url: string, fileName: string) {
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = fileName;
-  anchor.rel = "noopener";
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-}
-
-async function downloadFileFromResponse(response: Response, fallbackFileName: string) {
-  if (!response.ok) {
-    let message = `Download failed with status ${response.status}.`;
-    const contentType = response.headers.get("Content-Type") || "";
-    if (response.status === 413) {
-      throw new Error("下载请求过大，已被网关拦截，请稍后重试。");
-    }
-    if (/text\/html/i.test(contentType)) {
-      throw new Error("下载接口返回了 HTML 页面而不是文件，请检查 API 和网关代理配置。");
-    }
-    try {
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      if (payload?.error) message = payload.error;
-    } catch {
-      // keep default message
-    }
-    throw new Error(message);
-  }
-
-  const contentType = response.headers.get("Content-Type") || "";
-  if (/text\/html/i.test(contentType)) {
-    throw new Error("下载接口返回了页面内容，结果文件没有从 API 正确返回，请刷新后重试。");
-  }
-
-  const blob = await response.blob();
-  const disposition = response.headers.get("Content-Disposition") || "";
-  const encodedNameMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
-  const plainNameMatch = disposition.match(/filename=\"?([^\";]+)\"?/i);
-  const fileName = encodedNameMatch?.[1]
-    ? decodeURIComponent(encodedNameMatch[1])
-    : plainNameMatch?.[1] || fallbackFileName;
-  const url = URL.createObjectURL(blob);
-  triggerBrowserDownload(url, fileName);
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 function useSlowHint(active: boolean, delayMs = 3000) {
   const [slow, setSlow] = useState(false);
 
@@ -340,6 +280,7 @@ export function FaqOutputPage() {
   const [resultNotice, setResultNotice] = useState("");
   const [currentJobId, setCurrentJobId] = useState("");
   const [downloadingStates, setDownloadingStates] = useState<Record<string, DownloadVariant | undefined>>({});
+  const downloadCenter = useDownloadCenter();
   const [routePreviewRows, setRoutePreviewRows] = useState<RoutePreviewRow[]>([]);
   const [showRouteDetails, setShowRouteDetails] = useState(false);
   const [queuePage, setQueuePage] = useState(1);
@@ -608,14 +549,12 @@ export function FaqOutputPage() {
     setError("");
     setDownloadingStates((current) => ({ ...current, [jobId]: variant }));
     try {
-      const url = new URL(`${faqOutputApiBase}/generation/jobs/${encodeURIComponent(jobId)}/download`);
-      url.searchParams.set("variant", variant);
-      const response = await fetch(url.toString(), {
-        method: "GET",
-        credentials: "include",
+      await downloadCenter.createDownloadTask({
+        toolType: "faq-output",
+        sourceLabel: variant === "field_extract" ? "FAQ 提取结果" : "FAQ 输出结果",
+        create: () => createFaqJobDownloadTask(jobId, variant),
+        autoDownload: true,
       });
-      const fallbackFileName = variant === "field_extract" ? `faq-field-extract-${jobId}.xlsx` : `faq-output-${jobId}.xlsx`;
-      await downloadFileFromResponse(response, fallbackFileName);
     } catch (err) {
       const message = getReadableFaqOutputError(err);
       setError(variant === "field_extract" ? `下载提取文件失败：${message}` : `下载结果文件失败：${message}`);

@@ -11,6 +11,7 @@ import {
   type ToolScopedAiConfigKey,
 } from "@about-demo/trpc";
 import { trpc } from "./lib/trpc";
+import { DownloadCenterProvider } from "./components/DownloadCenter";
 
 const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage").then((module) => ({ default: module.AnalyticsPage })));
 const FaqAnalyticsPage = lazy(() => import("./pages/FaqAnalyticsPage").then((module) => ({ default: module.FaqAnalyticsPage })));
@@ -279,7 +280,8 @@ export default function App() {
   };
 
   return (
-    <div className={`app-shell app-theme-${workspaceId === "quality" ? moduleId : "faq"}`}>
+    <DownloadCenterProvider>
+      <div className={`app-shell app-theme-${workspaceId === "quality" ? moduleId : "faq"}`}>
       <aside className="app-sidebar">
         <div className="sidebar-panel">
           <div className="sidebar-title">工作台分区</div>
@@ -400,6 +402,7 @@ export default function App() {
           </section>
         </div>
       </div>
-    </div>
+      </div>
+    </DownloadCenterProvider>
   );
 }

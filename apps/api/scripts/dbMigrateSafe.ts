@@ -511,6 +511,7 @@ async function main() {
     }
 
     await ensureContentGenerationJobColumns(connection);
+    await ensureContentGenerationDownloadTasksTable(connection);
     await ensureContentGenerationHistoryIndexes(connection);
     await ensureContentGenerationHistorySummaryTable(connection);
     await verifyCriticalGenerationColumns(connection);
