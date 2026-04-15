@@ -622,12 +622,20 @@ body {
 .model-switch {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  flex-wrap: nowrap;
+  gap: 8px;
   min-height: 34px;
   border: 2px solid var(--black);
   background: var(--yellow);
   box-shadow: 3px 3px 0 var(--black);
-  padding: 4px 7px;
+  padding: 3px 6px;
+}
+
+.model-switch-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
 }
 
 .model-switch-label {
@@ -635,16 +643,19 @@ body {
   font-weight: 900;
   line-height: 1;
   white-space: nowrap;
+  color: var(--black);
 }
 
 .model-switch-trigger {
-  min-height: 28px;
+  min-height: 24px;
+  height: 24px;
   border-width: 2px;
   box-shadow: none;
-  padding: 2px 8px;
+  padding: 0 6px;
   font-size: 11px;
   font-weight: 900;
-  min-width: 124px;
+  min-width: 140px;
+  background: #fff;
 }
 
 .model-switch-content {
@@ -3154,7 +3165,7 @@ pre {
 .top-nav .model-switch .model-switch-trigger {
   min-height: 24px;
   height: 24px;
-  min-width: 118px;
+  min-width: 140px;
   padding: 0 6px;
   font-size: 11px;
   font-weight: 900;
@@ -3165,6 +3176,8 @@ pre {
 
 .top-nav .model-switch {
   padding: 3px 6px;
+  max-width: 100%;
+  flex-wrap: nowrap;
 }
 
 .copy-mini-btn {

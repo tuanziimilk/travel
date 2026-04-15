@@ -30,6 +30,7 @@ import {
   manualScoreInputSchema,
   manualFaqScoreInputSchema,
   runtimeAiConfigSetInputSchema,
+  runtimeAiConfigGetInputSchema,
   skillHistoryDetailInputSchema,
   skillHistoryListInputSchema,
   skillRouteDocumentInputSchema,
@@ -68,9 +69,7 @@ import {
 import {
   env,
   getAiRuntimeConfig,
-  getCategoryCalibrationAiRuntimeConfig,
-  setAiRuntimeModel,
-  setCategoryCalibrationAiRuntimeModel,
+  setAiRuntimeConfig,
 } from "../env";
 import {
   getCategoryCalibrationJobResult,
@@ -376,19 +375,19 @@ export const appRouter = t.router({
   }),
   runtime: t.router({
     aiConfig: t.router({
-      get: t.procedure.query(() => {
-        return getAiRuntimeConfig();
+      get: t.procedure.input(runtimeAiConfigGetInputSchema).query(({ input }) => {
+        return getAiRuntimeConfig(input.toolKey);
       }),
       set: t.procedure.input(runtimeAiConfigSetInputSchema).mutation(({ input }) => {
-        return setAiRuntimeModel(input.aiModel);
+        return setAiRuntimeConfig(input);
       }),
     }),
     categoryCalibrationAiConfig: t.router({
       get: t.procedure.query(() => {
-        return getCategoryCalibrationAiRuntimeConfig();
+        return getAiRuntimeConfig("category-calibration");
       }),
       set: t.procedure.input(runtimeAiConfigSetInputSchema).mutation(({ input }) => {
-        return setCategoryCalibrationAiRuntimeModel(input.aiModel);
+        return setAiRuntimeConfig({ ...input, toolKey: "category-calibration" });
       }),
     }),
   }),

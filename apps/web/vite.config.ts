@@ -11,6 +11,10 @@ export default defineConfig({
         target: "http://localhost:3001",
         changeOrigin: true,
       },
+      "/generation": {
+        target: "http://localhost:3001",
+        changeOrigin: true,
+      },
       "/gg-cleaning/uploads": {
         target: "http://localhost:3001",
         changeOrigin: true,

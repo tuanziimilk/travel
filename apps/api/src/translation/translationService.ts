@@ -1,11 +1,10 @@
-import {
-  translationBatchInputCostPer1M,
-  translationBatchOutputCostPer1M,
-  translationDefaultAiModel,
-  translationDefaultTargetLanguage,
-} from "@about-demo/trpc";
+import { translationDefaultAiModel, translationDefaultTargetLanguage } from "@about-demo/trpc";
 import { z } from "zod";
-import { env } from "../env";
+import { env, getAiRuntimeRequestConfig } from "../env";
+
+function getGeminiNativeBaseUrl(baseUrl: string) {
+  return String(baseUrl || "").replace(/\/openai$/i, "");
+}
 
 const translationRealtimeChunkSize = Math.max(1, Number(process.env.TRANSLATION_REALTIME_CHUNK_SIZE || 40));
 
@@ -65,6 +64,25 @@ type OpenAiChatResponse = {
   }>;
 };
 
+type GeminiGenerateContentResponse = {
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+  };
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{
+        text?: string;
+      }>;
+    };
+    finishReason?: string;
+  }>;
+  promptFeedback?: {
+    blockReason?: string;
+  };
+};
+
 type OpenAiBatchJob = {
   id: string;
   status: string;
@@ -88,8 +106,8 @@ type OpenAiBatchOutputLine = {
 };
 
 function estimateCostUsd(promptTokens: number, completionTokens: number, mode: "realtime" | "batch") {
-  const inputPer1M = mode === "batch" ? translationBatchInputCostPer1M : env.translationAiInputCostPer1M;
-  const outputPer1M = mode === "batch" ? translationBatchOutputCostPer1M : env.translationAiOutputCostPer1M;
+  const inputPer1M = mode === "batch" ? env.translationBatchInputCostPer1M : env.translationAiInputCostPer1M;
+  const outputPer1M = mode === "batch" ? env.translationBatchOutputCostPer1M : env.translationAiOutputCostPer1M;
   const usd = (promptTokens / 1_000_000) * inputPer1M + (completionTokens / 1_000_000) * outputPer1M;
   return Math.round(usd * 1_000_000) / 1_000_000;
 }
@@ -164,6 +182,18 @@ function extractContent(json: OpenAiChatResponse) {
   throw new Error("LLM 返回为空。");
 }
 
+function extractGeminiContent(json: GeminiGenerateContentResponse) {
+  const joined = (json.candidates?.[0]?.content?.parts || [])
+    .map((item) => (typeof item?.text === "string" ? item.text : ""))
+    .join("")
+    .trim();
+  if (joined) return joined;
+  const blockReason = String(json.promptFeedback?.blockReason || "").trim();
+  if (blockReason) throw new Error(`Gemini 阻止回答: ${blockReason}`);
+  const finishReason = String(json.candidates?.[0]?.finishReason || "").trim();
+  throw new Error(`Gemini 返回为空${finishReason ? `: ${finishReason}` : "。"}`);
+}
+
 function getPrimaryFinishReason(json: OpenAiChatResponse) {
   return String(json.choices?.[0]?.finish_reason || "").trim();
 }
@@ -184,16 +214,89 @@ function isRetryableRealtimeError(error: unknown) {
   return status === 408 || status === 409 || status === 429 || (status >= 500 && status <= 599);
 }
 
-async function callChatCompletions(body: Record<string, unknown>, timeoutMs: number) {
+async function callChatCompletions(body: Record<string, unknown>, timeoutMs: number, toolKey: "translation-batch" | "translation-text") {
+  const requestConfig = getAiRuntimeRequestConfig(toolKey);
+  if (requestConfig.provider === "gemini") {
+    const messages = Array.isArray(body.messages) ? (body.messages as Array<Record<string, unknown>>) : [];
+    const systemMessage = messages[0] || null;
+    const userMessage = messages[1] || null;
+    const systemText =
+      systemMessage && "content" in systemMessage
+        ? String(systemMessage.content || "")
+        : "";
+    const userText =
+      userMessage && "content" in userMessage
+        ? String(userMessage.content || "")
+        : "";
+    const generationConfig: Record<string, unknown> = {
+      responseMimeType: "application/json",
+    };
+    if (typeof body.temperature === "number") {
+      generationConfig.temperature = body.temperature;
+    }
+    if (typeof body.max_tokens === "number") {
+      generationConfig.maxOutputTokens = body.max_tokens;
+    }
+    const geminiPayload = {
+      systemInstruction: {
+        parts: [{ text: systemText }],
+      },
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: userText }],
+        },
+      ],
+      generationConfig,
+    };
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let response: Response;
+    try {
+      response = await fetch(
+        `${getGeminiNativeBaseUrl(requestConfig.baseUrl)}/models/${encodeURIComponent(requestConfig.aiModel)}:generateContent?key=${encodeURIComponent(requestConfig.apiKey)}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(geminiPayload),
+          signal: controller.signal,
+        },
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+
+    const raw = await response.text();
+    if (!response.ok) throw new Error(`翻译请求失败: ${response.status} ${raw}`);
+    const json = JSON.parse(raw) as GeminiGenerateContentResponse;
+    return {
+      usage: {
+        prompt_tokens: json.usageMetadata?.promptTokenCount ?? 0,
+        completion_tokens: json.usageMetadata?.candidatesTokenCount ?? 0,
+        total_tokens: json.usageMetadata?.totalTokenCount ?? 0,
+      },
+      choices: [
+        {
+          message: {
+            content: extractGeminiContent(json),
+          },
+          finish_reason: String(json.candidates?.[0]?.finishReason || "").toLowerCase() || null,
+        },
+      ],
+    } satisfies OpenAiChatResponse;
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let response: Response;
   try {
-    response = await fetch(`${env.aiBaseUrl}/chat/completions`, {
+    response = await fetch(`${requestConfig.baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${env.aiApiKey}`,
+        Authorization: `Bearer ${requestConfig.apiKey}`,
       },
       body: JSON.stringify(body),
       signal: controller.signal,
@@ -207,11 +310,16 @@ async function callChatCompletions(body: Record<string, unknown>, timeoutMs: num
   return JSON.parse(raw) as OpenAiChatResponse;
 }
 
-async function callChatCompletionsWithRetry(body: Record<string, unknown>, timeoutMs: number, maxRetries: number) {
+async function callChatCompletionsWithRetry(
+  body: Record<string, unknown>,
+  timeoutMs: number,
+  maxRetries: number,
+  toolKey: "translation-batch" | "translation-text",
+) {
   let attempt = 0;
   for (;;) {
     try {
-      return await callChatCompletions(body, timeoutMs);
+      return await callChatCompletions(body, timeoutMs, toolKey);
     } catch (error) {
       if (!isRetryableRealtimeError(error) || attempt >= maxRetries) throw error;
       attempt += 1;
@@ -221,15 +329,24 @@ async function callChatCompletionsWithRetry(body: Record<string, unknown>, timeo
   }
 }
 
-async function callOpenAiJson<T>(path: string, init: RequestInit, timeoutMs = env.aiRequestTimeoutMsBatch) {
+async function callOpenAiJson<T>(
+  path: string,
+  init: RequestInit,
+  toolKey: "translation-batch" | "translation-text",
+  timeoutMs = env.aiRequestTimeoutMsBatch,
+) {
+  const requestConfig = getAiRuntimeRequestConfig(toolKey);
+  if (requestConfig.provider === "gemini") {
+    throw new Error("Gemini 原生 API 暂不支持当前批量翻译接口，请切换到 OpenAI 或使用实时翻译。");
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let response: Response;
   try {
-    response = await fetch(`${env.aiBaseUrl}${path}`, {
+    response = await fetch(`${requestConfig.baseUrl}${path}`, {
       ...init,
       headers: {
-        Authorization: `Bearer ${env.aiApiKey}`,
+        Authorization: `Bearer ${requestConfig.apiKey}`,
         ...(init.headers || {}),
       },
       signal: controller.signal,
@@ -243,15 +360,24 @@ async function callOpenAiJson<T>(path: string, init: RequestInit, timeoutMs = en
   return JSON.parse(raw) as T;
 }
 
-async function callOpenAiText(path: string, init: RequestInit, timeoutMs = env.aiRequestTimeoutMsBatch) {
+async function callOpenAiText(
+  path: string,
+  init: RequestInit,
+  toolKey: "translation-batch" | "translation-text",
+  timeoutMs = env.aiRequestTimeoutMsBatch,
+) {
+  const requestConfig = getAiRuntimeRequestConfig(toolKey);
+  if (requestConfig.provider === "gemini") {
+    throw new Error("Gemini 原生 API 暂不支持当前批量翻译结果接口，请切换到 OpenAI 或使用实时翻译。");
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let response: Response;
   try {
-    response = await fetch(`${env.aiBaseUrl}${path}`, {
+    response = await fetch(`${requestConfig.baseUrl}${path}`, {
       ...init,
       headers: {
-        Authorization: `Bearer ${env.aiApiKey}`,
+        Authorization: `Bearer ${requestConfig.apiKey}`,
         ...(init.headers || {}),
       },
       signal: controller.signal,
@@ -269,10 +395,11 @@ async function uploadBatchFile(content: string) {
   const formData = new FormData();
   formData.append("purpose", "batch");
   formData.append("file", new Blob([content], { type: "application/jsonl" }), "translation-batch.jsonl");
-  return callOpenAiJson<{ id: string }>("/files", { method: "POST", body: formData });
+  return callOpenAiJson<{ id: string }>("/files", { method: "POST", body: formData }, "translation-batch");
 }
 
 function buildRealtimeBatchPrompt(
+  aiModel: string,
   targetLanguage: string,
   items: TranslationCellInput[],
   options?: { includeLanguageMetadata?: boolean; strictTranslation?: boolean },
@@ -286,7 +413,7 @@ function buildRealtimeBatchPrompt(
     ? ` Every item must be translated into ${targetLanguage || translationDefaultTargetLanguage}. Do not copy the source text unchanged unless it is already primarily in ${targetLanguage || translationDefaultTargetLanguage}, or is only a brand name, URL, code, or numeric expression.`
     : "";
   return {
-    model: env.translationAiModel || translationDefaultAiModel,
+    model: aiModel || translationDefaultAiModel,
     temperature: 0,
     response_format: { type: "json_object" },
     messages: [
@@ -319,7 +446,7 @@ function parseRealtimeBatchResponse(content: string) {
 
 function buildTextPrompt(targetLanguage: string, text: string) {
   return {
-    model: env.translationAiModel || translationDefaultAiModel,
+    model: getAiRuntimeRequestConfig("translation-text").aiModel || translationDefaultAiModel,
     temperature: 0,
     response_format: { type: "json_object" },
     messages: [
@@ -424,7 +551,7 @@ class OpenAiTranslationProvider implements TranslationProvider {
   }
 
   async translateTextSync(input: { text: string; targetLanguage: string }) {
-    const response = await callChatCompletions(buildTextPrompt(input.targetLanguage, input.text), env.aiRequestTimeoutMsManual);
+    const response = await callChatCompletions(buildTextPrompt(input.targetLanguage, input.text), env.aiRequestTimeoutMsManual, "translation-text");
     const result = parseTextResponse(extractContent(response));
     const promptTokens = response.usage?.prompt_tokens ?? 0;
     const completionTokens = response.usage?.completion_tokens ?? 0;
@@ -436,7 +563,7 @@ class OpenAiTranslationProvider implements TranslationProvider {
         completionTokens,
         totalTokens: response.usage?.total_tokens ?? promptTokens + completionTokens,
         estimatedCostUsd: estimateCostUsd(promptTokens, completionTokens, "realtime"),
-        aiModel: env.translationAiModel || translationDefaultAiModel,
+        aiModel: getAiRuntimeRequestConfig("translation-text").aiModel || translationDefaultAiModel,
       },
     };
   }
@@ -446,14 +573,16 @@ class OpenAiTranslationProvider implements TranslationProvider {
     targetLanguage: string;
     strictTranslation?: boolean;
   }) {
+    const translationRuntimeModel = getAiRuntimeRequestConfig("translation-batch").aiModel || translationDefaultAiModel;
     const chunkedItems = input.items.slice(0, translationRealtimeChunkSize);
     const response = await callChatCompletionsWithRetry(
-      buildRealtimeBatchPrompt(input.targetLanguage, chunkedItems, {
+      buildRealtimeBatchPrompt(translationRuntimeModel, input.targetLanguage, chunkedItems, {
         includeLanguageMetadata: false,
         strictTranslation: input.strictTranslation,
       }),
       env.translationRealtimeTimeoutMs,
       env.translationRealtimeMaxRetries,
+      "translation-batch",
     );
     const items = parseRealtimeBatchResponse(extractContent(response));
     const promptTokens = response.usage?.prompt_tokens ?? 0;
@@ -466,7 +595,7 @@ class OpenAiTranslationProvider implements TranslationProvider {
         completionTokens,
         totalTokens: response.usage?.total_tokens ?? promptTokens + completionTokens,
         estimatedCostUsd: estimateCostUsd(promptTokens, completionTokens, "realtime"),
-        aiModel: env.translationAiModel || translationDefaultAiModel,
+        aiModel: translationRuntimeModel,
       },
     };
   }
@@ -475,13 +604,14 @@ class OpenAiTranslationProvider implements TranslationProvider {
     chunks: Array<{ customId: string; items: TranslationCellInput[] }>;
     targetLanguage: string;
   }) {
+    const translationRuntimeModel = getAiRuntimeRequestConfig("translation-batch").aiModel || translationDefaultAiModel;
     const jsonl = input.chunks
       .map((chunk) =>
         JSON.stringify({
           custom_id: chunk.customId,
           method: "POST",
           url: "/v1/chat/completions",
-          body: buildRealtimeBatchPrompt(input.targetLanguage, chunk.items, { includeLanguageMetadata: false }),
+          body: buildRealtimeBatchPrompt(translationRuntimeModel, input.targetLanguage, chunk.items, { includeLanguageMetadata: false }),
         }),
       )
       .join("\n");
@@ -498,13 +628,14 @@ class OpenAiTranslationProvider implements TranslationProvider {
           completion_window: env.translationBatchCompletionWindow,
         }),
       },
+      "translation-batch",
     );
 
     return { providerBatchId: batch.id, inputFileId: file.id };
   }
 
   async getBatchTranslationStatus(input: { providerBatchId: string }) {
-    const batch = await callOpenAiJson<OpenAiBatchJob>(`/batches/${input.providerBatchId}`, { method: "GET" });
+    const batch = await callOpenAiJson<OpenAiBatchJob>(`/batches/${input.providerBatchId}`, { method: "GET" }, "translation-batch");
     return {
       status: batch.status,
       outputFileId: batch.output_file_id || "",
@@ -515,7 +646,7 @@ class OpenAiTranslationProvider implements TranslationProvider {
   }
 
   async fetchBatchTranslationResult(input: { outputFileId: string }) {
-    const content = await callOpenAiText(`/files/${input.outputFileId}/content`, { method: "GET" });
+    const content = await callOpenAiText(`/files/${input.outputFileId}/content`, { method: "GET" }, "translation-batch");
     return content
       .split("\n")
       .map((line) => line.trim())
@@ -531,7 +662,7 @@ class OpenAiTranslationProvider implements TranslationProvider {
               completionTokens: 0,
               totalTokens: 0,
               estimatedCostUsd: 0,
-              aiModel: env.translationAiModel || translationDefaultAiModel,
+              aiModel: getAiRuntimeRequestConfig("translation-batch").aiModel || translationDefaultAiModel,
             },
             error: row.error.message,
           };
@@ -547,7 +678,7 @@ class OpenAiTranslationProvider implements TranslationProvider {
               completionTokens: 0,
               totalTokens: 0,
               estimatedCostUsd: 0,
-              aiModel: env.translationAiModel || translationDefaultAiModel,
+              aiModel: getAiRuntimeRequestConfig("translation-batch").aiModel || translationDefaultAiModel,
             },
             error: "缺少批量响应体。",
           };
@@ -565,7 +696,7 @@ class OpenAiTranslationProvider implements TranslationProvider {
               completionTokens,
               totalTokens: body.usage?.total_tokens ?? promptTokens + completionTokens,
               estimatedCostUsd: estimateCostUsd(promptTokens, completionTokens, "batch"),
-              aiModel: env.translationAiModel || translationDefaultAiModel,
+              aiModel: getAiRuntimeRequestConfig("translation-batch").aiModel || translationDefaultAiModel,
             },
             error: "批量翻译分片过大，模型输出被截断，请重试。",
           };
@@ -578,7 +709,7 @@ class OpenAiTranslationProvider implements TranslationProvider {
             completionTokens,
             totalTokens: body.usage?.total_tokens ?? promptTokens + completionTokens,
             estimatedCostUsd: estimateCostUsd(promptTokens, completionTokens, "batch"),
-            aiModel: env.translationAiModel || translationDefaultAiModel,
+            aiModel: getAiRuntimeRequestConfig("translation-batch").aiModel || translationDefaultAiModel,
           },
         };
       });

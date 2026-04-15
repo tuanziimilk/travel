@@ -22,6 +22,7 @@ const upgradeCreateTableSql = [
     market_group varchar(32) NOT NULL DEFAULT '',
     status varchar(32) NOT NULL DEFAULT 'pending',
     input_file_name varchar(255) NOT NULL DEFAULT '',
+    input_file_path varchar(512),
     input_file_base64 longtext,
     total_rows int NOT NULL DEFAULT 0,
     executable_rows int NOT NULL DEFAULT 0,
@@ -209,6 +210,12 @@ async function updateContentGenerationJobBase64Columns(connection: mysql.Connect
   `);
 }
 
+async function ensureContentGenerationJobColumns(connection: mysql.Connection) {
+  if (!(await tableExists(connection, "content_generation_jobs"))) return;
+  await addColumnIfMissing(connection, "content_generation_jobs", "input_file_path", `varchar(512)`);
+  await addColumnIfMissing(connection, "content_generation_jobs", "elapsed_execution_ms", `bigint NOT NULL DEFAULT 0`);
+}
+
 async function applyBaseline(connection: mysql.Connection, baseline: JournalEntry) {
   const hasLegacy = await hasLegacyBaseline(connection);
   if (hasLegacy) {
@@ -340,6 +347,7 @@ async function applyTranslationJobsMigration(connection: mysql.Connection, migra
 
 async function applyFaqElapsedExecutionMigration(connection: mysql.Connection, migration: JournalEntry) {
   if (await tableExists(connection, "content_generation_jobs")) {
+    await addColumnIfMissing(connection, "content_generation_jobs", "input_file_path", `varchar(512)`);
     await addColumnIfMissing(connection, "content_generation_jobs", "elapsed_execution_ms", `bigint NOT NULL DEFAULT 0`);
     if (await columnExists(connection, "content_generation_jobs", "started_at")) {
       await connection.query(`
@@ -502,6 +510,7 @@ async function main() {
       appliedTimes.add(faqElapsedExecutionMigration.when);
     }
 
+    await ensureContentGenerationJobColumns(connection);
     await ensureContentGenerationHistoryIndexes(connection);
     await ensureContentGenerationHistorySummaryTable(connection);
     await verifyCriticalGenerationColumns(connection);

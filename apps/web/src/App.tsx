@@ -1,8 +1,15 @@
 import * as Accordion from "@radix-ui/react-accordion";
 import * as Select from "@radix-ui/react-select";
-import { Suspense, lazy, useEffect, useRef, useState, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { categoryCalibrationDefaultAiModel, translationDefaultAiModel, type AiModel, type ModuleId } from "@about-demo/trpc";
+import {
+  categoryCalibrationDefaultAiModel,
+  translationDefaultAiModel,
+  type AiModel,
+  type AiProvider,
+  type ModuleId,
+  type ToolScopedAiConfigKey,
+} from "@about-demo/trpc";
 import { trpc } from "./lib/trpc";
 
 const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage").then((module) => ({ default: module.AnalyticsPage })));
@@ -133,6 +140,18 @@ function qualityModuleHref(moduleId: ModuleId, pageId: QualityPageId) {
   return `/quality/${moduleId}/${pageId}`;
 }
 
+function getToolScopedConfigKey(args: { workspaceId: WorkspaceId; moduleId: ModuleId; pageId: AppPageId }): ToolScopedAiConfigKey | null {
+  const { workspaceId, moduleId, pageId } = args;
+  if (workspaceId === "gg-cleaning" || workspaceId === "sampling-pre" || workspaceId === "sampling-post" || workspaceId === "skills") {
+    return null;
+  }
+  if (workspaceId === "quality") return moduleId === "about" ? "quality-about" : "quality-faq";
+  if (workspaceId === "output") return "output-faq";
+  if (workspaceId === "translation") return pageId === "text" ? "translation-text" : "translation-batch";
+  if (workspaceId === "category-calibration") return "category-calibration";
+  return null;
+}
+
 function SidebarGroup({
   value,
   title,
@@ -168,75 +187,66 @@ export default function App() {
   const [location] = useLocation();
   const { workspaceId, moduleId, pageId } = parseLocation(location);
   const [openSections, setOpenSections] = useState<string[]>([sectionForWorkspace(workspaceId)]);
+  const toolScopedKey = getToolScopedConfigKey({ workspaceId, moduleId, pageId });
+  const isAiSwitchDisabledWorkspace = workspaceId === "gg-cleaning" || workspaceId === "sampling-pre" || workspaceId === "sampling-post";
   const utils = trpc.useUtils();
-  const aiConfigQuery = trpc.runtime.aiConfig.get.useQuery();
-  const categoryAiConfigQuery = trpc.runtime.categoryCalibrationAiConfig.get.useQuery();
+  const aiConfigQuery = trpc.runtime.aiConfig.get.useQuery(
+    { toolKey: (toolScopedKey || "quality-about") as ToolScopedAiConfigKey },
+    { enabled: Boolean(toolScopedKey) },
+  );
   const aiConfigSetMutation = trpc.runtime.aiConfig.set.useMutation({
     onSuccess: () => {
-      void utils.runtime.aiConfig.get.invalidate();
+      if (!toolScopedKey) return;
+      void utils.runtime.aiConfig.get.invalidate({ toolKey: toolScopedKey });
     },
   });
-  const categoryAiConfigSetMutation = trpc.runtime.categoryCalibrationAiConfig.set.useMutation({
-    onSuccess: () => {
-      void utils.runtime.categoryCalibrationAiConfig.get.invalidate();
-    },
-  });
-  const isTranslationWorkspace = workspaceId === "translation";
-  const isGgCleaningWorkspace = workspaceId === "gg-cleaning";
-  const isCategoryCalibrationWorkspace = workspaceId === "category-calibration";
-  const categoryDefaultAppliedRef = useRef(false);
-  const currentModelValue = isGgCleaningWorkspace
+  const fallbackModelByTool: Record<ToolScopedAiConfigKey, string> = {
+    "quality-about": "gemini-2.5-flash-lite",
+    "quality-faq": "gemini-2.5-flash-lite",
+    "output-faq": "gemini-2.5-flash-lite",
+    "translation-batch": translationDefaultAiModel,
+    "translation-text": translationDefaultAiModel,
+    "category-calibration": categoryCalibrationDefaultAiModel,
+  };
+  const fallbackProviderByTool: Record<ToolScopedAiConfigKey, AiProvider> = {
+    "quality-about": "gemini",
+    "quality-faq": "gemini",
+    "output-faq": "gemini",
+    "translation-batch": "gemini",
+    "translation-text": "gemini",
+    "category-calibration": "gemini",
+  };
+  const currentProvider = toolScopedKey ? aiConfigQuery.data?.provider || fallbackProviderByTool[toolScopedKey] : "openai";
+  const currentModelValue = isAiSwitchDisabledWorkspace
     ? "无需AI"
-    : isTranslationWorkspace
-      ? translationDefaultAiModel
-      : isCategoryCalibrationWorkspace
-        ? categoryAiConfigQuery.data?.aiModel || categoryCalibrationDefaultAiModel
-        : aiConfigQuery.data?.aiModel || "";
-  const modelOptions = isGgCleaningWorkspace
-    ? ["无需AI"]
-    : isTranslationWorkspace
-      ? [translationDefaultAiModel]
-      : isCategoryCalibrationWorkspace
-        ? categoryAiConfigQuery.data?.availableModels || []
-        : aiConfigQuery.data?.availableModels || [];
+    : toolScopedKey
+      ? aiConfigQuery.data?.aiModel || fallbackModelByTool[toolScopedKey]
+      : "";
+  const modelsByProvider = aiConfigQuery.data?.availableModelsByProvider || { openai: [], gemini: [] };
+  const modelOptions = isAiSwitchDisabledWorkspace ? ["无需AI"] : modelsByProvider[currentProvider] || [];
+  const providerOptions = aiConfigQuery.data?.availableProviders || ["openai", "gemini"];
 
   const handleModelChange = (value: string) => {
-    if (!value) return;
-    if (isCategoryCalibrationWorkspace) {
-      if (categoryAiConfigSetMutation.isPending) return;
-      categoryAiConfigSetMutation.mutate({ aiModel: value as AiModel });
-      return;
-    }
+    if (!value || !toolScopedKey) return;
     if (aiConfigSetMutation.isPending) return;
-    aiConfigSetMutation.mutate({ aiModel: value as AiModel });
+    aiConfigSetMutation.mutate({ toolKey: toolScopedKey, aiModel: value as AiModel });
+  };
+
+  const handleProviderChange = (value: string) => {
+    if (!toolScopedKey || aiConfigSetMutation.isPending) return;
+    const provider = value as AiProvider;
+    const nextModel = ((modelsByProvider[provider] || [])[0] as AiModel | undefined);
+    aiConfigSetMutation.mutate({
+      toolKey: toolScopedKey,
+      provider,
+      aiModel: nextModel || undefined,
+    });
   };
 
   useEffect(() => {
     const activeSection = sectionForWorkspace(workspaceId);
     setOpenSections((current) => (current.includes(activeSection) ? current : [...current, activeSection]));
   }, [workspaceId]);
-
-  useEffect(() => {
-    if (!isCategoryCalibrationWorkspace) {
-      categoryDefaultAppliedRef.current = false;
-      return;
-    }
-    if (categoryDefaultAppliedRef.current) return;
-    if (categoryAiConfigQuery.isLoading || categoryAiConfigSetMutation.isPending) return;
-    const current = categoryAiConfigQuery.data?.aiModel || "";
-    if (current === categoryCalibrationDefaultAiModel) {
-      categoryDefaultAppliedRef.current = true;
-      return;
-    }
-    categoryDefaultAppliedRef.current = true;
-    categoryAiConfigSetMutation.mutate({ aiModel: categoryCalibrationDefaultAiModel as AiModel });
-  }, [
-    categoryAiConfigQuery.data?.aiModel,
-    categoryAiConfigQuery.isLoading,
-    categoryAiConfigSetMutation,
-    categoryAiConfigSetMutation.isPending,
-    isCategoryCalibrationWorkspace,
-  ]);
 
   const renderPage = () => {
     if (workspaceId === "output") {
@@ -334,33 +344,52 @@ export default function App() {
             <div className="logo-text">SC 内容生产与质检工具</div>
             <div className="btn-group">
               <div className="model-switch" aria-label="runtime-ai-model">
-                <span className="model-switch-label">模型</span>
-                <Select.Root
-                  value={currentModelValue}
-                  onValueChange={handleModelChange}
-                  disabled={
-                    isTranslationWorkspace ||
-                    isGgCleaningWorkspace ||
-                    (isCategoryCalibrationWorkspace
-                      ? categoryAiConfigQuery.isLoading || categoryAiConfigSetMutation.isPending
-                      : aiConfigQuery.isLoading || aiConfigSetMutation.isPending)
-                  }
-                >
-                  <Select.Trigger className="select-trigger model-switch-trigger" aria-label="runtime-ai-model-select">
-                    <Select.Value placeholder="选择模型" />
-                  </Select.Trigger>
-                  <Select.Portal>
-                    <Select.Content className="select-content model-switch-content" position="popper" sideOffset={8}>
-                      <Select.Viewport className="select-viewport">
-                        {modelOptions.map((model) => (
-                          <Select.Item className="select-item model-switch-item" key={model} value={model}>
-                            <Select.ItemText>{model}</Select.ItemText>
-                          </Select.Item>
-                        ))}
-                      </Select.Viewport>
-                    </Select.Content>
-                  </Select.Portal>
-                </Select.Root>
+                <div className="model-switch-group">
+                  <span className="model-switch-label">供应商</span>
+                  <Select.Root
+                    value={currentProvider}
+                    onValueChange={handleProviderChange}
+                    disabled={isAiSwitchDisabledWorkspace || !toolScopedKey || aiConfigQuery.isLoading || aiConfigSetMutation.isPending}
+                  >
+                    <Select.Trigger className="select-trigger model-switch-trigger" aria-label="runtime-ai-provider-select">
+                      <Select.Value placeholder="选择供应商" />
+                    </Select.Trigger>
+                    <Select.Portal>
+                      <Select.Content className="select-content model-switch-content" position="popper" sideOffset={8}>
+                        <Select.Viewport className="select-viewport">
+                          {providerOptions.map((provider) => (
+                            <Select.Item className="select-item model-switch-item" key={provider} value={provider}>
+                              <Select.ItemText>{provider}</Select.ItemText>
+                            </Select.Item>
+                          ))}
+                        </Select.Viewport>
+                      </Select.Content>
+                    </Select.Portal>
+                  </Select.Root>
+                </div>
+                <div className="model-switch-group">
+                  <span className="model-switch-label">模型</span>
+                  <Select.Root
+                    value={currentModelValue}
+                    onValueChange={handleModelChange}
+                    disabled={isAiSwitchDisabledWorkspace || !toolScopedKey || aiConfigQuery.isLoading || aiConfigSetMutation.isPending}
+                  >
+                    <Select.Trigger className="select-trigger model-switch-trigger" aria-label="runtime-ai-model-select">
+                      <Select.Value placeholder="选择模型" />
+                    </Select.Trigger>
+                    <Select.Portal>
+                      <Select.Content className="select-content model-switch-content" position="popper" sideOffset={8}>
+                        <Select.Viewport className="select-viewport">
+                          {modelOptions.map((model) => (
+                            <Select.Item className="select-item model-switch-item" key={model} value={model}>
+                              <Select.ItemText>{model}</Select.ItemText>
+                            </Select.Item>
+                          ))}
+                        </Select.Viewport>
+                      </Select.Content>
+                    </Select.Portal>
+                  </Select.Root>
+                </div>
               </div>
               <span className="module-chip">{workspaceLabelNext(workspaceId)}</span>
             </div>

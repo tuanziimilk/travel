@@ -15,7 +15,7 @@ import { aboutScoreRows, ingestJobs, uploadBatches } from "../db/schema";
 import { makeId } from "../utils/id";
 import { scoreAboutByAiWithMeta, type ScoreIssueFlags } from "../scoring/aboutAiScorer";
 import { buildConsistentComparisonKeyDeltas } from "../scoring/validators/scoreValidator";
-import { env } from "../env";
+import { env, getAiRuntimeRequestConfig } from "../env";
 import { sha256 } from "../utils/hash";
 import { formatChinaIsoOffset } from "../utils/time";
 import {
@@ -39,6 +39,10 @@ const headerOnline = "About-线上";
 const headerAi = "About-AI优化";
 const headerOp = "About-OP复核";
 const requiredHeaders = ["TermID", "TermName", "Domain", "Country", headerOnline, headerAi, headerOp];
+
+function resolveQualityAiModel(moduleId: "about" | "faq") {
+  return getAiRuntimeRequestConfig(moduleId === "about" ? "quality-about" : "quality-faq").aiModel;
+}
 
 export type ParsedUploadRow = {
   sourceRowIndex: number;
@@ -187,7 +191,7 @@ async function backfillMissingErrorRows(
   for (const row of rows) {
     const signature = rowSignatureFromInput(row);
     if (touchedSignatures.has(signature)) continue;
-    await insertErrorRow(batchId, row, reason);
+    await insertErrorRow(batchId, row, reason, "about");
     touchedSignatures.add(signature);
   }
 }
@@ -452,7 +456,7 @@ export async function saveManualScoreToBatch(params: {
     passOp: op ? (op.pass_for_publish ? 1 : 0) : null,
     keyDeltas,
     issuesFlags: buildIssueFlags(params.scored),
-    aiModel: env.aiModel,
+    aiModel: resolveQualityAiModel((params.input.moduleId || "about") as "about" | "faq"),
     aiPromptVersion: env.aiPromptVersion,
     snapshotOnline: snapshotText(params.input.About_online),
     snapshotAi: snapshotText(params.input.About_ai),
@@ -731,7 +735,7 @@ async function runIngest(
 
         if (await isCancelled()) return;
 
-        await insertScoreRow(batchId, row, scored.output, scored.diagnostics?.issueFlags);
+        await insertScoreRow(batchId, row, scored.output, moduleId, scored.diagnostics?.issueFlags);
         success += 1;
         finalizedDone += 1;
         promptTokensSum += scored.runtime.promptTokens;
@@ -808,7 +812,7 @@ async function runIngest(
 
           if (await isCancelled()) return;
 
-          await insertScoreRow(batchId, candidate.row, scored.output, scored.diagnostics?.issueFlags);
+          await insertScoreRow(batchId, candidate.row, scored.output, moduleId, scored.diagnostics?.issueFlags);
           success += 1;
           finalizedDone += 1;
           promptTokensSum += scored.runtime.promptTokens;
@@ -851,7 +855,7 @@ async function runIngest(
 
   for (const candidate of pendingFailures) {
     if (await isCancelled()) break;
-    await insertErrorRow(batchId, candidate.row, candidate.error);
+    await insertErrorRow(batchId, candidate.row, candidate.error, moduleId);
     failed += 1;
     finalizedDone += 1;
     await flushProgress(false);
@@ -944,6 +948,7 @@ async function insertScoreRow(
   batchId: string,
   row: ParsedUploadRow,
   scored: ScoreOutput,
+  moduleId: ModuleId,
   issueFlagsOverride?: ScoreIssueFlags,
 ) {
   await ensureAboutScoreRowsColumns();
@@ -985,7 +990,7 @@ async function insertScoreRow(
     passOp: op ? (op.pass_for_publish ? 1 : 0) : null,
     keyDeltas,
     issuesFlags: issueFlagsOverride ?? buildIssueFlags(scored),
-    aiModel: env.aiModel,
+    aiModel: resolveQualityAiModel(moduleId),
     aiPromptVersion: env.aiPromptVersion,
     snapshotOnline: snapshotText(row.About_online),
     snapshotAi: snapshotText(row.About_ai),
@@ -1022,7 +1027,7 @@ function ensureKeyDeltas(scored: ScoreOutput) {
   return fallback;
 }
 
-async function insertErrorRow(batchId: string, row: ParsedUploadRow, error: unknown) {
+async function insertErrorRow(batchId: string, row: ParsedUploadRow, error: unknown, moduleId: ModuleId) {
   await ensureAboutScoreRowsColumns();
   await db.insert(aboutScoreRows).values({
     id: makeId(),
@@ -1056,7 +1061,7 @@ async function insertErrorRow(batchId: string, row: ParsedUploadRow, error: unkn
     passOp: null,
     keyDeltas: [],
     issuesFlags: { failed: true },
-    aiModel: env.aiModel,
+    aiModel: resolveQualityAiModel(moduleId),
     aiPromptVersion: env.aiPromptVersion,
     snapshotOnline: snapshotText(row.About_online),
     snapshotAi: snapshotText(row.About_ai),
