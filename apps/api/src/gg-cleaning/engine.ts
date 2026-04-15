@@ -59,6 +59,12 @@ type InputRow = {
   termName: string;
   factType: string;
   sourceType: string;
+  normalizedTermId: string;
+  countryCode: string;
+  canonicalFactType: string;
+  normalizedSourceType: string;
+  domainHost: string;
+  domainPath: string;
   snippet: string;
   productUrls: string[];
   existence: GgCleaningExistence;
@@ -74,6 +80,9 @@ type SideResult = {
   reasonCn: string;
   value: string;
   url: string;
+  urlHost: string;
+  domainMatchType: string;
+  urlSelectedFromProductUrls: boolean;
   snippet: string;
   matchedRule: string;
   evidenceSentence: string;
@@ -95,6 +104,10 @@ type GroupAccumulator = {
   domain: string;
   termName: string;
   factType: string;
+  domainHost: string;
+  domainPath: string;
+  countryCode: string;
+  canonicalFactType: string;
   aimode: SideAccumulator;
   searchlab: SideAccumulator;
 };
@@ -110,6 +123,9 @@ type DecisionRow = {
   finalReasonCn: string;
   finalValue: string;
   finalUrl: string;
+  finalUrlHost: string;
+  finalDomainMatchType: string;
+  finalUrlSelectedFromProductUrls: boolean;
   finalSnippet: string;
   finalMatchedRule: string;
   finalEvidenceSentence: string;
@@ -158,6 +174,10 @@ type DebugRow = {
   final_reason_cn: string;
   final_value: string;
   final_url: string;
+  input_domain: string;
+  final_url_host: string;
+  domain_match_type: string;
+  url_selected_from_product_urls: string;
   final_snippet: string;
   final_matched_rule: string;
   final_evidence_sentence: string;
@@ -228,6 +248,10 @@ const DEBUG_HEADERS: Array<keyof DebugRow> = [
   "final_reason_cn",
   "final_value",
   "final_url",
+  "input_domain",
+  "final_url_host",
+  "domain_match_type",
+  "url_selected_from_product_urls",
   "final_snippet",
   "final_matched_rule",
   "final_evidence_sentence",
@@ -314,7 +338,34 @@ type FactFallbackClues = {
 };
 
 const AFFIRMATIVE_PREFIX = /^(?:yes|yeah|ja|si|sí|tak|oui|네|예)\b/i;
-const NEGATIVE_PREFIX = /^(?:no|nein|nie|non|아니|없습니다|없다|없음)\b/i;
+const NEGATIVE_PREFIX = /^(?:no|nee|nein|nie|non|아니|없습니다|없다|없음)\b/i;
+const LEAD_NEGATIVE_CUE_PATTERNS = [
+  /^(?:no|nee|nein|non)\b/i,
+  /^\bgeen\b/i,
+  /^\bniet\b/i,
+  /^\bgeen\s+(?:specifieke|vaste|publieke)\b/i,
+  /^\b(?:biedt|offre|propose)\s+niet\b/i,
+  /^\bop basis van\b.{0,35}\bgeen\b/i,
+  /^\b(?:uit|op)\s+de beschikbare informatie\b.{0,40}\bgeen\b/i,
+  /^\bil n['’]est pas\b/i,
+  /^\bpas de\b/i,
+];
+const AFFIRMATIVE_PREFIX_DISQUALIFIER_PATTERNS = [
+  /\bmaar\b/i,
+  /\bbut\b/i,
+  /\bhowever\b/i,
+  /\bafhankelijk van\b/i,
+  /\bhangt af van\b/i,
+  /\bdepends on\b/i,
+  /\bnot applicable\b/i,
+  /\bniet van toepassing\b/i,
+  /\bgeen fysieke (?:producten|verzending|levering)\b/i,
+  /\bdigitale tickets?\b/i,
+  /\balleen bij\b/i,
+  /\bonly for\b/i,
+  /\bonly when\b/i,
+  /\b(?:individuele|individual)\s+(?:verkoper|seller)\b/i,
+];
 
 const GENERIC_NEGATIVE_PATTERNS = [
   /\b(?:no|not|does not|do not|cannot|can't)\b.{0,40}\b(?:evidence|information|mention|specific|direct|official)\b/i,
@@ -1313,6 +1364,12 @@ const SHIPPING_AMBIGUOUS_ENTITY_PATTERNS = [
   /\btheir primary service is property booking\b/i,
 ];
 
+const SHIPPING_SELLER_DEPENDENT_PATTERNS = [
+  /\b(?:gratis|kosteloze) (?:verzending|bezorging|levering)\b.{0,45}\bafhankelijk van\b.{0,25}\b(?:de )?(?:verkoper|aanbieding)\b/i,
+  /\b(?:gratis|kosteloze) (?:verzending|bezorging|levering)\b.{0,45}\bhangt af van\b.{0,25}\b(?:de )?(?:verkoper|aanbieding)\b/i,
+  /\b(?:gratis|free) (?:shipping|delivery)\b.{0,45}\bdepends on\b.{0,25}\b(?:the )?(?:seller|listing)\b/i,
+];
+
 const SHIPPING_INFERENCE_ONLY_PATTERNS = [
   /\bdoes not detail explicitly\b/i,
   /\best(?:e|á)\b.{0,20}\bun est[aá]ndar com[uú]n\b/i,
@@ -1329,6 +1386,9 @@ const SHIPPING_HARD_NEGATIVE_PATTERNS = [
   /\bfree (?:shipping|delivery)\b.{0,50}\b(?:only )?(?:through|via)\b.{0,25}\b(?:third-?party|marketplaces?|retailers?)\b/i,
   /\boccasional\b.{0,20}\bfree (?:shipping|delivery)\b.{0,35}\b(?:promotion|promotions|campaigns?)\b.{0,35}\b(?:rather than|not)\b.{0,20}\b(?:a )?(?:standard|regular|standing)\b/i,
   /\bgeen standaard gratis (?:verzending|bezorging|levering)\b/i,
+  /\bgeen fysieke (?:producten|verzending|levering)\b/i,
+  /\bdigitale tickets?\b.{0,35}\bgeen\b.{0,20}\b(?:fysieke )?(?:verzending|levering)\b/i,
+  /\b(?:gratis|kosteloze) (?:verzending|bezorging|levering)\b.{0,45}\bniet van toepassing\b/i,
   /\b(?:gratis|kosteloze) (?:verzending|bezorging|levering)\b.{0,40}\b(?:alleen|soms|via)\b.{0,20}\b(?:acties|promoties|codes?)\b/i,
   /\bpas de livraison gratuite\b.{0,40}\b(?:standard|g[ée]n[ée]rale|hors promotion)\b/i,
   /\blivraison gratuite\b.{0,50}\b(?:principalement|uniquement|parfois)\b.{0,25}\b(?:via|gr[aâ]ce [àa]|avec)\b.{0,20}\b(?:codes?|promotions|offres ponctuelles)\b/i,
@@ -1336,6 +1396,14 @@ const SHIPPING_HARD_NEGATIVE_PATTERNS = [
   /\bplutot qu['’]?une livraison gratuite\b/i,
   /\bnon mentionn[ée]e?\b.{0,30}\bcomme syst[eé]matique\b/i,
   /\bne mentionne pas\b.{0,35}\b(?:de )?livraison gratuite\b/i,
+];
+
+const SHIPPING_LIMITED_POSITIVE_PATTERNS = [
+  /\b(?:gratis|kosteloze) (?:verzending|bezorging|levering)\b.{0,45}\balleen\b.{0,25}\b(?:bij|voor)\b.{0,30}\b(?:afhalen|afhaalpunt|filiaal|vestiging)\b/i,
+  /\b(?:gratis|kosteloze) (?:verzending|bezorging|levering)\b.{0,55}\b(?:geselecteerde|specifieke)\s+producten\b/i,
+  /\b(?:gratis|kosteloze) (?:verzending|bezorging|levering)\b.{0,55}\bactieproducten\b/i,
+  /\bvoor thuisbezorging\b.{0,35}\b(?:gelden|zijn er)\b.{0,20}\b(?:wel )?(?:bezorgkosten|verzendkosten)\b/i,
+  /\bgratis levering\b.{0,45}\balleen\b.{0,30}\bafhaalpunten\b/i,
 ];
 
 const CROSS_ENTITY_CONTRAST_PATTERNS = [
@@ -1943,6 +2011,41 @@ function normalizeDomain(value: string) {
   return stripped.split(/[/?#]/)[0].replace(/^\.+/, "");
 }
 
+function normalizePathname(value: string) {
+  const raw = normalizeText(value).toLowerCase();
+  if (!raw || raw === "/") return "";
+  const prefixed = raw.startsWith("/") ? raw : `/${raw}`;
+  return prefixed.replace(/\/+$/, "");
+}
+
+function parseDomainReference(value: unknown) {
+  const raw = String(value ?? "");
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { raw, host: "", pathname: "" };
+  }
+
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const parsed = new URL(withProtocol);
+    return {
+      raw,
+      host: normalizeDomain(parsed.hostname),
+      pathname: normalizePathname(parsed.pathname),
+    };
+  } catch {
+    const stripped = trimmed.replace(/^https?:\/\//i, "").split(/[?#]/)[0];
+    const slashIndex = stripped.indexOf("/");
+    const hostPart = slashIndex >= 0 ? stripped.slice(0, slashIndex) : stripped;
+    const pathPart = slashIndex >= 0 ? stripped.slice(slashIndex) : "";
+    return {
+      raw,
+      host: normalizeDomain(hostPart),
+      pathname: normalizePathname(pathPart),
+    };
+  }
+}
+
 function cleanSnippetText(value: string) {
   return normalizeText(value)
     .replace(/^\[\s*"/, "")
@@ -2012,6 +2115,21 @@ function scoreSentence(sentence: string, factType: string, index: number): Sente
   const crossEntityContrast =
     CROSS_ENTITY_SENSITIVE_FACT_TYPES.has(factType) &&
     hasPattern(sentence, CROSS_ENTITY_CONTRAST_PATTERNS);
+  const leadingNegativeCue = index < 2 && hasPattern(sentence, LEAD_NEGATIVE_CUE_PATTERNS);
+  const affirmativePrefixBlocked =
+    hasPattern(sentence, AFFIRMATIVE_PREFIX_DISQUALIFIER_PATTERNS) ||
+    (factType === "shipping" && (
+      hasPattern(sentence, SHIPPING_HARD_NEGATIVE_PATTERNS) ||
+      hasPattern(sentence, SHIPPING_LIMITED_POSITIVE_PATTERNS) ||
+      hasPattern(sentence, SHIPPING_AMBIGUOUS_ENTITY_PATTERNS)
+    ));
+  const strongMerchantPositive =
+    explicit &&
+    matchedFactPositive &&
+    !matchedFactNegative &&
+    !matchedGenericNegative &&
+    !crossEntityContrast &&
+    !affirmativePrefixBlocked;
 
   if (rule.ignore?.some((pattern) => pattern.test(sentence)) && (!explicit || factType === "app")) {
     return {
@@ -2282,6 +2400,17 @@ function scoreSentence(sentence: string, factType: string, index: number): Sente
     };
   }
 
+  if (factType === "shipping" && hasPattern(sentence, SHIPPING_SELLER_DEPENDENT_PATTERNS)) {
+    return {
+      existence: "unknown",
+      reasonCn: index < 2 ? "前两句显示配送权益依卖家或商品而变" : "正文显示配送权益依卖家或商品而变",
+      matchedRule: "shipping_seller_dependent",
+      evidenceSentence: sentence,
+      confidenceBucket: "none",
+      score: 0,
+    };
+  }
+
   if (factType === "shipping" && hasPattern(sentence, SHIPPING_HARD_NEGATIVE_PATTERNS)) {
     return {
       existence: "no",
@@ -2290,6 +2419,17 @@ function scoreSentence(sentence: string, factType: string, index: number): Sente
       evidenceSentence: sentence,
       confidenceBucket: "strong",
       score: 7 + leadBoost,
+    };
+  }
+
+  if (factType === "shipping" && hasPattern(sentence, SHIPPING_LIMITED_POSITIVE_PATTERNS)) {
+    return {
+      existence: "unknown",
+      reasonCn: index < 2 ? "前两句仅出现条件式配送权益" : "正文仅出现条件式配送权益",
+      matchedRule: "shipping_limited_positive",
+      evidenceSentence: sentence,
+      confidenceBucket: "none",
+      score: 0,
     };
   }
 
@@ -2428,8 +2568,19 @@ function scoreSentence(sentence: string, factType: string, index: number): Sente
     matchedRule = "child_non_discount_context";
   }
 
-  if (AFFIRMATIVE_PREFIX.test(sentence) && explicit && !crossEntityContrast) {
-    positiveScore += 3 + leadBoost;
+  if (leadingNegativeCue && !strongMerchantPositive) {
+    return {
+      existence: "no",
+      reasonCn: index < 2 ? "前两句出现前置明确否定证据" : "正文出现前置明确否定证据",
+      matchedRule: "lead_negative_cue",
+      evidenceSentence: sentence,
+      confidenceBucket: "weak",
+      score: 5 + leadBoost,
+    };
+  }
+
+  if (AFFIRMATIVE_PREFIX.test(sentence) && strongMerchantPositive) {
+    positiveScore += 2 + leadBoost;
     matchedRule = "affirmative_prefix";
   }
   if (NEGATIVE_PREFIX.test(sentence) && (explicit || hasPattern(sentence, GENERIC_NEGATIVE_PATTERNS))) {
@@ -3350,22 +3501,52 @@ function parseUrlParts(url: string) {
     const parsed = new URL(url);
     return {
       host: normalizeDomain(parsed.hostname),
-      pathname: parsed.pathname.toLowerCase(),
+      pathname: normalizePathname(parsed.pathname),
       lowered: parsed.toString().toLowerCase(),
     };
   } catch {
     const lowered = url.toLowerCase();
     return {
       host: normalizeDomain(url),
-      pathname: lowered,
+      pathname: normalizePathname(lowered),
       lowered,
     };
   }
 }
 
-function isUrlOnDomain(host: string, domain: string) {
-  const normalizedDomain = normalizeDomain(domain);
-  return Boolean(normalizedDomain && (host === normalizedDomain || host.endsWith(`.${normalizedDomain}`)));
+const SAFE_SUBDOMAIN_PREFIXES = new Set([
+  "www",
+  "m",
+  "support",
+  "help",
+  "shop",
+  "store",
+  "care",
+  "services",
+  "service",
+  "info",
+  "en",
+  "uk",
+  "us",
+  "de",
+  "fr",
+  "nl",
+  "pl",
+  "es",
+  "kr",
+]);
+
+function classifyDomainMatch(host: string, pathname: string, domainHost: string, domainPath = "") {
+  if (!domainHost || !host) return "off_domain";
+  if (domainPath && pathname && pathname.includes(domainPath) && (host === domainHost || host.endsWith(`.${domainHost}`))) {
+    return "brand_path";
+  }
+  if (host === domainHost) {
+    return "exact_host";
+  }
+  if (!host.endsWith(`.${domainHost}`)) return "off_domain";
+  const prefix = host.slice(0, -(domainHost.length + 1)).split(".").pop() || "";
+  return SAFE_SUBDOMAIN_PREFIXES.has(prefix) ? "subdomain" : "brand_subdomain";
 }
 
 function isUrlAllowedPartner(host: string, factType: string) {
@@ -3390,21 +3571,63 @@ function isHomepagePath(pathname: string) {
   return /^\/?$/.test(pathname) || /^\/[a-z]{2}(?:-[a-z]{2})?\/?$/.test(pathname);
 }
 
-function pickBestUrl(urls: string[], domain: string, factType: string, country = "") {
-  if (!urls.length) return "";
+function pickBestUrl(urls: string[], domainHost: string, factType: string, country = "", domainPath = "") {
+  if (!urls.length) {
+    return {
+      url: "",
+      urlHost: "",
+      domainMatchType: "off_domain",
+      urlSelectedFromProductUrls: false,
+    };
+  }
   const scored = [...urls]
-    .map((url) => ({ url, score: scoreUrl(url, domain, factType, country) }))
+    .map((url) => ({ url, ...scoreUrl(url, domainHost, factType, country, domainPath) }))
     .sort((left, right) => right.score - left.score || left.url.length - right.url.length);
   const best = scored[0];
-  return best && best.score >= 45 ? best.url : "";
+  if (!best || best.score < 45) {
+    return {
+      url: "",
+      urlHost: "",
+      domainMatchType: "off_domain",
+      urlSelectedFromProductUrls: false,
+    };
+  }
+  return {
+    url: best.url,
+    urlHost: best.host,
+    domainMatchType: best.domainMatchType,
+    urlSelectedFromProductUrls: true,
+  };
 }
 
-function scoreUrl(url: string, domain: string, factType: string, country: string) {
+function scoreUrl(url: string, domainHost: string, factType: string, country: string, domainPath = "") {
   const { host, pathname, lowered } = parseUrlParts(url);
-  const onDomain = isUrlOnDomain(host, domain);
+  const domainMatchType = classifyDomainMatch(host, pathname, domainHost, domainPath);
+  const onDomain =
+    domainMatchType === "exact_host" ||
+    domainMatchType === "subdomain" ||
+    domainMatchType === "brand_path" ||
+    domainMatchType === "brand_subdomain";
   const allowedPartner = !onDomain && isUrlAllowedPartner(host, factType);
-  let score = onDomain ? 40 : allowedPartner ? 32 : -30;
+  let score =
+    domainMatchType === "exact_host"
+      ? 40
+      : domainMatchType === "subdomain"
+        ? 38
+        : domainMatchType === "brand_path"
+          ? 34
+          : domainMatchType === "brand_subdomain"
+            ? 24
+            : allowedPartner
+              ? 32
+              : -30;
   if (allowedPartner) score += 18;
+  if (domainMatchType === "brand_subdomain") score -= 6;
+  if (domainMatchType === "brand_path") score += 4;
+  if (domainPath) {
+    if (pathname.includes(domainPath)) score += 16;
+    else if (domainMatchType === "exact_host" && isHomepagePath(pathname)) score -= 12;
+  }
 
   if (!allowedPartner && URL_BAD_HOST_PATTERNS.some((pattern) => host.includes(pattern))) score -= 50;
   if (/(^|[.-])(preprod|staging|stage|test|dev|npr)([.-]|$)/.test(host)) score -= 18;
@@ -3445,10 +3668,17 @@ function scoreUrl(url: string, domain: string, factType: string, country: string
 
   if (URL_NEEDS_TARGETED_HINT.has(factType) && !strongHitCount && !allowedPartner) score -= onDomain ? 18 : 8;
   score -= Math.max(0, pathname.split("/").filter(Boolean).length - 3);
-  return score;
+  return { score, host, domainMatchType };
 }
 
 function toInputRow(row: Record<string, unknown>) {
+  const domainRef = parseDomainReference(row.domain);
+  const rawTermId = String(row.term_id ?? "");
+  const rawCountry = String(row.country ?? "");
+  const rawDomain = domainRef.raw;
+  const rawTermName = String(row.term_name ?? "");
+  const rawFactType = String(row.subclass ?? "");
+  const rawSourceType = String(row[GG_COLLECTED_SOURCE_COLUMN] ?? "");
   const factType = canonicalFactType(normalizeText(row.subclass));
   const snippet = parseSnippetCell(row.content);
   const productUrls = parseProductUrlsCell(row.product_urls);
@@ -3456,12 +3686,18 @@ function toInputRow(row: Record<string, unknown>) {
   const inferred = explainExistence(factType, snippet);
   const existence = inferred.existence;
   const inputRow = {
-    termId: normalizeText(row.term_id),
-    country: normalizeText(row.country).toUpperCase(),
-    domain: normalizeDomain(normalizeText(row.domain)),
-    termName: normalizeText(row.term_name),
-    factType,
-    sourceType: normalizeCollectedSourceType(row[GG_COLLECTED_SOURCE_COLUMN]),
+    termId: rawTermId,
+    country: rawCountry,
+    domain: rawDomain,
+    termName: rawTermName,
+    factType: rawFactType,
+    sourceType: rawSourceType,
+    normalizedTermId: normalizeText(row.term_id),
+    countryCode: normalizeText(row.country).toUpperCase(),
+    canonicalFactType: factType,
+    normalizedSourceType: normalizeCollectedSourceType(row[GG_COLLECTED_SOURCE_COLUMN]),
+    domainHost: domainRef.host,
+    domainPath: domainRef.pathname,
     snippet,
     productUrls,
     existence,
@@ -3472,8 +3708,8 @@ function toInputRow(row: Record<string, unknown>) {
     confidenceBucket: inferred.confidenceBucket,
   } satisfies InputRow;
 
-  if (!inputRow.termId || !inputRow.country || !inputRow.factType) return null;
-  if (inputRow.sourceType !== "aimode" && inputRow.sourceType !== "searchlab") return null;
+  if (!inputRow.normalizedTermId || !inputRow.countryCode || !inputRow.canonicalFactType) return null;
+  if (inputRow.normalizedSourceType !== "aimode" && inputRow.normalizedSourceType !== "searchlab") return null;
   return inputRow;
 }
 
@@ -3483,7 +3719,7 @@ function toInputRows(parsed: ParsedFile, inputMode: GgCleaningInputMode) {
 }
 
 function groupKeyOf(row: Pick<InputRow, "termId" | "country" | "factType">) {
-  return `${row.termId}__${row.country}__${row.factType}`;
+  return `${normalizeText(row.termId)}__${normalizeText(row.country).toUpperCase()}__${canonicalFactType(normalizeText(row.factType))}`;
 }
 
 function confidenceRank(value: SideResult["confidenceBucket"]) {
@@ -3561,13 +3797,16 @@ function updateSideAccumulator(acc: SideAccumulator, row: InputRow) {
   }
 }
 
-function reduceSideAccumulator(acc: SideAccumulator, domain: string, factType: string, country: string): SideResult {
+function reduceSideAccumulator(acc: SideAccumulator, _domainHost: string, factType: string, country: string): SideResult {
   if (!acc.bestRow) {
     return {
       supported: "unknown",
       reasonCn: "当前来源无有效数据",
       value: "",
       url: "",
+      urlHost: "",
+      domainMatchType: "off_domain",
+      urlSelectedFromProductUrls: false,
       snippet: "",
       matchedRule: "no_source_data",
       evidenceSentence: "",
@@ -3581,12 +3820,16 @@ function reduceSideAccumulator(acc: SideAccumulator, domain: string, factType: s
     pickedRow.existence === "yes" ? acc.noRanks.has(rank) : pickedRow.existence === "no" ? acc.yesRanks.has(rank) : false;
   const supported = hasOppositeAtSameRank ? "unknown" : pickedRow.existence;
   const reasonCn = supported === "unknown" ? "source-level conflict" : pickedRow.existenceReasonCn;
+  const pickedUrl = pickBestUrl(Array.from(acc.productUrlSet), pickedRow.domainHost, factType, country, pickedRow.domainPath);
 
   return {
     supported,
     reasonCn,
     value: supported === "yes" ? acc.firstValue : "",
-    url: pickBestUrl(Array.from(acc.productUrlSet), domain, factType, country),
+    url: pickedUrl.url,
+    urlHost: pickedUrl.urlHost,
+    domainMatchType: pickedUrl.domainMatchType,
+    urlSelectedFromProductUrls: pickedUrl.urlSelectedFromProductUrls,
     snippet: pickedRow.snippet,
     matchedRule: supported === "unknown" ? "side_conflict" : pickedRow.matchedRule,
     evidenceSentence: pickedRow.evidenceSentence || pickedRow.snippet,
@@ -3615,23 +3858,27 @@ function addInputRowToGroups(groups: Map<string, GroupAccumulator>, row: InputRo
       domain: row.domain,
       termName: row.termName,
       factType: row.factType,
+      domainHost: row.domainHost,
+      domainPath: row.domainPath,
+      countryCode: row.countryCode,
+      canonicalFactType: row.canonicalFactType,
       aimode: createSideAccumulator(),
       searchlab: createSideAccumulator(),
     };
     groups.set(key, group);
   }
-  updateSideAccumulator(row.sourceType === "aimode" ? group.aimode : group.searchlab, row);
+  updateSideAccumulator(row.normalizedSourceType === "aimode" ? group.aimode : group.searchlab, row);
 }
 
 function buildDecisionRowsFromGroups(groups: Map<string, GroupAccumulator>) {
 
   const decisions: DecisionRow[] = [];
   for (const [groupKey, group] of groups) {
-    const aimode = reduceSideAccumulator(group.aimode, group.domain, group.factType, group.country);
-    const searchlab = reduceSideAccumulator(group.searchlab, group.domain, group.factType, group.country);
+    const aimode = reduceSideAccumulator(group.aimode, group.domainHost, group.canonicalFactType, group.countryCode);
+    const searchlab = reduceSideAccumulator(group.searchlab, group.domainHost, group.canonicalFactType, group.countryCode);
     const finalExistence = mergeExistence(aimode, searchlab);
     const finalValue = finalExistence.existence === "yes" ? mergeValue(aimode.value, searchlab.value) : "";
-    const finalUrl = pickBestUrl([aimode.url, searchlab.url].filter(Boolean), group.domain, group.factType, group.country);
+    const finalUrlPick = pickBestUrl([aimode.url, searchlab.url].filter(Boolean), group.domainHost, group.canonicalFactType, group.countryCode, group.domainPath);
     const finalSnippet =
       (finalExistence.existence === aimode.supported ? aimode.snippet : "") ||
       (finalExistence.existence === searchlab.supported ? searchlab.snippet : "") ||
@@ -3648,7 +3895,10 @@ function buildDecisionRowsFromGroups(groups: Map<string, GroupAccumulator>) {
       finalSupported: finalExistence.existence,
       finalReasonCn: finalExistence.reasonCn,
       finalValue,
-      finalUrl,
+      finalUrl: finalUrlPick.url,
+      finalUrlHost: finalUrlPick.urlHost,
+      finalDomainMatchType: finalUrlPick.domainMatchType,
+      finalUrlSelectedFromProductUrls: finalUrlPick.urlSelectedFromProductUrls,
       finalSnippet,
       finalMatchedRule:
         finalExistence.existence === "unknown"
@@ -3722,6 +3972,10 @@ function toDebugRows(decisions: DecisionRow[]): DebugRow[] {
     final_reason_cn: item.finalReasonCn,
     final_value: item.finalValue,
     final_url: item.finalUrl,
+    input_domain: item.domain,
+    final_url_host: item.finalUrlHost,
+    domain_match_type: item.finalDomainMatchType,
+    url_selected_from_product_urls: item.finalUrlSelectedFromProductUrls ? "1" : "0",
     final_snippet: item.finalSnippet,
     final_matched_rule: item.finalMatchedRule,
     final_evidence_sentence: item.finalEvidenceSentence,

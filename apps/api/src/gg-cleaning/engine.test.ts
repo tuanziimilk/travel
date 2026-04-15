@@ -1655,7 +1655,7 @@ describe("gg cleaning engine", () => {
       },
     ]);
 
-    expect(result.debugRows[0].fact_type).toBe("price guarantee");
+    expect(result.debugRows[0].fact_type).toBe("price guanrantee");
     expect(result.debugRows[0].final_supported).toBe("no");
   });
 
@@ -3433,6 +3433,87 @@ describe("gg cleaning engine", () => {
     expect(result.debugRows[0].final_supported).toBe("no");
   });
 
+  it("keeps NL shipping no when Ja is followed by not-applicable digital-only clarification", () => {
+    const result = runEval([
+      {
+        term_id: "nl-ja-digital-shipping-no",
+        country: "NL",
+        term_name: "FlixBus",
+        domain: "flixbus.com",
+        subclass: "shipping",
+        source_type: "searchlab",
+        snippet: "Ja, FlixBus biedt gratis verzending in de zin dat er geen verzendkosten zijn voor tickets. U ontvangt uw ticket digitaal en er is geen fysieke verzending nodig.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps NL shipping unknown when Ja is limited to pickup-only delivery", () => {
+    const result = runEval([
+      {
+        term_id: "nl-ja-pickup-shipping-unknown",
+        country: "NL",
+        term_name: "Directplant",
+        domain: "directplant.nl",
+        subclass: "shipping",
+        source_type: "searchlab",
+        snippet: "Ja, Directplant.nl biedt gratis levering, maar alleen als je kiest voor een afhaalpunt. Voor thuisbezorging gelden bezorgkosten.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("unknown");
+  });
+
+  it("keeps NL shipping unknown when Ja depends on the individual seller", () => {
+    const result = runEval([
+      {
+        term_id: "nl-ja-seller-shipping-unknown",
+        country: "NL",
+        term_name: "eBay Nederland",
+        domain: "ebay.nl",
+        subclass: "shipping",
+        source_type: "searchlab",
+        snippet: "Ja, eBay.nl biedt gratis verzending aan, maar dit hangt af van de individuele verkoper en de aanbieding.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("unknown");
+  });
+
+  it("keeps NL newsletter no when a leading negative cue is not followed by a real merchant-level benefit", () => {
+    const result = runEval([
+      {
+        term_id: "nl-leading-negative-newsletter-no",
+        country: "NL",
+        term_name: "Directplant",
+        domain: "directplant.nl",
+        subclass: "newsletter/first order/sign up/",
+        source_type: "searchlab",
+        snippet: "Nee, Directplant.nl geeft geen vaste korting voor nieuwsbriefinschrijving. De nieuwsbrief wordt vooral gebruikt voor tuintips en algemene acties.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("allows later explicit merchant benefit to override an earlier NL negative cue", () => {
+    const result = runEval([
+      {
+        term_id: "nl-leading-negative-then-yes",
+        country: "NL",
+        term_name: "vidaXL",
+        domain: "vidaxl.nl",
+        subclass: "newsletter/first order/sign up/",
+        source_type: "searchlab",
+        snippet: "Nee, die oude actie is niet meer de juiste beschrijving. Schrijf je in voor de vidaXL nieuwsbrief en ontvang 5 EUR korting op je eerste bestelling.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("yes");
+    expect(result.debugRows[0].final_value).toBe("5 EUR");
+  });
+
   it("keeps NL student no when school-themed promo codes are only comparable to student discounts", () => {
     const result = runEval([
       {
@@ -4407,6 +4488,65 @@ describe("gg cleaning engine", () => {
 
     expect(result.debugRows[0].final_url).toContain("premiumbags.com");
     expect(result.debugRows[0].final_url).not.toContain("couponfollow.com");
+  });
+
+  it("keeps base fields unchanged and only cleans URLs from product_urls", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "24a",
+        query: "Does hilton.com/en/brands/home2-suites offer app discounts?",
+        country: "US",
+        language: "en",
+        domain: "hilton.com/en/brands/home2-suites",
+        term_id: "1688",
+        term_name: "Home2 Suites by Hilton",
+        subclass: "app",
+        [GG_COLLECTED_STATUS_COLUMN]: "done",
+        [GG_COLLECTED_SOURCE_COLUMN]: "ai_mode",
+        google_url: "https://www.google.com/search?q=home2+suites+app",
+        content: ["Download the Hilton Honors app to access digital offers for Home2 Suites stays."],
+        product_urls: [
+          "https://www.hilton.com/en/brands/home2-suites/",
+          "https://www.hilton.com/en/hilton-honors/mobile-app/",
+        ],
+      },
+    ]);
+
+    expect(result.debugRows[0].term_id).toBe("1688");
+    expect(result.debugRows[0].country).toBe("US");
+    expect(result.debugRows[0].domain).toBe("hilton.com/en/brands/home2-suites");
+    expect(result.debugRows[0].term_name).toBe("Home2 Suites by Hilton");
+    expect(result.debugRows[0].fact_type).toBe("app");
+    expect(result.debugRows[0].input_domain).toBe("hilton.com/en/brands/home2-suites");
+    expect(result.debugRows[0].url_selected_from_product_urls).toBe("1");
+    expect(result.debugRows[0].final_url).not.toContain("google.com");
+  });
+
+  it("does not rewrite uploaded domain when final_url comes from a brand path under the same host", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "24b",
+        query: "Does marriott.com/brands/residence-inn offer app discounts?",
+        country: "US",
+        language: "en",
+        domain: "marriott.com/brands/residence-inn",
+        term_id: "1689",
+        term_name: "Residence Inn",
+        subclass: "app",
+        [GG_COLLECTED_STATUS_COLUMN]: "done",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: ["Residence Inn promotes digital offers through the official app page."],
+        product_urls: [
+          "https://www.marriott.com/brands/residence-inn/app.mi",
+          "https://www.marriott.com/help/loyalty.mi",
+        ],
+      },
+    ]);
+
+    expect(result.debugRows[0].domain).toBe("marriott.com/brands/residence-inn");
+    expect(result.debugRows[0].final_url).toBe("https://www.marriott.com/brands/residence-inn/app.mi");
+    expect(result.debugRows[0].final_url_host).toBe("www.marriott.com");
+    expect(result.debugRows[0].domain_match_type).toBe("brand_path");
   });
 
   it("returns empty final_url when only off-domain coupon candidates exist for a targeted subclass", () => {
