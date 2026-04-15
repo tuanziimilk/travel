@@ -338,6 +338,62 @@ async function applyTranslationJobsMigration(connection: mysql.Connection, migra
   console.log("[db:migrate:safe] applied 0004_translation_jobs");
 }
 
+async function applyFaqElapsedExecutionMigration(connection: mysql.Connection, migration: JournalEntry) {
+  if (await tableExists(connection, "content_generation_jobs")) {
+    await addColumnIfMissing(connection, "content_generation_jobs", "elapsed_execution_ms", `bigint NOT NULL DEFAULT 0`);
+    if (await columnExists(connection, "content_generation_jobs", "started_at")) {
+      await connection.query(`
+        ALTER TABLE \`content_generation_jobs\`
+          MODIFY COLUMN \`started_at\` timestamp NULL DEFAULT NULL
+      `);
+    }
+  }
+  await recordMigration(connection, migration.tag, migration.when);
+  console.log("[db:migrate:safe] applied 0005_faq_elapsed_execution");
+}
+
+async function verifyCriticalGenerationColumns(connection: mysql.Connection) {
+  if (!(await tableExists(connection, "content_generation_jobs"))) {
+    console.warn("[db:migrate:safe] content_generation_jobs table is missing");
+    return;
+  }
+
+  const hasElapsedExecutionMs = await columnExists(connection, "content_generation_jobs", "elapsed_execution_ms");
+  const hasStartedAt = await columnExists(connection, "content_generation_jobs", "started_at");
+  console.log(
+    `[db:migrate:safe] critical column check content_generation_jobs.elapsed_execution_ms=${hasElapsedExecutionMs} started_at=${hasStartedAt}`,
+  );
+}
+
+async function ensureContentGenerationDownloadTasksTable(connection: mysql.Connection) {
+  await connection.query(`
+    CREATE TABLE IF NOT EXISTS content_generation_download_tasks (
+      id varchar(36) NOT NULL PRIMARY KEY,
+      job_id varchar(36) NOT NULL,
+      variant varchar(32) NOT NULL,
+      status varchar(32) NOT NULL DEFAULT 'queued',
+      progress_percent int NOT NULL DEFAULT 0,
+      status_text varchar(255) NOT NULL DEFAULT '',
+      file_name varchar(255) NOT NULL DEFAULT '',
+      result_file_path varchar(512),
+      file_size_bytes int NOT NULL DEFAULT 0,
+      error_message varchar(512),
+      expires_at timestamp NULL,
+      created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      KEY idx_generation_download_tasks_job_variant_created (job_id, variant, created_at),
+      KEY idx_generation_download_tasks_status_created (status, created_at),
+      KEY idx_generation_download_tasks_expires_at (expires_at)
+    )
+  `);
+}
+
+async function applyContentGenerationDownloadTasksMigration(connection: mysql.Connection, migration: JournalEntry) {
+  await ensureContentGenerationDownloadTasksTable(connection);
+  await recordMigration(connection, migration.tag, migration.when);
+  console.log("[db:migrate:safe] applied content_generation_download_tasks");
+}
+
 async function ensureContentGenerationHistoryIndexes(connection: mysql.Connection) {
   if (!(await tableExists(connection, "content_generation_jobs"))) return;
   if (!(await tableExists(connection, "content_generation_job_rows"))) return;
@@ -401,8 +457,9 @@ async function main() {
   const longtextUpgrade = entries.find((entry) => entry.tag === "0002_content_generation_job_longtext");
   const skillVersionMigration = entries.find((entry) => entry.tag === "0003_skill_version_history");
   const translationJobsMigration = entries.find((entry) => entry.tag === "0004_translation_jobs");
+  const faqElapsedExecutionMigration = entries.find((entry) => entry.tag === "0005_faq_elapsed_execution");
 
-  if (!baseline || !upgrade || !longtextUpgrade || !skillVersionMigration || !translationJobsMigration) {
+  if (!baseline || !upgrade || !longtextUpgrade || !skillVersionMigration || !translationJobsMigration || !faqElapsedExecutionMigration) {
     throw new Error("required migration entries are missing from drizzle/meta/_journal.json");
   }
 
@@ -440,8 +497,14 @@ async function main() {
       appliedTimes.add(translationJobsMigration.when);
     }
 
+    if (!appliedTimes.has(faqElapsedExecutionMigration.when)) {
+      await applyFaqElapsedExecutionMigration(connection, faqElapsedExecutionMigration);
+      appliedTimes.add(faqElapsedExecutionMigration.when);
+    }
+
     await ensureContentGenerationHistoryIndexes(connection);
     await ensureContentGenerationHistorySummaryTable(connection);
+    await verifyCriticalGenerationColumns(connection);
   } finally {
     await connection.end();
   }
