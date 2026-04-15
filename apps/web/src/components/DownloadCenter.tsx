@@ -232,7 +232,7 @@ export function DownloadCenterProvider({ children }: { children: ReactNode }) {
         <div className="download-drawer-panel">
           <div className="download-drawer-head">
             <div>
-              <span className="download-drawer-kicker">Global downloads</span>
+              <span className="download-drawer-kicker">SC DOWNLOADS</span>
               <h2>下载中心</h2>
               <p>文件在后台准备，完成后交给浏览器下载。</p>
             </div>
