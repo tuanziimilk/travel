@@ -21,8 +21,10 @@ export type GgCleaningPreview = {
   inputMode: GgCleaningInputMode;
   totalRows: number;
   groupedRows: number;
+  groupedRowsEstimated?: boolean;
   chunkCount?: number;
   oversizedGroupCount?: number;
+  previewStrategy?: "full" | "fast";
   columns: Array<{ name: string; sampleValues: string[] }>;
   sampleRows: Array<Record<string, string>>;
 };
@@ -48,8 +50,10 @@ type PreviewBuildInput = {
   sampleRawRows: Array<Record<string, unknown>>;
   totalRows: number;
   groupedRows: number;
+  groupedRowsEstimated?: boolean;
   chunkCount?: number;
   oversizedGroupCount?: number;
+  previewStrategy?: "full" | "fast";
 };
 
 type InputRow = {
@@ -1987,8 +1991,10 @@ export function buildGgCleaningPreviewFromMetadata(input: PreviewBuildInput): Gg
     inputMode,
     totalRows: input.totalRows,
     groupedRows: input.groupedRows,
+    groupedRowsEstimated: input.groupedRowsEstimated,
     chunkCount: input.chunkCount,
     oversizedGroupCount: input.oversizedGroupCount,
+    previewStrategy: input.previewStrategy || "full",
     columns: sampleColumns(sampleRows, input.columns),
     sampleRows,
   };
@@ -4158,6 +4164,26 @@ async function summarizeBufferedRowsFromFile(
   );
 }
 
+async function buildFastSpreadsheetPreview(filePath: string): Promise<PreviewBuildInput> {
+  const buffer = await fs.readFile(filePath);
+  const workbook = XLSX.read(buffer, { type: "buffer", sheetRows: 6 });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const headerRows = XLSX.utils.sheet_to_json<Array<unknown>>(sheet, { header: 1, defval: "" });
+  const header = Array.isArray(headerRows[0]) ? headerRows[0].map((item) => String(item ?? "").trim()).filter(Boolean) : [];
+  const sampleRawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" }).slice(0, 5);
+  const ref = String(sheet?.["!ref"] || "");
+  const range = ref ? XLSX.utils.decode_range(ref) : null;
+  const totalRows = range ? Math.max(0, range.e.r - range.s.r) : sampleRawRows.length;
+  return {
+    columns: header.length ? header : collectColumns(sampleRawRows),
+    sampleRawRows,
+    totalRows,
+    groupedRows: totalRows,
+    groupedRowsEstimated: true,
+    previewStrategy: "fast",
+  };
+}
+
 async function summarizeRawRowsFromFile(
   filePath: string,
   fileName: string,
@@ -4174,6 +4200,10 @@ async function summarizeRawRowsFromFile(
 }
 
 async function buildPreviewFromFile(filePath: string, fileName: string): Promise<GgCleaningPreview> {
+  const lowerName = fileName.toLowerCase();
+  if (lowerName.endsWith(".xlsx") || lowerName.endsWith(".xlsm")) {
+    return buildGgCleaningPreviewFromMetadata(await buildFastSpreadsheetPreview(filePath));
+  }
   const summary = await summarizeRawRowsFromFile(filePath, fileName);
   return buildGgCleaningPreviewFromMetadata(summary);
 }

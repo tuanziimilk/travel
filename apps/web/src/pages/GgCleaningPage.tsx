@@ -155,6 +155,10 @@ function formatSummaryMeta(summary: Record<string, unknown> | undefined, inputMo
   return `模式 ${inputMode} | 输入 ${totalRows} 行 | 分组 ${groupedRows}`;
 }
 
+function formatGroupedRowsLabel(groupedRows: number, estimated?: boolean) {
+  return estimated ? `≈ ${groupedRows}` : String(groupedRows);
+}
+
 const queueStatusText: Record<string, string> = {
   queued: "排队中",
   running: "处理中",
@@ -234,7 +238,7 @@ export function GgCleaningPage() {
           ggCleaningPreviewTimeoutMs,
           "GG 预览生成超时，请重试；如果多次出现，请联系我排查服务器。",
         );
-        setNotice(`小文件已直接解析。预览有效输入 ${preview.totalRows} 行 / ${preview.groupedRows} 组。`);
+        setNotice(`小文件已直接解析。预览有效输入 ${preview.totalRows} 行 / ${formatGroupedRowsLabel(preview.groupedRows, preview.groupedRowsEstimated)} 组。`);
       } else {
         const upload = await uploadRawFile(nextFile, (_progress, text) => {
           setNotice(text);
@@ -246,7 +250,9 @@ export function GgCleaningPage() {
           ggCleaningPreviewTimeoutMs,
           "GG 预览生成超时，请重试；如果多次出现，请联系我排查服务器上的该次 uploadId。",
         );
-        setNotice(`文件上传完成，系统已在服务端自动解析。预览有效输入 ${preview.totalRows} 行 / ${preview.groupedRows} 组，上传分片 ${upload.chunkCount} 个。`);
+        const groupedLabel = formatGroupedRowsLabel(preview.groupedRows, preview.groupedRowsEstimated);
+        const previewSuffix = preview.groupedRowsEstimated ? "（大文件预览先展示估算分组数，真实分组会在任务启动后后台计算）" : "";
+        setNotice(`文件上传完成，系统已在服务端自动解析。预览有效输入 ${preview.totalRows} 行 / ${groupedLabel} 组，上传分片 ${upload.chunkCount} 个。${previewSuffix}`);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "文件上传失败");
@@ -354,7 +360,7 @@ export function GgCleaningPage() {
               </div>
               <div className="output-status-chip">
                 <span>分组数</span>
-                <strong>{previewData.groupedRows}</strong>
+                <strong>{formatGroupedRowsLabel(previewData.groupedRows, previewData.groupedRowsEstimated)}</strong>
               </div>
               <div className="output-status-chip">
                 <span>上传分片</span>

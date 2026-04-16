@@ -4417,6 +4417,60 @@ describe("gg cleaning engine", () => {
     expect(preview.groupedRows).toBe(1);
   });
 
+  it("uses fast preview metadata for xlsx uploads by path", async () => {
+    const workbook = XLSX.utils.book_new();
+    const rows = [
+      {
+        task_id: "1",
+        query: "Does shopa.com offer free shipping?",
+        country: "US",
+        language: "en",
+        domain: "shopa.com",
+        term_id: "1001",
+        term_name: "Shop A",
+        subclass: "shipping",
+        bu: "hd",
+        状态: "抓取完成",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        google_url: "",
+        content: "Shop A offers free shipping on orders over $50.",
+        product_urls: "https://shopa.com/shipping",
+        updated_time: "2026-04-16 15:00:00",
+      },
+      {
+        task_id: "2",
+        query: "Does shopa.com offer loyalty program?",
+        country: "US",
+        language: "en",
+        domain: "shopa.com",
+        term_id: "1001",
+        term_name: "Shop A",
+        subclass: "loyalty program",
+        bu: "hd",
+        状态: "抓取完成",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        google_url: "",
+        content: "Shop A has a rewards program for members.",
+        product_urls: "https://shopa.com/rewards",
+        updated_time: "2026-04-16 15:00:01",
+      },
+    ];
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "gg-xlsx-preview-"));
+    const filePath = path.join(tempDir, "fixture-large.xlsx");
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), "Sheet1");
+    await writeFile(filePath, XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }));
+
+    const preview = await previewGgCleaningFileByPath({
+      fileName: "fixture-large.xlsx",
+      filePath,
+    });
+
+    expect(preview.totalRows).toBe(2);
+    expect(preview.groupedRows).toBe(2);
+    expect(preview.groupedRowsEstimated).toBe(true);
+    expect(preview.previewStrategy).toBe("fast");
+  });
+
   it("supports collected-table rows in JSONL uploads", () => {
     const rows = [
       {
