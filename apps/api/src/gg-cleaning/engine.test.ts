@@ -5651,4 +5651,71 @@ describe("gg cleaning engine", () => {
     expect(byTerm.get("multi-existing-de-no")).toBe("no");
     expect(byTerm.get("multi-existing-nl-no")).toBe("no");
   });
+
+  it("detects multilingual explicit gift card yes and no", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "multi-gift-pl-yes",
+        country: "PL",
+        domain: "kavkababy.com",
+        term_id: "multi-gift-pl-yes",
+        term_name: "Kavka Baby",
+        subclass: "gift card",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Tak, sklep kavkababy.com oferuje bony podarunkowe. Sa dostepne w formie papierowej lub elektronicznej."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-gift-pl-no",
+        country: "PL",
+        domain: "mamove.pl",
+        term_id: "multi-gift-pl-no",
+        term_name: "Mamove",
+        subclass: "gift card",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Sklep nie wyroznia w swojej standardowej ofercie kart podarunkowych. Dostepne sa tylko zwykle metody platnosci."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-gift-es-yes",
+        country: "ES",
+        domain: "casaortega.com",
+        term_id: "multi-gift-es-yes",
+        term_name: "Casa Ortega",
+        subclass: "gift card",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Si, casaortega.com ofrece tarjetas de regalo. El destinatario puede elegir productos de la tienda gourmet."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-gift-es-no",
+        country: "ES",
+        domain: "dermaforyou.com",
+        term_id: "multi-gift-es-no",
+        term_name: "DermaForYou",
+        subclass: "gift card",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["DermaForYou no menciona explicitamente la oferta de tarjetas de regalo. Sus metodos de pago se limitan a tarjeta y PayPal."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-price-hotel-yes",
+        country: "ES",
+        domain: "eldorado-lloret.com",
+        term_id: "multi-price-hotel-yes",
+        term_name: "Eldorado Lloret",
+        subclass: "price guarantee",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Si, Apartamentos Eldorado ofrece garantia del mejor precio al reservar directamente a traves de su pagina web oficial."],
+        product_urls: [],
+      },
+    ]);
+
+    const byTerm = new Map(result.debugRows.map((row) => [row.term_id, row.final_supported]));
+    expect(byTerm.get("multi-gift-pl-yes")).toBe("yes");
+    expect(byTerm.get("multi-gift-pl-no")).toBe("no");
+    expect(byTerm.get("multi-gift-es-yes")).toBe("yes");
+    expect(byTerm.get("multi-gift-es-no")).toBe("no");
+    expect(byTerm.get("multi-price-hotel-yes")).toBe("yes");
+  });
 });

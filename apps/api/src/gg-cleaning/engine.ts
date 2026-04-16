@@ -1707,6 +1707,7 @@ const LOYALTY_HARD_NEGATIVE_PATTERNS = [
 
 const PRICE_GUARANTEE_HARD_NEGATIVE_PATTERNS = [
   /\bno\b.{0,35}\b(?:anuncia|menciona|ofrece|indica|publica|cuenta con)\b.{0,60}\b(?:garant[ií]a (?:formal )?(?:de )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|equiparaci[oó]n de precios?|price match)\b/i,
+  /\bno\b.{0,45}\b(?:garant[ií]a|pol[ií]tica)\b.{0,35}\b(?:igualar|igualen|mejorar|equiparar|price match)\b/i,
   /\bno hay\b.{0,45}\b(?:constancia|evidencia|indicios|informaci[oó]n)\b.{0,45}\b(?:garant[ií]a (?:del? )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|price match)\b/i,
   /\b(?:precio competitivo|precios competitivos|relaci[oó]n calidad-precio|mejores precios online)\b.{0,100}\b(?:no\b.{0,35}\b(?:garant[ií]a|igualaci[oó]n|equiparaci[oó]n|price match))\b/i,
   /\bno hay indicios p[uú]blicos o expl[ií]citos\b.{0,35}\b(?:garant[ií]a de mejor precio|igualaci[oó]n de precios)\b/i,
@@ -1780,6 +1781,15 @@ const GIFT_CARD_STRONG_POSITIVE_PATTERNS = [
   /\b(?:digital )?gift cards?\b.{0,35}\b(?:available|purchase|page)\b/i,
   /\b(?:geschenkgutscheine?|geschenkkarten?)\b.{0,40}\b(?:bestellt|erh[aä]ltlich|einl[oö]sbar|genutzt)\b/i,
   /\b(?:gift cards?|gift vouchers?)\b.{0,35}\b(?:for purchase|to purchase|purchase these directly)\b/i,
+  /\b(?:tarjetas? de regalo|cheques? regalo|bonos? regalo|cupones? de regalo|vales? regalo)\b.{0,60}\b(?:ofrece|disponibles?|adquirir|comprar|compra|v[aá]lid[oa]s?|canjear|importe)\b/i,
+  /\b(?:ofrece|dispone de|vende|permite adquirir|puedes adquirir)\b.{0,60}\b(?:tarjetas? de regalo|cheques? regalo|bonos? regalo|cupones? de regalo|vales? regalo)\b/i,
+  /\b(?:karty podarunkowe|karty prezentowe|bony podarunkowe|bony prezentowe|vouchery prezentowe|vouchery kwotowe)\b.{0,70}\b(?:oferuje|dost[eę]pne|naby[ćc]|zakup|elektroniczn\w*|wysy[łl]ane|pdf|kwot\w*)\b/i,
+  /\b(?:oferuje|sprzedaje|posiada|dost[eę]pne s[ąa])\b.{0,60}\b(?:karty podarunkowe|karty prezentowe|bony podarunkowe|bony prezentowe|vouchery prezentowe|vouchery kwotowe)\b/i,
+  /\b(?:bons? cadeaux?|cartes? cadeaux?|chèques? cadeaux?)\b.{0,55}\b(?:disponibles?|acheter|offre|propose|valables?)\b/i,
+  /\b(?:cadeaubonnen|cadeaukaarten)\b.{0,45}\b(?:beschikbaar|kopen|aangeboden|inwisselen)\b/i,
+  /\b(?:geschenkkarten?|geschenkgutscheine?)\b.{0,45}\b(?:verf[uü]gbar|kaufen|erh[aä]ltlich|einl[oö]sen)\b/i,
+  /(?:礼品卡|礼券|电子礼品卡).{0,30}(?:购买|提供|可用|兑换)/,
+  /(?:기프트카드|상품권|선물 카드).{0,30}(?:구매|제공|사용|교환)/,
   /\bcreate and sell your own gift cards\b/i,
 ];
 
@@ -1792,6 +1802,15 @@ const GIFT_CARD_HARD_NEGATIVE_PATTERNS = [
   /\bno direct evidence that\b.{0,80}\boffers?\b.{0,20}\b(?:brand-specific|own)\b.{0,20}\bgift cards?\b/i,
   /\bno direct evidence\b.{0,40}\b(?:brand-specific|own)\b.{0,20}\bgift cards?\b/i,
   /\bno\b.{0,35}\b(?:especifica|menciona|ofrece|vende|lista)\b.{0,45}\b(?:tarjetas? regalo|gift cards?|vales? regalo|e-?gift cards?)\b/i,
+  /\bno\b.{0,45}\b(?:oferta|venta|disponibilidad)\b.{0,35}\b(?:tarjetas? de regalo|cheques? regalo|bonos? regalo|vales? regalo)\b/i,
+  /\b(?:no menciona|no ofrece|no vende|no lista)\b.{0,70}\b(?:tarjetas? de regalo|cheques? regalo|bonos? regalo|vales? regalo)\b/i,
+  /\b(?:nie ma|nie znaleziono|nie wynika|nie oferuje|nie posiada|nie wyr[oó][żz]nia|brak)\b.{0,80}\b(?:kart podarunkowych|kart prezentowych|bon[oó]w podarunkowych|bon[oó]w prezentowych|voucher[oó]w|w[łl]asnych kart podarunkowych)\b/i,
+  /\b(?:nie mo[żz]na|nie można)\b.{0,35}\bpotwierdzi[ćc]\b.{0,70}\b(?:karty podarunkowe|karty prezentowe|bony podarunkowe|vouchery)\b/i,
+  /\b(?:geen|niet)\b.{0,45}\b(?:cadeaubonnen|cadeaukaarten|gift cards?)\b/i,
+  /\bkeine?\b.{0,45}\b(?:geschenkkarten?|geschenkgutscheine?|gift cards?)\b/i,
+  /\b(?:ne mentionne pas|aucune?|pas de)\b.{0,55}\b(?:cartes? cadeaux?|bons? cadeaux?|chèques? cadeaux?)\b/i,
+  /(?:没有|未|并未|不提供).{0,40}(?:礼品卡|礼券|电子礼品卡)/,
+  /(?:기프트카드|상품권|선물 카드).{0,35}(?:없|않|확인되지)/,
   /\b(?:cajitas? de regalo|envoltorio de regalo|gift wrapping|personalized card|tarjeta personalizada)\b.{0,80}\b(?:no\b.{0,30}\b(?:tarjetas? regalo|gift cards?)|although no|aunque no)\b/i,
   /\b(?:tarjetas? personalizadas?|personalized cards?)\b.{0,60}\b(?:no|not)\b.{0,30}\b(?:tarjetas? regalo|gift cards?)\b/i,
   /\bdoes not\b.{0,25}\b(?:currently )?(?:offer|sell|list)\b.{0,30}\b(?:traditional |official )?gift cards?\b/i,
@@ -1837,6 +1856,7 @@ const LEAD_EXPLICIT_NO_PATTERNS: Partial<Record<string, RegExp[]>> = {
   "price guarantee": [
     /\bno\b.{0,30}\b(?:ofrece|menciona|publica|indica)\b.{0,35}\b(?:formalmente )?(?:una )?(?:garant[ií]a (?:formal )?(?:de )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|price match)\b/i,
     /\bno hay\b.{0,45}\b(?:constancia|evidencia|indicios|informaci[oó]n)\b.{0,45}\b(?:garant[ií]a (?:del? )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|price match)\b/i,
+    /\bno\b.{0,45}\b(?:garant[ií]a|pol[ií]tica)\b.{0,35}\b(?:igualar|igualen|mejorar|equiparar|price match)\b/i,
     /\bno menciona expl[ií]citamente\b.{0,45}\b(?:garant[ií]a (?:de )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|price match)\b/i,
     /\bnie\b.{0,35}\bpromuje\b.{0,35}\b(?:gwarancj\w*|has[łl]\w*)\b.{0,35}\b(?:najlepszej|najni[żz]szej)\b.{0,15}\bceny\b/i,
     /\bnie\b.{0,30}\boferuje\b.{0,45}\bgwarancj\w*\b.{0,25}\b(?:najlepszej|najni[żz]szej)\b.{0,15}\bceny\b/i,
@@ -1859,6 +1879,8 @@ const LEAD_EXPLICIT_NO_PATTERNS: Partial<Record<string, RegExp[]>> = {
   ],
   "gift card": [
     /\bno\b.{0,35}\b(?:especifica|menciona|ofrece|vende|lista)\b.{0,45}\b(?:tarjetas? regalo|gift cards?|vales? regalo|e-?gift cards?)\b/i,
+    /\b(?:nie ma|nie znaleziono|nie wynika|nie oferuje|nie posiada|nie wyr[oó][żz]nia|brak)\b.{0,80}\b(?:kart podarunkowych|kart prezentowych|bon[oó]w podarunkowych|bon[oó]w prezentowych|voucher[oó]w|w[łl]asnych kart podarunkowych)\b/i,
+    /\b(?:nie mo[żz]na|nie można)\b.{0,35}\bpotwierdzi[ćc]\b.{0,70}\b(?:karty podarunkowe|karty prezentowe|bony podarunkowe|vouchery)\b/i,
     /\b(?:cajitas? de regalo|envoltorio de regalo|gift wrapping|personalized card|tarjeta personalizada)\b.{0,80}\b(?:no\b.{0,30}\b(?:tarjetas? regalo|gift cards?)|aunque no|although no)\b/i,
   ],
   referral: [
@@ -1889,7 +1911,7 @@ const LEAD_EXPLICIT_YES_PATTERNS: Partial<Record<string, RegExp[]>> = {
     /\b(?:family|familias?|rodzin\w*)\b.{0,50}\b(?:ticket|package|pass|discount|descuento|zni[żz]k\w*|rabat\w*)\b/i,
   ],
   "price guarantee": [
-    /\b(?:price match|best price guarantee|lowest price guarantee|garant[ií]a (?:de )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|gwarancj\w* (?:najlepszej|najni[żz]szej) ceny|gwarancj[ęe] ceny)\b/i,
+    /\b(?:price match|best price guarantee|lowest price guarantee|garant[ií]a (?:del? )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|gwarancj\w* (?:najlepszej|najni[żz]szej) ceny|gwarancj[ęe] ceny)\b/i,
   ],
   return: [
     /\b(?:free returns?|free return shipping|prepaid return label|devoluciones? gratis|devoluciones? gratuitas?|darmowe zwroty|bezp[łl]atne zwroty)\b/i,
