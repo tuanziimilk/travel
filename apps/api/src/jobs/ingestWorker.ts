@@ -1,5 +1,7 @@
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import {
@@ -78,6 +80,18 @@ const ingestRunnerWorkingByModule: Record<ModuleId, boolean> = {
 };
 const publishAboutSectionName = "About";
 const ingestJobStallMs = env.ingestJobStallMs;
+const ingestInputDir = path.resolve(process.cwd(), "apps/api/.runtime/ingest-inputs");
+let ingestRecoveryTimer: NodeJS.Timeout | null = null;
+
+type PersistedIngestPayload = {
+  jobId: string;
+  batchId: string;
+  moduleId: ModuleId;
+  outputMode: OutputMode;
+  retryScope: "all" | "failed_only";
+  retryOfJobId?: string;
+  rows: ParsedUploadRow[];
+};
 
 function snapshotText(value: string | null | undefined) {
   return env.snapshotEnabled ? String(value || "").trim() : null;
@@ -88,6 +102,29 @@ function rowSignatureFromInput(row: ParsedUploadRow) {
   const hashAi = sha256(row.About_ai || "");
   const hashOp = row.About_op?.trim() ? sha256(row.About_op) : "";
   return [row.TermID || "", row.Domain || "", hashOnline, hashAi, hashOp].join("|");
+}
+
+function ingestInputPath(jobId: string) {
+  return path.join(ingestInputDir, `${jobId}.json`);
+}
+
+async function persistIngestPayload(payload: PersistedIngestPayload) {
+  await mkdir(ingestInputDir, { recursive: true });
+  await writeFile(ingestInputPath(payload.jobId), JSON.stringify(payload), "utf8");
+}
+
+async function readPersistedIngestPayload(jobId: string) {
+  try {
+    const text = await readFile(ingestInputPath(jobId), "utf8");
+    const payload = JSON.parse(text) as PersistedIngestPayload;
+    return Array.isArray(payload.rows) && payload.rows.length > 0 ? payload : null;
+  } catch {
+    return null;
+  }
+}
+
+function hasQueuedIngestJob(moduleId: ModuleId, jobId: string) {
+  return pendingIngestJobsByModule[moduleId].some((item) => item.jobId === jobId);
 }
 
 function rowSignatureFromStored(row: {
@@ -486,6 +523,14 @@ export async function startIngestJob(batchId: string, fileName: string, fileBase
   ingestPayloadByBatch.set(batchId, rows);
   const jobId = makeId();
   await ensureIngestJobsColumns();
+  await persistIngestPayload({
+    jobId,
+    batchId,
+    rows,
+    moduleId,
+    outputMode,
+    retryScope: "all",
+  });
   await db.insert(ingestJobs).values({
     id: jobId,
     batchId,
@@ -1156,6 +1201,7 @@ export async function getIngestStatus(jobId: string) {
     ...withChinaJobTimestamps(job),
     ...(rawTimes || {}),
     outputMode: (batch?.outputMode || "full") as OutputMode,
+    uploader: batch?.uploader || "",
     retryScope: String(job.retryScope || "all"),
     isFailedOnlyRetry: String(job.retryScope || "all") === "failed_only",
     failureReasonStats: job.failureReasonStatsJson || {},
@@ -1190,6 +1236,7 @@ export async function listIngestJobs(page = 1, pageSize = 20, moduleId?: "about"
         ...withChinaJobTimestamps(item),
         ...(rawTimes || {}),
         outputMode: (batch?.outputMode || "full") as OutputMode,
+        uploader: batch?.uploader || "",
         retryScope: String(item.retryScope || "all"),
         isFailedOnlyRetry: String(item.retryScope || "all") === "failed_only",
         failureReasonStats: item.failureReasonStatsJson || {},
@@ -1246,6 +1293,15 @@ export async function retryIngestJob(jobId: string, scope: "all" | "failed_only"
     moduleId === "faq"
       ? new Set(payloadRows.map((row) => String(row.TermID || "").trim() || String(row.Domain || "").trim())).size
       : payloadRows.length;
+  await persistIngestPayload({
+    jobId: newJobId,
+    batchId: job.batchId,
+    rows: payloadRows,
+    moduleId,
+    outputMode,
+    retryScope: scope,
+    retryOfJobId: jobId,
+  });
   await db.insert(ingestJobs).values({
     id: newJobId,
     batchId: job.batchId,
@@ -1335,6 +1391,71 @@ async function markStalledJobsAsFailed() {
         .where(eq(ingestJobs.id, row.id));
     }
   }
+}
+
+async function failPendingJobWithoutPayload(jobId: string, batchId: string) {
+  const reason = "job input payload was unavailable after API restart; please re-upload the file";
+  await db.update(uploadBatches).set({ rowCount: 0 }).where(eq(uploadBatches.id, batchId));
+  await db
+    .update(ingestJobs)
+    .set({
+      status: "failed",
+      finishedAt: sql`CURRENT_TIMESTAMP`,
+      etaSeconds: 0,
+      doneRows: 0,
+      failedRows: 0,
+      initialFailedRows: 0,
+      recoveredRows: 0,
+      finalFailedRows: 0,
+      failureReasonStatsJson: buildFailureReasonStats([reason]),
+      errorReason: reason,
+    })
+    .where(and(eq(ingestJobs.id, jobId), eq(ingestJobs.status, "pending")));
+}
+
+async function recoverPendingIngestJobsOnce() {
+  await ensureIngestJobsColumns();
+  const rows = await db.select().from(ingestJobs).where(eq(ingestJobs.status, "pending")).orderBy(ingestJobs.startedAt);
+  if (!rows.length) return;
+  const batchRows = await db.select().from(uploadBatches);
+  const batchById = new Map(batchRows.map((item) => [item.id, item]));
+
+  for (const row of rows) {
+    const batch = batchById.get(row.batchId);
+    const moduleId = (batch?.moduleId || "about") as ModuleId;
+    if (ingestRunnerWorkingByModule[moduleId] || hasQueuedIngestJob(moduleId, row.id)) continue;
+
+    const payload = await readPersistedIngestPayload(row.id);
+    if (!payload) {
+      await failPendingJobWithoutPayload(row.id, row.batchId);
+      console.warn(`[ingest-recovery] marked pending job ${row.id} failed because persisted payload is missing`);
+      continue;
+    }
+
+    pendingIngestJobsByModule[moduleId].push({
+      jobId: row.id,
+      batchId: row.batchId,
+      rows: payload.rows,
+      moduleId,
+      outputMode: payload.outputMode,
+      retryScope: payload.retryScope,
+      retryOfJobId: payload.retryOfJobId,
+    });
+    console.log(`[ingest-recovery] re-queued pending job ${row.id} for module ${moduleId}`);
+    void processPendingIngestJobs(moduleId);
+  }
+}
+
+export function startIngestRecoveryScheduler() {
+  if (ingestRecoveryTimer) return;
+  void recoverPendingIngestJobsOnce().catch((error) => {
+    console.error("[ingest-recovery] startup recovery failed", error);
+  });
+  ingestRecoveryTimer = setInterval(() => {
+    void recoverPendingIngestJobsOnce().catch((error) => {
+      console.error("[ingest-recovery] scheduled recovery failed", error);
+    });
+  }, 30_000);
 }
 
 export async function getBatchResult(batchId: string) {

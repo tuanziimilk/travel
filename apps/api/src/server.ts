@@ -23,6 +23,7 @@ import {
 } from "./generation/faqOutputJobStore";
 import { getGgCleaningJobDownloadPayload } from "./gg-cleaning/jobStore";
 import { appendGgCleaningUploadChunk, appendGgCleaningUploadFileChunk, completeGgCleaningUpload, initGgCleaningUpload } from "./gg-cleaning/uploadStore";
+import { startIngestRecoveryScheduler } from "./jobs/ingestWorker";
 
 const app = express();
 app.use(cors({ origin: env.webOrigin }));
@@ -238,4 +239,5 @@ app.listen(env.apiPort, () => {
   console.log(`API running on http://localhost:${env.apiPort}`);
   warmGenerationHistoryCaches();
   startGenerationHousekeeping();
+  startIngestRecoveryScheduler();
 });

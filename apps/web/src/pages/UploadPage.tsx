@@ -142,12 +142,6 @@ function getQueueAlertSummary(item: {
   return buildQueueAlertSummary(item);
 }
 
-function buildQueueStrategyLabel(item: { outputMode?: string | null; isFailedOnlyRetry?: boolean | null }) {
-  const mode = item.outputMode === "compact" ? "C" : "F";
-  const retry = item.isFailedOnlyRetry ? "补跑" : "整批";
-  return `${mode} / ${retry}`;
-}
-
 const uploadLimitMb = Math.round(qualityBatchUploadMaxFileBytes / 1024 / 1024);
 
 export function UploadPage() {
@@ -478,7 +472,7 @@ export function UploadPage() {
                 <th>进度</th>
                 <th>耗时</th>
                 <th>费用</th>
-                <th>策略</th>
+                <th>上传人</th>
                 <th>异常标记</th>
                 <th>开始时间</th>
                 <th>操作</th>
@@ -507,8 +501,8 @@ export function UploadPage() {
                     </td>
                     <td title={formatDuration(item.elapsedMs)}>{formatDuration(item.elapsedMs)}</td>
                     <td title={formatUsd(item.estimatedCostUsdSum)}>{formatUsd(item.estimatedCostUsdSum)}</td>
-                    <td>
-                      <span className="about-queue-strategy-chip">{buildQueueStrategyLabel(item)}</span>
+                    <td title={item.uploader || "-"}>
+                      <span className="about-queue-uploader-chip">{item.uploader || "-"}</span>
                     </td>
                     <td>
                       <span className={alertSummary === "-" ? "muted" : "about-queue-alert-chip"}>
