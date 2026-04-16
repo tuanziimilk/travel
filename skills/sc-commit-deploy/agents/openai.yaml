@@ -1,0 +1,7 @@
+interface:
+  display_name: "SC Commit & Deploy"
+  short_description: "提交改动、部署服务器并做上线复核"
+  default_prompt: "Use $sc-commit-deploy to commit the current SC-quality-scoring changes, deploy them with deploy.sh, and verify whether the release really took effect."
+
+policy:
+  allow_implicit_invocation: true
