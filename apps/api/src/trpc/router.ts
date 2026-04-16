@@ -23,6 +23,7 @@ import {
   generationStatusInputSchema,
   generationRunInputSchema,
   ggCleaningPreviewInputSchema,
+  ggCleaningPreviewTaskStatusInputSchema,
   ggCleaningQueueInputSchema,
   ggCleaningResultInputSchema,
   ggCleaningRunInputSchema,
@@ -79,7 +80,7 @@ import {
 import { previewCategoryCalibration, startCategoryCalibrationJob } from "../category-calibration/worker";
 import { retryFaqOutputGeneration, startFaqOutputGeneration } from "../generation/faqOutputGenerator";
 import { getGgCleaningJobResult, getGgCleaningJobStatus, listGgCleaningJobs } from "../gg-cleaning/jobStore";
-import { previewGgCleaning, startGgCleaningJob } from "../gg-cleaning/worker";
+import { getGgCleaningPreviewTaskStatus, previewGgCleaning, startGgCleaningJob, startGgCleaningPreviewTask } from "../gg-cleaning/worker";
 import {
   exportGenerationHistory,
   getGenerationHistorySummary,
@@ -414,6 +415,12 @@ export const appRouter = t.router({
   ggCleaning: t.router({
     preview: t.procedure.input(ggCleaningPreviewInputSchema).mutation(({ input }) => {
       return previewGgCleaning(input);
+    }),
+    previewTaskCreate: t.procedure.input(ggCleaningPreviewInputSchema).mutation(({ input }) => {
+      return startGgCleaningPreviewTask(input);
+    }),
+    previewTaskStatus: t.procedure.input(ggCleaningPreviewTaskStatusInputSchema).query(({ input }) => {
+      return getGgCleaningPreviewTaskStatus(input.taskId);
     }),
     run: t.procedure.input(ggCleaningRunInputSchema).mutation(({ input }) => {
       return startGgCleaningJob(input);

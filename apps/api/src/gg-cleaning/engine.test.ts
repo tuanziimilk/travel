@@ -3927,7 +3927,7 @@ describe("gg cleaning engine", () => {
     expect(result.debugRows[0].final_url).not.toContain("groupon.com");
   });
 
-  it("skips rows when content is empty or invalid JSON arrays in csv-style uploads", () => {
+  it("skips empty content rows but keeps plain text content in csv-style uploads", () => {
     const csvText = [
       `task_id,query,country,language,domain,term_id,term_name,subclass,bu,${GG_COLLECTED_STATUS_COLUMN},${GG_COLLECTED_SOURCE_COLUMN},google_url,content,product_urls,updated_time`,
       '1,"Does shopa.com offer free shipping?",US,en,shopa.com,1,Shop A,shipping,hd,抓取完成,ai_mode,https://www.google.com/search?q=shopa+shipping,"["""" ]","[""https://shopa.com/shipping""]",2026-04-08 05:38:49',
@@ -3939,11 +3939,11 @@ describe("gg cleaning engine", () => {
     const preview = previewGgCleaningFile({ fileName: "fixture.csv", fileBase64: previewBase64 }, { skipFileSizeLimit: true });
     const result = executeGgCleaningForEval({ fileName: "fixture.csv", fileBase64: previewBase64 }, { skipFileSizeLimit: true });
 
-    expect(preview.totalRows).toBe(1);
-    expect(preview.groupedRows).toBe(1);
-    expect(result.totalRows).toBe(1);
-    expect(result.debugRows).toHaveLength(1);
-    expect(result.debugRows[0].term_id).toBe("3");
+    expect(preview.totalRows).toBe(2);
+    expect(preview.groupedRows).toBe(2);
+    expect(result.totalRows).toBe(2);
+    expect(result.debugRows).toHaveLength(2);
+    expect(result.debugRows.map((row) => row.term_id)).toEqual(["2", "3"]);
   });
 
   it("joins multiple content items into one snippet for judgment", () => {

@@ -1,5 +1,5 @@
 import * as Select from "@radix-ui/react-select";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ggCleaningUploadMaxFileBytes, ggCleaningUploadMaxRows, uploaderOptions } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
 import { formatChinaDateTime } from "../utils/time";
@@ -176,6 +176,7 @@ export function GgCleaningPage() {
   const [directFileBase64, setDirectFileBase64] = useState("");
   const [uploadedChunkCount, setUploadedChunkCount] = useState(0);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [previewTaskId, setPreviewTaskId] = useState("");
   const [currentJobId, setCurrentJobId] = useState("");
   const [queuePage, setQueuePage] = useState(1);
   const [error, setError] = useState("");
@@ -183,11 +184,23 @@ export function GgCleaningPage() {
   const downloadCenter = useDownloadCenter();
 
   const previewMutation = trpc.ggCleaning.preview.useMutation();
+  const previewTaskCreateMutation = trpc.ggCleaning.previewTaskCreate.useMutation();
   const runMutation = trpc.ggCleaning.run.useMutation({
     onSuccess: async () => {
       await queueQuery.refetch();
     },
   });
+  const previewTaskQuery = trpc.ggCleaning.previewTaskStatus.useQuery(
+    { taskId: previewTaskId },
+    {
+      enabled: Boolean(previewTaskId),
+      refetchInterval: (query) => {
+        const status = query.state.data?.status;
+        if (!status) return 1000;
+        return status === "ready" || status === "failed" || status === "expired" ? false : 1000;
+      },
+    },
+  );
   const queueQuery = trpc.ggCleaning.queue.useQuery({ page: queuePage, pageSize: queuePageSize }, { refetchInterval: 4000 });
   const statusQuery = trpc.ggCleaning.status.useQuery(
     { jobId: currentJobId },
@@ -201,8 +214,9 @@ export function GgCleaningPage() {
     },
   );
 
-  const previewData = previewMutation.data;
   const currentStatus = statusQuery.data;
+  const asyncPreviewData = previewTaskQuery.data?.preview ?? null;
+  const previewData = asyncPreviewData ?? previewMutation.data;
   const queueRows = useMemo(() => {
     const rows = queueQuery.data?.rows ?? [];
     if (!currentStatus || !currentJobId) return rows;
@@ -213,12 +227,30 @@ export function GgCleaningPage() {
     return Math.max(1, Math.ceil(total / queuePageSize));
   }, [queueQuery.data?.total]);
 
+  useEffect(() => {
+    const task = previewTaskQuery.data;
+    if (!task) return;
+    if (task.status === "ready" && task.preview) {
+      const groupedLabel = formatGroupedRowsLabel(task.preview.groupedRows, task.preview.groupedRowsEstimated);
+      const previewSuffix = task.preview.groupedRowsEstimated ? "（当前先展示估算分组数，真实分组会在任务启动后后台精确计算）" : "";
+      setNotice(`文件上传完成，后台预览已准备好。有效输入 ${task.preview.totalRows} 行 / ${groupedLabel} 组。${previewSuffix}`);
+      setError("");
+    } else if (task.status === "failed") {
+      setError(task.errorMessage || "GG 预览生成失败。");
+    } else if (task.status === "expired") {
+      setError("GG 预览已过期，请重新上传文件。");
+    } else {
+      setNotice(task.statusText || "正在后台准备预览...");
+    }
+  }, [previewTaskQuery.data]);
+
   async function handleFileChange(nextFile: File | null) {
     setError("");
     setNotice("");
     setUploadedFileId("");
     setDirectFileBase64("");
     setUploadedChunkCount(0);
+    setPreviewTaskId("");
     setSelectedFile(nextFile);
     if (!nextFile) return;
     if (nextFile.size > ggCleaningUploadMaxFileBytes) {
@@ -245,14 +277,9 @@ export function GgCleaningPage() {
         });
         setUploadedFileId(upload.uploadId);
         setUploadedChunkCount(upload.chunkCount);
-        const preview = await withTimeout(
-          previewMutation.mutateAsync({ fileName: nextFile.name, uploadId: upload.uploadId }),
-          ggCleaningPreviewTimeoutMs,
-          "GG 预览生成超时，请重试；如果多次出现，请联系我排查服务器上的该次 uploadId。",
-        );
-        const groupedLabel = formatGroupedRowsLabel(preview.groupedRows, preview.groupedRowsEstimated);
-        const previewSuffix = preview.groupedRowsEstimated ? "（大文件预览先展示估算分组数，真实分组会在任务启动后后台计算）" : "";
-        setNotice(`文件上传完成，系统已在服务端自动解析。预览有效输入 ${preview.totalRows} 行 / ${groupedLabel} 组，上传分片 ${upload.chunkCount} 个。${previewSuffix}`);
+        const previewTask = await previewTaskCreateMutation.mutateAsync({ fileName: nextFile.name, uploadId: upload.uploadId });
+        setPreviewTaskId(previewTask.taskId);
+        setNotice(`文件上传完成，已转入后台预览队列。上传分片 ${upload.chunkCount} 个，你可以继续填写上传人和备注。`);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "文件上传失败");
@@ -270,6 +297,17 @@ export function GgCleaningPage() {
       setError("请先上传文件。");
       return;
     }
+    if (previewTaskId) {
+      const previewTask = previewTaskQuery.data;
+      if (!previewTask || previewTask.status === "queued" || previewTask.status === "preparing") {
+        setError("大文件预览仍在后台准备，请等预览完成后再创建任务。");
+        return;
+      }
+      if (previewTask.status !== "ready") {
+        setError(previewTask.errorMessage || "当前预览任务不可用，请重新上传文件。");
+        return;
+      }
+    }
     setError("");
     setNotice("");
     try {
@@ -279,6 +317,7 @@ export function GgCleaningPage() {
         fileName: selectedFile.name,
         uploadId: uploadedFileId || undefined,
         fileBase64: directFileBase64 || undefined,
+        previewTaskId: previewTaskId || undefined,
       });
       setCurrentJobId(result.jobId);
       setQueuePage(1);
@@ -304,6 +343,9 @@ export function GgCleaningPage() {
   function downloadDemoTemplate() {
     downloadTextFile("gg-cleaning-demo.csv", ggCleaningDemoCsv);
   }
+
+  const previewTaskStatus = previewTaskQuery.data;
+  const previewPending = Boolean(previewTaskId) && (!previewTaskStatus || previewTaskStatus.status === "queued" || previewTaskStatus.status === "preparing");
 
   return (
     <div className="grid translation-page">
@@ -343,6 +385,19 @@ export function GgCleaningPage() {
               <p>系统会优先保留原始文件，再在服务端统一做编码处理和格式转换，避免 `xlsx` 转 `csv` 后体积膨胀或中文乱码。</p>
             </div>
           </div>
+
+          {previewPending && previewTaskStatus ? (
+            <div className="translation-feedback success" style={{ marginTop: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
+                <strong>后台预览中</strong>
+                <span>{previewTaskStatus.progressPercent}%</span>
+              </div>
+              <div className="progress-track" style={{ marginBottom: 8 }}>
+                <div className="progress-fill" style={{ width: `${previewTaskStatus.progressPercent}%` }} />
+              </div>
+              <div className="muted">{previewTaskStatus.statusText || "系统正在解析文件结构与样例行..."}</div>
+            </div>
+          ) : null}
 
           {selectedFile && previewData ? (
             <div className="translation-current-file-card">
@@ -409,10 +464,10 @@ export function GgCleaningPage() {
           <button
             className="btn-primary translation-run-btn"
             type="button"
-            disabled={!selectedFile || (!uploadedFileId && !directFileBase64) || isUploadingFile || previewMutation.isPending || runMutation.isPending}
+            disabled={!selectedFile || (!uploadedFileId && !directFileBase64) || isUploadingFile || previewMutation.isPending || previewTaskCreateMutation.isPending || previewPending || runMutation.isPending}
             onClick={() => void runJob()}
           >
-            {runMutation.isPending ? "正在创建任务..." : "创建 GG 清洗任务"}
+            {previewPending ? "等待预览完成..." : runMutation.isPending ? "正在创建任务..." : "创建 GG 清洗任务"}
           </button>
         </div>
 

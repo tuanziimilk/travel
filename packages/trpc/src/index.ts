@@ -425,6 +425,10 @@ export const ggCleaningPreviewInputSchema = z
   })
   .refine((value) => Boolean(value.uploadId || value.fileBase64), "uploadId or fileBase64 is required");
 
+export const ggCleaningPreviewTaskStatusInputSchema = z.object({
+  taskId: z.string().min(1),
+});
+
 export const ggCleaningRunInputSchema = z
   .object({
     uploader: uploaderSchema,
@@ -432,6 +436,7 @@ export const ggCleaningRunInputSchema = z
     fileName: z.string().min(1),
     fileBase64: z.string().min(1).optional(),
     uploadId: z.string().min(1).optional(),
+    previewTaskId: z.string().min(1).optional(),
   })
   .refine((value) => Boolean(value.uploadId || value.fileBase64), "uploadId or fileBase64 is required");
 
