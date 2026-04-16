@@ -9,6 +9,7 @@ const GG_SOURCE_COLUMN = "采集数据源";
 const uploadLimitMb = Math.round(ggCleaningUploadMaxFileBytes / 1024 / 1024);
 const ggCleaningFileChunkBytes = 8 * 1024 * 1024;
 const ggCleaningPreviewTimeoutMs = 15000;
+const ggCleaningDirectFileMaxBytes = 256 * 1024;
 const ggCleaningUploadApiBase = (() => {
   const trpcUrl = import.meta.env.VITE_TRPC_URL || "/trpc";
   if (/^https?:\/\//i.test(trpcUrl)) {
@@ -107,6 +108,18 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: s
   }
 }
 
+async function readFileAsBase64(file: File) {
+  const buffer = await file.arrayBuffer();
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const chunk = bytes.subarray(offset, Math.min(bytes.length, offset + chunkSize));
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
 function formatDuration(startedAt?: string | null, finishedAt?: string | null) {
   if (!startedAt) return "-";
   const start = new Date(startedAt);
@@ -156,6 +169,7 @@ export function GgCleaningPage() {
   const [includeDebugSheet, setIncludeDebugSheet] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadedFileId, setUploadedFileId] = useState("");
+  const [directFileBase64, setDirectFileBase64] = useState("");
   const [uploadedChunkCount, setUploadedChunkCount] = useState(0);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [currentJobId, setCurrentJobId] = useState("");
@@ -199,6 +213,7 @@ export function GgCleaningPage() {
     setError("");
     setNotice("");
     setUploadedFileId("");
+    setDirectFileBase64("");
     setUploadedChunkCount(0);
     setSelectedFile(nextFile);
     if (!nextFile) return;
@@ -210,21 +225,34 @@ export function GgCleaningPage() {
 
     try {
       setIsUploadingFile(true);
-      const upload = await uploadRawFile(nextFile, (_progress, text) => {
-        setNotice(text);
-      });
-      setUploadedFileId(upload.uploadId);
-      setUploadedChunkCount(upload.chunkCount);
-      const preview = await withTimeout(
-        previewMutation.mutateAsync({ fileName: nextFile.name, uploadId: upload.uploadId }),
-        ggCleaningPreviewTimeoutMs,
-        "GG 预览生成超时，请重试；如果多次出现，请联系我排查服务器上的该次 uploadId。",
-      );
-      setNotice(`文件上传完成，系统已在服务端自动解析。预览有效输入 ${preview.totalRows} 行 / ${preview.groupedRows} 组，上传分片 ${upload.chunkCount} 个。`);
+      if (nextFile.size <= ggCleaningDirectFileMaxBytes) {
+        setNotice("小文件走极速预览通道，正在直接解析...");
+        const fileBase64 = await readFileAsBase64(nextFile);
+        setDirectFileBase64(fileBase64);
+        const preview = await withTimeout(
+          previewMutation.mutateAsync({ fileName: nextFile.name, fileBase64 }),
+          ggCleaningPreviewTimeoutMs,
+          "GG 预览生成超时，请重试；如果多次出现，请联系我排查服务器。",
+        );
+        setNotice(`小文件已直接解析。预览有效输入 ${preview.totalRows} 行 / ${preview.groupedRows} 组。`);
+      } else {
+        const upload = await uploadRawFile(nextFile, (_progress, text) => {
+          setNotice(text);
+        });
+        setUploadedFileId(upload.uploadId);
+        setUploadedChunkCount(upload.chunkCount);
+        const preview = await withTimeout(
+          previewMutation.mutateAsync({ fileName: nextFile.name, uploadId: upload.uploadId }),
+          ggCleaningPreviewTimeoutMs,
+          "GG 预览生成超时，请重试；如果多次出现，请联系我排查服务器上的该次 uploadId。",
+        );
+        setNotice(`文件上传完成，系统已在服务端自动解析。预览有效输入 ${preview.totalRows} 行 / ${preview.groupedRows} 组，上传分片 ${upload.chunkCount} 个。`);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "文件上传失败");
       setSelectedFile(null);
       setUploadedFileId("");
+      setDirectFileBase64("");
       setUploadedChunkCount(0);
     } finally {
       setIsUploadingFile(false);
@@ -232,7 +260,7 @@ export function GgCleaningPage() {
   }
 
   async function runJob() {
-    if (!selectedFile || !uploadedFileId) {
+    if (!selectedFile || (!uploadedFileId && !directFileBase64)) {
       setError("请先上传文件。");
       return;
     }
@@ -243,7 +271,8 @@ export function GgCleaningPage() {
         uploader,
         note,
         fileName: selectedFile.name,
-        uploadId: uploadedFileId,
+        uploadId: uploadedFileId || undefined,
+        fileBase64: directFileBase64 || undefined,
       });
       setCurrentJobId(result.jobId);
       setQueuePage(1);
@@ -374,7 +403,7 @@ export function GgCleaningPage() {
           <button
             className="btn-primary translation-run-btn"
             type="button"
-            disabled={!selectedFile || !uploadedFileId || isUploadingFile || previewMutation.isPending || runMutation.isPending}
+            disabled={!selectedFile || (!uploadedFileId && !directFileBase64) || isUploadingFile || previewMutation.isPending || runMutation.isPending}
             onClick={() => void runJob()}
           >
             {runMutation.isPending ? "正在创建任务..." : "创建 GG 清洗任务"}

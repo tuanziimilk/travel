@@ -420,18 +420,20 @@ export const translationResultInputSchema = z.object({
 export const ggCleaningPreviewInputSchema = z
   .object({
     fileName: z.string().min(1),
+    fileBase64: z.string().min(1).optional(),
     uploadId: z.string().min(1).optional(),
   })
-  .refine((value) => Boolean(value.uploadId), "uploadId is required");
+  .refine((value) => Boolean(value.uploadId || value.fileBase64), "uploadId or fileBase64 is required");
 
 export const ggCleaningRunInputSchema = z
   .object({
     uploader: uploaderSchema,
     note: z.string().optional().default(""),
     fileName: z.string().min(1),
+    fileBase64: z.string().min(1).optional(),
     uploadId: z.string().min(1).optional(),
   })
-  .refine((value) => Boolean(value.uploadId), "uploadId is required");
+  .refine((value) => Boolean(value.uploadId || value.fileBase64), "uploadId or fileBase64 is required");
 
 export const ggCleaningQueueInputSchema = z.object({
   page: z.number().int().min(1).optional().default(1),

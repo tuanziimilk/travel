@@ -180,23 +180,29 @@ async function consumeLoop() {
 void consumeLoop();
 
 export async function previewGgCleaning(input: { fileName: string; fileBase64?: string; uploadId?: string }) {
-  if (!input.uploadId) {
-    throw new Error("GG 清洗预览只支持分块上传后的文件，请先完成上传。");
-  }
-  const uploaded = await getCompletedGgCleaningUpload(input.uploadId);
-  if (uploaded.kind === "file-chunks" && uploaded.rawFilePath) {
-    return previewGgCleaningFileByPath({
-      fileName: uploaded.fileName || input.fileName,
-      filePath: uploaded.rawFilePath,
+  if (input.uploadId) {
+    const uploaded = await getCompletedGgCleaningUpload(input.uploadId);
+    if (uploaded.kind === "file-chunks" && uploaded.rawFilePath) {
+      return previewGgCleaningFileByPath({
+        fileName: uploaded.fileName || input.fileName,
+        filePath: uploaded.rawFilePath,
+      });
+    }
+    return previewGgCleaningChunkRows({
+      columns: uploaded.columns,
+      sampleRawRows: uploaded.sampleRows,
+      totalRows: uploaded.uploadedRowCount,
+      groupedRows: uploaded.groupCount,
+      chunkCount: uploaded.chunkCount,
+      oversizedGroupCount: uploaded.oversizedGroupCount,
     });
   }
-  return previewGgCleaningChunkRows({
-    columns: uploaded.columns,
-    sampleRawRows: uploaded.sampleRows,
-    totalRows: uploaded.uploadedRowCount,
-    groupedRows: uploaded.groupCount,
-    chunkCount: uploaded.chunkCount,
-    oversizedGroupCount: uploaded.oversizedGroupCount,
+  if (!input.fileBase64) {
+    throw new Error("GG 清洗预览缺少文件内容。");
+  }
+  return previewGgCleaningFile({
+    fileName: input.fileName,
+    fileBase64: input.fileBase64,
   });
 }
 
@@ -207,31 +213,46 @@ export async function startGgCleaningJob(input: {
   fileBase64?: string;
   uploadId?: string;
 }) {
-  if (!input.uploadId) {
-    throw new Error("GG 清洗任务只支持分块上传后的文件，请先完成上传。");
+  let preview;
+  let storedFileName = input.fileName;
+  let storedFileBase64: string | null = null;
+  let storedFilePath: string | null = null;
+
+  if (input.uploadId) {
+    const uploaded = await getCompletedGgCleaningUpload(input.uploadId);
+    storedFileName = uploaded.fileName || input.fileName;
+    storedFilePath = uploaded.kind === "file-chunks" && uploaded.rawFilePath ? uploaded.rawFilePath : uploaded.id;
+    preview =
+      uploaded.kind === "file-chunks" && uploaded.rawFilePath
+        ? await previewGgCleaningFileByPath({
+            fileName: storedFileName,
+            filePath: uploaded.rawFilePath,
+          })
+        : await previewGgCleaningChunkRows({
+            columns: uploaded.columns,
+            sampleRawRows: uploaded.sampleRows,
+            totalRows: uploaded.uploadedRowCount,
+            groupedRows: uploaded.groupCount,
+            chunkCount: uploaded.chunkCount,
+            oversizedGroupCount: uploaded.oversizedGroupCount,
+          });
+  } else {
+    if (!input.fileBase64) {
+      throw new Error("GG 清洗任务缺少文件内容。");
+    }
+    storedFileBase64 = input.fileBase64;
+    preview = previewGgCleaningFile({
+      fileName: input.fileName,
+      fileBase64: input.fileBase64,
+    });
   }
-  const uploaded = await getCompletedGgCleaningUpload(input.uploadId);
-  const preview =
-    uploaded.kind === "file-chunks" && uploaded.rawFilePath
-      ? await previewGgCleaningFileByPath({
-          fileName: uploaded.fileName || input.fileName,
-          filePath: uploaded.rawFilePath,
-        })
-      : await previewGgCleaningChunkRows({
-          columns: uploaded.columns,
-          sampleRawRows: uploaded.sampleRows,
-          totalRows: uploaded.uploadedRowCount,
-          groupedRows: uploaded.groupCount,
-          chunkCount: uploaded.chunkCount,
-          oversizedGroupCount: uploaded.oversizedGroupCount,
-        });
 
   const created = await createGgCleaningJob({
     uploader: input.uploader,
     note: input.note || "",
-    fileName: uploaded.fileName || input.fileName,
-    fileBase64: null,
-    filePath: uploaded.kind === "file-chunks" && uploaded.rawFilePath ? uploaded.rawFilePath : uploaded.id,
+    fileName: storedFileName,
+    fileBase64: storedFileBase64,
+    filePath: storedFilePath,
     inputMode: preview.inputMode,
     totalRows: preview.totalRows,
     groupedRows: preview.groupedRows,
