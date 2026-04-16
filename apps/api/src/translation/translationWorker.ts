@@ -500,6 +500,7 @@ const translationJobInputs = new Map<string, QueuedTranslationJobInput>();
 let translationSchedulerBootstrapped = false;
 let translationSchedulerRun = Promise.resolve();
 let translationPollTimer: NodeJS.Timeout | null = null;
+let translationWorkerStarted = false;
 
 function scheduleTranslationPoll() {
   if (translationPollTimer) return;
@@ -510,6 +511,7 @@ function scheduleTranslationPoll() {
 }
 
 function triggerTranslationScheduler() {
+  if (!env.runWorkers) return Promise.resolve();
   translationSchedulerRun = translationSchedulerRun
     .then(() => processTranslationQueue())
     .catch((error) => {
@@ -975,4 +977,13 @@ export async function retryBatchTranslation(jobId: string) {
   return { jobId };
 }
 
-void triggerTranslationScheduler();
+export function startTranslationWorker() {
+  if (!env.runWorkers || translationWorkerStarted) return;
+  translationWorkerStarted = true;
+  void triggerTranslationScheduler();
+  setInterval(() => {
+    void triggerTranslationScheduler();
+  }, 5000);
+}
+
+startTranslationWorker();

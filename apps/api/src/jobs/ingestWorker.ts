@@ -565,7 +565,9 @@ export async function startIngestJob(batchId: string, fileName: string, fileBase
     outputMode,
     retryScope: "all",
   });
-  void processPendingIngestJobs(moduleId);
+  if (env.runWorkers) {
+    void processPendingIngestJobs(moduleId);
+  }
   return { jobId, totalRows: rows.length };
 }
 
@@ -1403,7 +1405,9 @@ export async function retryIngestJob(jobId: string, scope: "all" | "failed_only"
     retryScope: scope,
     retryOfJobId: jobId,
   });
-  void processPendingIngestJobs(moduleId);
+  if (env.runWorkers) {
+    void processPendingIngestJobs(moduleId);
+  }
 
   return { ok: true, newJobId };
 }

@@ -540,7 +540,7 @@ async function loadLegacyHistoryRows(input: HistoryFilters) {
 }
 
 function buildPersistedHistoryWhere(input: HistoryFilters) {
-  const conditions = ["j.sc_type = ?", "r.status = 'success'"];
+  const conditions = ["j.sc_type = ?", "j.status = 'done'", "r.status = 'success'"];
   const params: unknown[] = [input.scType || "faq"];
 
   const country = normalize(input.country).toUpperCase();
@@ -2035,7 +2035,9 @@ export async function getGenerationHistorySummary(input: HistoryFilters): Promis
 
     const totalRows = Number(((summaryRows[0] || {}) as Record<string, unknown>).total_rows || 0);
     if (totalRows === 0) {
-      return buildLegacyHistorySummary(await loadLegacyHistoryRows(input));
+      const empty = createEmptyHistorySummaryResult("ready", new Date().toISOString());
+      setHistoryCacheValue(generationHistorySummaryCache, cacheKey, empty);
+      return empty;
     }
 
     const [byCountryRows] = await pool.query<RowDataPacket[]>(
@@ -2132,10 +2134,10 @@ export async function listGenerationHistoryRows(input: HistoryFilters): Promise<
           SELECT
             r.job_id,
             r.row_index
-          FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_id, idx_generation_jobs_sc_type_uploader_id)
+          FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_status_created_id)
           INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_status_country_subclass_job_row) ON r.job_id = j.id
           ${whereSql}
-          ORDER BY COALESCE(j.finished_at, j.created_at) DESC, r.row_index ASC
+          ORDER BY j.created_at DESC, r.row_index ASC
           LIMIT ? OFFSET ?
         `,
         [...params, pageSize + 1, start],
@@ -2149,26 +2151,21 @@ export async function listGenerationHistoryRows(input: HistoryFilters): Promise<
     const hasMore = pageKeyRows[0].length > pageSize;
 
     if (!pageKeys.length) {
-      const legacyRows = await loadLegacyHistoryRows(input);
-      const pagedRows = legacyRows.slice(start, start + pageSize);
       const result = {
-        total: legacyRows.length,
-        hasMore: start + pagedRows.length < legacyRows.length,
-        totalIsEstimated: false,
-        rows: pagedRows.map((row) => ({
-          jobId: row.jobId,
-          uploader: row.uploader,
-          createdAt: formatChinaIsoOffset(row.createdAt),
-          finishedAt: formatChinaIsoOffset(row.finishedAt),
-          Country: row.Country,
-          TermID: row.TermID,
-          TermName: row.TermName,
-          Domain: row.Domain,
-          Subclass: row.Subclass,
-          Titile1: row.Titile1,
-          "Brief Introduction": row["Brief Introduction"],
-        })),
+        total: cachedTotal ?? start,
+        hasMore: false,
+        totalIsEstimated: cachedTotal == null,
+        rows: [],
       };
+      logGenerationPerf("historyRows", {
+        page,
+        pageSize,
+        rows: 0,
+        total: result.total,
+        hasMore: false,
+        totalIsEstimated: result.totalIsEstimated,
+        durationMs: Date.now() - startedAt,
+      });
       setHistoryCacheValue(generationHistoryRowsCache, cacheKey, result);
       return result;
     }
@@ -2194,7 +2191,7 @@ export async function listGenerationHistoryRows(input: HistoryFilters): Promise<
             r.title1,
             r.brief_introduction,
             r.row_index
-          FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_id, idx_generation_jobs_sc_type_uploader_id)
+          FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_status_created_id)
           INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_status_country_subclass_job_row) ON r.job_id = j.id
           WHERE (r.job_id, r.row_index) IN (${tuplePlaceholders})
           ORDER BY FIELD(CONCAT(r.job_id, ':', r.row_index), ${fieldPlaceholders})
@@ -2939,9 +2936,7 @@ export function startGenerationHousekeeping() {
 
 export function warmGenerationHistoryCaches() {
   setTimeout(() => {
-    void refreshMaterializedHistorySummary("faq").catch(() => undefined);
     void getGenerationHistorySummary({ scType: "faq" }).catch(() => undefined);
-    void listGenerationHistoryRows({ scType: "faq", page: 1, pageSize: 20 }).catch(() => undefined);
     void getGenerationQueueCount("faq").catch(() => undefined);
-  }, 1500);
+  }, 10_000);
 }

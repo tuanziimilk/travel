@@ -40,6 +40,15 @@ CMD ["node", "dist/server.js"]
 
 
 # ============================================================
+# Stage 2b: worker
+# Production image for background queues only
+# ============================================================
+FROM api AS worker
+
+CMD ["node", "dist/worker.js"]
+
+
+# ============================================================
 # Stage 3: web
 # Optional nginx image for static web assets
 # ============================================================

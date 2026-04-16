@@ -20,6 +20,7 @@ import {
 } from "./uploadStore";
 import { apiRuntimePath } from "../utils/runtimePaths";
 import { createGgCleaningPreviewTask, getGgCleaningPreviewTask } from "./previewTaskStore";
+import { env } from "../env";
 
 let loopStarted = false;
 let activeJobId = "";
@@ -182,7 +183,12 @@ async function consumeLoop() {
   }
 }
 
-void consumeLoop();
+export function startGgCleaningWorker() {
+  if (!env.runWorkers) return;
+  void consumeLoop();
+}
+
+startGgCleaningWorker();
 
 export async function previewGgCleaning(input: { fileName: string; fileBase64?: string; uploadId?: string }) {
   if (input.uploadId) {

@@ -565,7 +565,11 @@ export function CategoryCalibrationPage() {
           </button>
         </div>
 
-        {queueQuery.error && queueQuery.data ? <div className="translation-feedback error">队列刷新失败，正在重试。当前先展示上一次成功结果。</div> : null}
+        {queueQuery.error ? (
+          <div className="translation-feedback error">
+            {queueQuery.data ? "队列刷新失败，正在重试。当前先展示上一次成功结果。" : `队列加载失败：${queueQuery.error.message}。系统会自动重试，你也可以手动刷新。`}
+          </div>
+        ) : null}
         {error ? <div className="translation-feedback error">{error}</div> : null}
         {notice ? <div className="translation-feedback success">{notice}</div> : null}
       </div>
@@ -673,9 +677,14 @@ export function CategoryCalibrationPage() {
                   </tr>
                 );
               })}
-              {queueRows.length === 0 ? (
+              {queueRows.length === 0 && !queueQuery.error ? (
                 <tr>
                   <td colSpan={9}>最近两周暂无 Category 校准任务。</td>
+                </tr>
+              ) : null}
+              {queueRows.length === 0 && queueQuery.error ? (
+                <tr>
+                  <td colSpan={9}>队列暂时加载失败，正在重试，不代表历史任务已消失。</td>
                 </tr>
               ) : null}
             </tbody>

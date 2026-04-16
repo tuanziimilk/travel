@@ -549,8 +549,10 @@ const activeGenerationJobs = new Set<string>();
 const generationJobInputs = new Map<string, QueuedGenerationJobInput>();
 let generationSchedulerBootstrapped = false;
 let generationSchedulerRun = Promise.resolve();
+let generationWorkerStarted = false;
 
 function triggerGenerationScheduler() {
+  if (!env.runWorkers) return Promise.resolve();
   generationSchedulerRun = generationSchedulerRun
     .then(() => processGenerationQueue())
     .catch((error) => {
@@ -917,7 +919,13 @@ export async function retryFaqOutputGeneration(jobId: string) {
   return { jobId };
 }
 
-void triggerGenerationScheduler();
-setInterval(() => {
+export function startGenerationWorker() {
+  if (!env.runWorkers || generationWorkerStarted) return;
+  generationWorkerStarted = true;
   void triggerGenerationScheduler();
-}, 5000);
+  setInterval(() => {
+    void triggerGenerationScheduler();
+  }, 5000);
+}
+
+startGenerationWorker();

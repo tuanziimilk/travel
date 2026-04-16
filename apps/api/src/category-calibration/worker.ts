@@ -21,6 +21,7 @@ import {
   getCompletedCategoryCalibrationUpload,
   iterateCategoryCalibrationUploadChunks,
 } from "./uploadStore";
+import { env } from "../env";
 
 let loopStarted = false;
 let activeJobId = "";
@@ -293,7 +294,12 @@ async function consumeLoop() {
   }
 }
 
-void consumeLoop();
+export function startCategoryCalibrationWorker() {
+  if (!env.runWorkers) return;
+  void consumeLoop();
+}
+
+startCategoryCalibrationWorker();
 
 export async function previewCategoryCalibration(input: { fileName: string; uploadId?: string }) {
   if (!input.uploadId) {

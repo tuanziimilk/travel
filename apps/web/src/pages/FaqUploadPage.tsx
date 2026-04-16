@@ -322,7 +322,11 @@ export function FaqUploadPage() {
 
       <div className="card faq-card" style={{ marginTop: 16 }}>
         <h3>FAQ 历史任务队列</h3>
-        {queueQuery.error && queueQuery.data ? <p className="error-text">队列刷新失败，正在重试。当前先展示上一次成功结果。</p> : null}
+        {queueQuery.error ? (
+          <p className="error-text">
+            {queueQuery.data ? "队列刷新失败，正在重试。当前先展示上一次成功结果。" : `队列加载失败：${queueQuery.error.message}。系统会自动重试，你也可以手动刷新。`}
+          </p>
+        ) : null}
         <table className="history-table queue-table faq-queue-table faq-upload-queue-table">
             <thead>
               <tr>
@@ -376,9 +380,14 @@ export function FaqUploadPage() {
                   </td>
                 </tr>
               ))}
-              {(queueQuery.data?.rows?.length ?? 0) === 0 && (
+              {(queueQuery.data?.rows?.length ?? 0) === 0 && !queueQuery.error && (
                 <tr>
                   <td colSpan={11}>暂无任务</td>
+                </tr>
+              )}
+              {(queueQuery.data?.rows?.length ?? 0) === 0 && queueQuery.error && (
+                <tr>
+                  <td colSpan={11}>队列暂时加载失败，正在重试，不代表历史任务已消失。</td>
                 </tr>
               )}
             </tbody>

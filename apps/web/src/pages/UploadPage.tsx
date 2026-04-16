@@ -310,7 +310,11 @@ export function UploadPage() {
   return (
     <div className="card">
       <h2>批量上传评分</h2>
-      {queueQuery.error && queueQuery.data ? <p className="error-text">队列刷新失败，正在重试。当前先展示上一次成功结果。</p> : null}
+      {queueQuery.error ? (
+        <p className="error-text">
+          {queueQuery.data ? "队列刷新失败，正在重试。当前先展示上一次成功结果。" : `队列加载失败：${queueQuery.error.message}。系统会自动重试，你也可以手动刷新。`}
+        </p>
+      ) : null}
       <p className="muted">上传 CSV 或 XLSX，异步执行评分并追踪队列进度，完成后可直接下载结果。</p>
 
       <div className="grid">
@@ -531,9 +535,14 @@ export function UploadPage() {
                   </tr>
                 );
               })}
-              {queueRows.length === 0 && (
+              {queueRows.length === 0 && !queueQuery.error && (
                 <tr>
                   <td colSpan={9}>暂无任务</td>
+                </tr>
+              )}
+              {queueRows.length === 0 && queueQuery.error && (
+                <tr>
+                  <td colSpan={9}>队列暂时加载失败，正在重试，不代表历史任务已消失。</td>
                 </tr>
               )}
             </tbody>

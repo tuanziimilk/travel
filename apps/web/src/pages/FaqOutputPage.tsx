@@ -446,6 +446,11 @@ export function FaqOutputPage() {
   const isQueueInitialLoading = queueQuery.isLoading && !queueQuery.data;
   const isQueueRefreshing = queueQuery.isFetching && !!queueQuery.data;
   const queueSlow = useSlowHint(isQueueInitialLoading || isQueueRefreshing);
+  const queueErrorMessage = queueQuery.error
+    ? queueQuery.data
+      ? "队列刷新失败，正在重试。当前先展示上一次成功结果。"
+      : `队列加载失败：${queueQuery.error.message}。系统会自动重试，你也可以手动刷新。`
+    : "";
 
   useEffect(() => {
     if (typeof queueQuery.data?.total === "number" && queueQuery.data.total >= 0) {
@@ -880,9 +885,14 @@ export function FaqOutputPage() {
                   <td colSpan={10}>FAQ 输出任务加载中...</td>
                 </tr>
               ) : null}
-              {!isQueueInitialLoading && queueRows.length === 0 ? (
+              {!isQueueInitialLoading && queueRows.length === 0 && !queueQuery.error ? (
                 <tr>
                   <td colSpan={10}>暂无 FAQ 输出任务。</td>
+                </tr>
+              ) : null}
+              {!isQueueInitialLoading && queueRows.length === 0 && queueQuery.error ? (
+                <tr>
+                  <td colSpan={10}>队列暂时加载失败，正在重试，不代表历史任务已消失。</td>
                 </tr>
               ) : null}
             </tbody>
@@ -895,13 +905,14 @@ export function FaqOutputPage() {
             {queueTotalIsEstimated ? "+" : ""} 条任务
           </span>
           <span className="muted faq-pagination-footnote">
-            {isQueueRefreshing
+            {queueErrorMessage ||
+            (isQueueRefreshing
               ? `正在加载第 ${queuePage} 页，当前先保留上一页数据。`
               : queueSlow
                 ? "任务较多，队列仍在刷新，请稍候。"
                 : !isPageVisible
                   ? "页面失焦时已暂停自动刷新。"
-                  : ""}
+                  : "")}
           </span>
           <div className="upload-actions" style={{ gap: 8 }}>
             <button className="btn-ghost" type="button" disabled={queuePage <= 1 || isQueueRefreshing} onClick={() => setQueuePage((prev) => Math.max(1, prev - 1))}>

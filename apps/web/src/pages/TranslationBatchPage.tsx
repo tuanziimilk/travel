@@ -378,7 +378,11 @@ export function TranslationBatchPage() {
             </div>
           </div>
 
-          {queueQuery.error && queueQuery.data ? <p className="error-text">队列刷新失败，正在重试。当前先展示上一次成功结果。</p> : null}
+          {queueQuery.error ? (
+            <p className="error-text">
+              {queueQuery.data ? "队列刷新失败，正在重试。当前先展示上一次成功结果。" : `队列加载失败：${queueQuery.error.message}。系统会自动重试，你也可以手动刷新。`}
+            </p>
+          ) : null}
           {error ? <p className="error-text">{error}</p> : null}
           {notice ? <p className="output-success-text">{notice}</p> : null}
 
@@ -517,9 +521,14 @@ export function TranslationBatchPage() {
                   </td>
                 </tr>
               ))}
-              {(queueQuery.data?.rows?.length ?? 0) === 0 ? (
+              {(queueQuery.data?.rows?.length ?? 0) === 0 && !queueQuery.error ? (
                 <tr>
                   <td colSpan={8}>最近 7 天暂无翻译任务。</td>
+                </tr>
+              ) : null}
+              {(queueQuery.data?.rows?.length ?? 0) === 0 && queueQuery.error ? (
+                <tr>
+                  <td colSpan={9}>队列暂时加载失败，正在重试，不代表历史任务已消失。</td>
                 </tr>
               ) : null}
             </tbody>

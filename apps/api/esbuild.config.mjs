@@ -1,8 +1,8 @@
 import { build } from "esbuild";
 
 await build({
-  entryPoints: ["src/server.ts"],
-  outfile: "dist/server.js",
+  entryPoints: ["src/server.ts", "src/worker.ts"],
+  outdir: "dist",
   bundle: true,
   platform: "node",
   format: "esm",

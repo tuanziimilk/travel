@@ -278,5 +278,7 @@ app.listen(env.apiPort, () => {
   console.log(`API running on http://localhost:${env.apiPort}`);
   warmGenerationHistoryCaches();
   startGenerationHousekeeping();
-  startIngestRecoveryScheduler();
+  if (env.runWorkers) {
+    startIngestRecoveryScheduler();
+  }
 });

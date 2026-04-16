@@ -7,4 +7,6 @@ coverage
 apps/web/dist
 apps/api/dist
 apps/api/.drizzle
+apps/api/apps
+.tmp-*.ts
 *.log
