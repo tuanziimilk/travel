@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { qualityBatchUploadMaxFileBytes, qualityBatchUploadMaxRows, uploaderOptions } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
 import { CHINA_TIME_ZONE, formatChinaDateTime } from "../utils/time";
+import { createGlobalDownloadTask, useDownloadCenter } from "../components/DownloadCenter";
 
 const uploadDemoCsv = [
   "TermID,TermName,Domain,Country,About_online,About_ai,About_op",
@@ -145,7 +146,7 @@ function getQueueAlertSummary(item: {
 const uploadLimitMb = Math.round(qualityBatchUploadMaxFileBytes / 1024 / 1024);
 
 export function UploadPage() {
-  const utils = trpc.useUtils();
+  const downloadCenter = useDownloadCenter();
   const [uploader, setUploader] = useState<(typeof uploaderOptions)[number]>("Ella");
   const [note, setNote] = useState("");
   const [outputMode, setOutputMode] = useState<"full" | "compact">("compact");
@@ -262,19 +263,11 @@ export function UploadPage() {
 
   async function downloadBatchXlsx(batchIdValue: string) {
     if (!batchIdValue) return;
-    const response = await utils.client.batch.ingest.result.query({ batchId: batchIdValue, format: "xlsx" });
-    const xlsxBase64 = "xlsxBase64" in response ? response.xlsxBase64 || "" : "";
-    const binary = atob(xlsxBase64);
-    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    const blob = new Blob([bytes], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    await downloadCenter.createDownloadTask({
+      toolType: "about-quality",
+      sourceLabel: "About 评分结果",
+      create: () => createGlobalDownloadTask({ kind: "quality-batch", jobId: batchIdValue }),
     });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `about-batch-${batchIdValue}.xlsx`;
-    anchor.click();
-    URL.revokeObjectURL(url);
   }
 
   function downloadDemoTemplate() {

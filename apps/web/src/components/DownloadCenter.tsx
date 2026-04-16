@@ -2,7 +2,15 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type R
 
 type DownloadTaskStatus = "queued" | "preparing" | "ready" | "failed" | "expired";
 
-export type DownloadToolType = "faq-output" | "faq-history" | "generic";
+export type DownloadToolType =
+  | "about-quality"
+  | "faq-quality"
+  | "faq-output"
+  | "faq-history"
+  | "gg-cleaning"
+  | "translation"
+  | "category-calibration"
+  | "generic";
 
 type ApiDownloadTask = {
   taskId: string;
@@ -92,7 +100,7 @@ function formatTime(value?: string) {
 }
 
 function getDownloadFileUrl(taskId: string) {
-  return `${apiBase}/generation/download-tasks/${encodeURIComponent(taskId)}/file`;
+  return `${apiBase}/downloads/tasks/${encodeURIComponent(taskId)}/file`;
 }
 
 async function parseApiError(response: Response, fallback: string) {
@@ -148,7 +156,7 @@ export function DownloadCenterProvider({ children }: { children: ReactNode }) {
     pollingTasksRef.current.add(taskId);
     try {
       for (let attempt = 0; attempt < 240; attempt += 1) {
-        const response = await fetch(`${apiBase}/generation/download-tasks/${encodeURIComponent(taskId)}`, { credentials: "include" });
+        const response = await fetch(`${apiBase}/downloads/tasks/${encodeURIComponent(taskId)}`, { credentials: "include" });
         if (!response.ok) {
           throw new Error(await parseApiError(response, `下载任务状态查询失败：HTTP ${response.status}`));
         }
@@ -315,6 +323,23 @@ export async function createFaqHistoryExportTask(input: Record<string, unknown>)
   });
   if (!response.ok) {
     throw new Error(await parseApiError(response, `创建历史导出任务失败：HTTP ${response.status}`));
+  }
+  return (await response.json()) as ApiDownloadTask;
+}
+
+export async function createGlobalDownloadTask(input: {
+  kind: "quality-batch" | "gg-cleaning" | "translation-batch" | "category-calibration";
+  jobId: string;
+  includeDebug?: boolean;
+}) {
+  const response = await fetch(`${apiBase}/downloads/tasks`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `创建下载任务失败：HTTP ${response.status}`));
   }
   return (await response.json()) as ApiDownloadTask;
 }

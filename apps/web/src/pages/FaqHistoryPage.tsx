@@ -4,6 +4,7 @@ import { countryOptions, uploaderOptions } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
 import { PopDatePicker } from "../components/PopDatePicker";
 import { formatChinaDateTime } from "../utils/time";
+import { createGlobalDownloadTask, useDownloadCenter } from "../components/DownloadCenter";
 
 function pickWinner(avgOnline: number, avgAi: number, avgOp: number, hasOpData: boolean) {
   const candidates: Array<{ version: "online" | "ai" | "op"; score: number }> = [
@@ -41,7 +42,7 @@ function renderNote(noteRaw: string) {
 }
 
 export function FaqHistoryPage() {
-  const utils = trpc.useUtils();
+  const downloadCenter = useDownloadCenter();
   const [listPage, setListPage] = useState(1);
   const [draftUploader, setDraftUploader] = useState<"" | (typeof uploaderOptions)[number]>("");
   const [draftCountry, setDraftCountry] = useState("");
@@ -65,19 +66,11 @@ export function FaqHistoryPage() {
   });
 
   async function downloadBatchXlsx(batchId: string) {
-    const response = await utils.client.batch.ingest.result.query({ batchId, format: "xlsx" });
-    const xlsxBase64 = "xlsxBase64" in response ? response.xlsxBase64 || "" : "";
-    const binary = atob(xlsxBase64);
-    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    const blob = new Blob([bytes], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    await downloadCenter.createDownloadTask({
+      toolType: "faq-quality",
+      sourceLabel: "FAQ 历史批次",
+      create: () => createGlobalDownloadTask({ kind: "quality-batch", jobId: batchId }),
     });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `faq-history-${batchId}.xlsx`;
-    anchor.click();
-    URL.revokeObjectURL(url);
   }
 
   function applyFilters() {

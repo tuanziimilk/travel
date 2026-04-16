@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { ggCleaningUploadMaxFileBytes, ggCleaningUploadMaxRows, uploaderOptions } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
 import { formatChinaDateTime } from "../utils/time";
+import { createGlobalDownloadTask, useDownloadCenter } from "../components/DownloadCenter";
 
 const GG_SOURCE_COLUMN = "采集数据源";
 const uploadLimitMb = Math.round(ggCleaningUploadMaxFileBytes / 1024 / 1024);
@@ -84,39 +85,8 @@ function triggerBrowserDownload(url: string, fileName?: string) {
   anchor.remove();
 }
 
-function downloadBase64File(fileName: string, base64: string) {
-  const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
-  const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  const url = URL.createObjectURL(blob);
-  triggerBrowserDownload(url, fileName);
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 function downloadTextFile(fileName: string, content: string, mimeType = "text/csv;charset=utf-8") {
   const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  triggerBrowserDownload(url, fileName);
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-async function downloadFileFromResponse(response: Response, fallbackFileName: string) {
-  if (!response.ok) {
-    let message = `Download failed with status ${response.status}.`;
-    try {
-      const payload = (await response.json()) as { error?: string };
-      if (payload?.error) message = payload.error;
-    } catch {
-      // keep default message
-    }
-    throw new Error(message);
-  }
-  const blob = await response.blob();
-  const disposition = response.headers.get("Content-Disposition") || "";
-  const encodedNameMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
-  const plainNameMatch = disposition.match(/filename=\"?([^\";]+)\"?/i);
-  const fileName = encodedNameMatch?.[1]
-    ? decodeURIComponent(encodedNameMatch[1])
-    : plainNameMatch?.[1] || fallbackFileName;
   const url = URL.createObjectURL(blob);
   triggerBrowserDownload(url, fileName);
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -177,7 +147,7 @@ export function GgCleaningPage() {
   const [queuePage, setQueuePage] = useState(1);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const utils = trpc.useUtils();
+  const downloadCenter = useDownloadCenter();
 
   const previewMutation = trpc.ggCleaning.preview.useMutation();
   const runMutation = trpc.ggCleaning.run.useMutation({
@@ -267,23 +237,14 @@ export function GgCleaningPage() {
   async function downloadJobResult(jobId: string) {
     setError("");
     try {
-      const url = new URL(`${ggCleaningUploadApiBase}/gg-cleaning/jobs/${encodeURIComponent(jobId)}/download`);
-      if (includeDebugSheet) url.searchParams.set("includeDebug", "1");
-      const response = await fetch(url.toString(), {
-        method: "GET",
-        credentials: "include",
+      await downloadCenter.createDownloadTask({
+        toolType: "gg-cleaning",
+        sourceLabel: includeDebugSheet ? "GG 清洗完整结果" : "GG 清洗商家结果",
+        create: () => createGlobalDownloadTask({ kind: "gg-cleaning", jobId, includeDebug: includeDebugSheet }),
       });
-      await downloadFileFromResponse(response, `gg-cleaning-${jobId}.xlsx`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "下载结果失败，请稍后重试。");
     }
-    return;
-    const data = await utils.client.ggCleaning.result.query({ jobId });
-    if (!data.xlsxBase64) {
-      setError(data.errorReason || "当前任务暂无可下载结果，请稍后刷新列表后重试。");
-      return;
-    }
-    downloadBase64File(data.fileName, data.xlsxBase64);
   }
 
   function downloadDemoTemplate() {

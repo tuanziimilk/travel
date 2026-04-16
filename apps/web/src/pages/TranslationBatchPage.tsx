@@ -8,6 +8,7 @@ import {
 } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
 import { formatChinaDateTime } from "../utils/time";
+import { createGlobalDownloadTask, useDownloadCenter } from "../components/DownloadCenter";
 
 const uploadLimitMb = Math.round(translationUploadMaxFileBytes / 1024 / 1024);
 
@@ -22,19 +23,6 @@ function toBase64(file: File) {
     reader.onerror = () => reject(reader.error || new Error("文件读取失败"));
     reader.readAsDataURL(file);
   });
-}
-
-function downloadBase64File(fileName: string, base64: string) {
-  const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
-  const blob = new Blob([bytes], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = fileName;
-  anchor.click();
-  URL.revokeObjectURL(url);
 }
 
 function formatUsd(value?: number | string | null) {
@@ -111,7 +99,7 @@ export function TranslationBatchPage() {
   const [queuePage, setQueuePage] = useState(1);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const utils = trpc.useUtils();
+  const downloadCenter = useDownloadCenter();
 
   const previewMutation = trpc.translation.previewColumns.useMutation();
   const runMutation = trpc.translation.runBatch.useMutation({
@@ -216,9 +204,11 @@ export function TranslationBatchPage() {
   }
 
   async function downloadJobResult(jobId: string) {
-    const data = await utils.client.translation.result.query({ jobId });
-    if (!data.xlsxBase64) return;
-    downloadBase64File(data.fileName, data.xlsxBase64);
+    await downloadCenter.createDownloadTask({
+      toolType: "translation",
+      sourceLabel: "批量翻译结果",
+      create: () => createGlobalDownloadTask({ kind: "translation-batch", jobId }),
+    });
   }
 
   function toggleColumn(column: string) {

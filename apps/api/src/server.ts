@@ -24,6 +24,7 @@ import {
 import { getGgCleaningJobDownloadPayload } from "./gg-cleaning/jobStore";
 import { appendGgCleaningUploadChunk, appendGgCleaningUploadFileChunk, completeGgCleaningUpload, initGgCleaningUpload } from "./gg-cleaning/uploadStore";
 import { startIngestRecoveryScheduler } from "./jobs/ingestWorker";
+import { createGlobalDownloadTask, getGlobalDownloadTask, getGlobalDownloadTaskFile } from "./downloads/globalDownloadTaskStore";
 
 const app = express();
 app.use(cors({ origin: env.webOrigin }));
@@ -161,6 +162,44 @@ app.get("/generation/download-tasks/:taskId/file", async (req, res) => {
     if (!taskId) throw new Error("taskId is required.");
     const result = await getGenerationDownloadTaskFile(taskId);
     const safeFileName = path.basename(result.fileName || `faq-download-${taskId}.xlsx`);
+    res.setHeader("Content-Type", result.contentType);
+    res.setHeader("Content-Length", String(result.fileSizeBytes));
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(safeFileName)}`);
+    res.setHeader("Cache-Control", "no-store");
+    createReadStream(result.resultFilePath).pipe(res);
+  } catch (error) {
+    res.status(404).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.post("/downloads/tasks", async (req, res) => {
+  try {
+    const kind = String(req.body?.kind || "").trim() as Parameters<typeof createGlobalDownloadTask>[0]["kind"];
+    const jobId = String(req.body?.jobId || req.body?.batchId || "").trim();
+    if (!kind) throw new Error("kind is required.");
+    if (!jobId) throw new Error("jobId is required.");
+    res.json(await createGlobalDownloadTask({ kind, jobId, includeDebug: Boolean(req.body?.includeDebug) }));
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.get("/downloads/tasks/:taskId", async (req, res) => {
+  try {
+    const taskId = String(req.params.taskId || "").trim();
+    if (!taskId) throw new Error("taskId is required.");
+    res.json(await getGlobalDownloadTask(taskId));
+  } catch (error) {
+    res.status(404).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.get("/downloads/tasks/:taskId/file", async (req, res) => {
+  try {
+    const taskId = String(req.params.taskId || "").trim();
+    if (!taskId) throw new Error("taskId is required.");
+    const result = await getGlobalDownloadTaskFile(taskId);
+    const safeFileName = path.basename(result.fileName || `download-${taskId}.xlsx`);
     res.setHeader("Content-Type", result.contentType);
     res.setHeader("Content-Length", String(result.fileSizeBytes));
     res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(safeFileName)}`);
