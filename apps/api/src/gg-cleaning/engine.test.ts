@@ -3885,7 +3885,7 @@ describe("gg cleaning engine", () => {
         subclass: "shipping",
         bu: "hd",
         [GG_COLLECTED_STATUS_COLUMN]: "抓取完成",
-        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
         google_url: "https://www.google.com/search?q=Does+4wheelparts.com+offer+free+shipping",
         content: [
           "Yes, 4wheelparts.com offers free standard ground shipping on many items to the contiguous 48 states.",
@@ -4005,7 +4005,7 @@ describe("gg cleaning engine", () => {
         subclass: "app",
         bu: "hd",
         [GG_COLLECTED_STATUS_COLUMN]: "done",
-        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
         content: [
           "Download the app to get 15% off your first order.",
         ],
@@ -4047,7 +4047,7 @@ describe("gg cleaning engine", () => {
         subclass: "referral",
         bu: "hd",
         [GG_COLLECTED_STATUS_COLUMN]: "done",
-        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
         content: [
           "The referral program gives existing customers a $10 credit for each successful referral.",
         ],
@@ -4340,7 +4340,7 @@ describe("gg cleaning engine", () => {
         term_name: "Example",
         subclass: "shipping",
         [GG_COLLECTED_STATUS_COLUMN]: "抓取完成",
-        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
         content: '["Example offers free shipping on orders over $50.","Applies to domestic standard shipping."]',
         product_urls: '["https://www.example.com/shipping","https://www.google.com/search?q=example+shipping"]',
       },
@@ -4431,7 +4431,7 @@ describe("gg cleaning engine", () => {
         subclass: "shipping",
         bu: "hd",
         状态: "抓取完成",
-        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
         google_url: "",
         content: "Shop A offers free shipping on orders over $50.",
         product_urls: "https://shopa.com/shipping",
@@ -4448,7 +4448,7 @@ describe("gg cleaning engine", () => {
         subclass: "loyalty program",
         bu: "hd",
         状态: "抓取完成",
-        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
         google_url: "",
         content: "Shop A has a rewards program for members.",
         product_urls: "https://shopa.com/rewards",
@@ -4497,7 +4497,7 @@ describe("gg cleaning engine", () => {
         term_name: "Lakeland",
         subclass: "app",
         [GG_COLLECTED_STATUS_COLUMN]: "抓取完成",
-        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
         content: ["The official mobile app includes app-only benefits and digital vouchers."],
         product_urls: ["https://www.lakeland.co.uk/mobile-app"],
       },
@@ -5324,5 +5324,168 @@ describe("gg cleaning engine", () => {
     expect(result.debugRows).toHaveLength(2);
     expect(result.debugRows.find((row) => row.term_id === "301")?.final_supported).toBe("yes");
     expect(result.debugRows.find((row) => row.term_id === "302")?.final_supported).toBe("yes");
+  });
+
+  it("uses lead explicit yes for PL existing customer loyalty evidence", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "lead-existing-customer-pl",
+        country: "PL",
+        domain: "cmielow-sklep.pl",
+        term_id: "lead-existing-customer-pl",
+        term_name: "Cmielow",
+        subclass: "existing customer",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: [
+          "Tak, Fabryka Porcelany AS Cmielow oferuje program lojalnosciowy Klub Kolekcjonera dla stalych klientow. Czlonkowie otrzymuja specjalne rabaty i wczesniejszy dostep do promocji.",
+        ],
+        product_urls: [],
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("yes");
+    expect(result.debugRows[0].final_matched_rule).toBe("lead_explicit_yes");
+  });
+
+  it("uses lead explicit yes for family card and large-family discounts", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "lead-family-pl",
+        country: "PL",
+        domain: "cmielow-sklep.pl",
+        term_id: "lead-family-pl",
+        term_name: "Cmielow",
+        subclass: "family",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: ["Tak, sklep oferuje znizke 5% dla posiadaczy Karty Duzej Rodziny. Rabat dotyczy rodzin spelniajacych warunki programu."],
+        product_urls: [],
+      },
+      {
+        task_id: "lead-family-es",
+        country: "ES",
+        domain: "sunviewpark.com",
+        term_id: "lead-family-es",
+        term_name: "Sunview Park",
+        subclass: "family",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: ["Si, Sunview Park ha ofrecido descuentos para familias numerosas. La promocion reduce el precio de entrada para grupos familiares."],
+        product_urls: [],
+      },
+    ]);
+
+    expect(result.debugRows.map((row) => row.final_supported)).toEqual(["yes", "yes"]);
+    expect(result.debugRows.map((row) => row.final_matched_rule)).toEqual(["lead_explicit_yes", "lead_explicit_yes"]);
+  });
+
+  it("keeps lead explicit no for price guarantee and app claims", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "lead-price-no-pl",
+        country: "PL",
+        domain: "mamove.pl",
+        term_id: "lead-price-no-pl",
+        term_name: "Mamove",
+        subclass: "price guarantee",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: ["Sklep nie oferuje formalnej gwarancji najlepszej ceny. Ceny sa konkurencyjne, ale nie jest to price match ani best price guarantee."],
+        product_urls: [],
+      },
+      {
+        task_id: "lead-app-no-es",
+        country: "ES",
+        domain: "armeriasabater.com",
+        term_id: "lead-app-no-es",
+        term_name: "Armeria Sabater",
+        subclass: "app",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: ["No cuenta con una aplicacion movil propia para realizar compras, ni ofrece descuentos especificos por uso de app. La tienda opera desde la web."],
+        product_urls: [],
+      },
+    ]);
+
+    const byTerm = new Map(result.debugRows.map((row) => [row.term_id, row]));
+    expect(byTerm.get("lead-price-no-pl")?.final_supported).toBe("no");
+    expect(byTerm.get("lead-app-no-es")?.final_supported).toBe("no");
+    expect(["price_guarantee_hard_negative", "lead_explicit_no"]).toContain(byTerm.get("lead-price-no-pl")?.final_matched_rule);
+    expect(byTerm.get("lead-app-no-es")?.final_matched_rule).toBe("lead_explicit_no");
+  });
+
+  it("keeps return and gift card lead negatives from becoming generic yes", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "lead-return-no-es",
+        country: "ES",
+        domain: "sspelectronic.com",
+        term_id: "lead-return-no-es",
+        term_name: "SSP Electronic",
+        subclass: "return",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: ["La tienda permite devoluciones, pero no especifica que las devoluciones sean gratuitas. El cliente debe revisar las condiciones antes de comprar."],
+        product_urls: [],
+      },
+      {
+        task_id: "lead-gift-card-no-es",
+        country: "ES",
+        domain: "rockyhorrorbaby.com",
+        term_id: "lead-gift-card-no-es",
+        term_name: "Rocky Horror Baby",
+        subclass: "gift card",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: ["Ofrece cajitas de regalo y tarjeta personalizada, aunque no especifica la venta de tarjetas regalo prepagadas tradicionales. Gift wrapping no equivale a gift card."],
+        product_urls: [],
+      },
+    ]);
+
+    expect(result.debugRows.map((row) => row.final_supported)).toEqual(["no", "no"]);
+  });
+
+  it("does not treat affiliate or sponsor programs as consumer referral yes", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "lead-referral-affiliate-no",
+        country: "ES",
+        domain: "proelitebaits.com",
+        term_id: "lead-referral-affiliate-no",
+        term_name: "Pro Elite Baits",
+        subclass: "referral",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: ["Pro Elite Baits tiene un programa de patrocinio y afiliados para creadores, pero no especifica un programa de descuento por referir amigos para consumidores. No es un refer-a-friend publico."],
+        product_urls: [],
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+    expect(["referral_hard_negative", "lead_explicit_no", "referral_non_consumer"]).toContain(result.debugRows[0].final_matched_rule);
+  });
+
+  it("keeps PL negative phrasing from being widened into screening yes", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "lead-family-pl-unconfirmed",
+        country: "PL",
+        domain: "jockershop.pl",
+        term_id: "lead-family-pl-unconfirmed",
+        term_name: "Jocker Shop",
+        subclass: "family",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Na podstawie dostępnych wyników wyszukiwania nie można potwierdzić, aby sklep jockershop.pl oferował specjalną zniżkę rodzinną."],
+        product_urls: [],
+      },
+      {
+        task_id: "lead-price-pl-slogan-no",
+        country: "PL",
+        domain: "lekizczech.pl",
+        term_id: "lead-price-pl-slogan-no",
+        term_name: "Leki z Czech",
+        subclass: "price guarantee",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Na podstawie dostępnych informacji, strona lekizczech.pl nie promuje się hasłem gwarancja najlepszej ceny."],
+        product_urls: [],
+      },
+    ]);
+
+    const byTerm = new Map(result.debugRows.map((row) => [row.term_id, row]));
+    expect(byTerm.get("lead-family-pl-unconfirmed")?.final_supported).toBe("no");
+    expect(byTerm.get("lead-price-pl-slogan-no")?.final_supported).toBe("no");
   });
 });

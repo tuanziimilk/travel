@@ -387,7 +387,7 @@ const GENERIC_NEGATIVE_PATTERNS = [
   /\bkein(?:en|em|e)?\b.{0,40}\b(?:rabatt|programm|angebot|preisgarantie)\b/i,
   /\bnicht\b.{0,25}\b(?:verfugbar|verfuegbar|bestatigt|bestätigt|explizit|direkt)\b/i,
   /\bbrak\b.{0,30}\b(?:informacji|potwierdzenia|danych)\b/i,
-  /\bnie\b.{0,35}\b(?:ma|mozna potwierdzic|można potwierdzić|oferuje|potwierdzają|potwierdzajacych|potwierdzających)\b/i,
+  /\bnie\b.{0,35}(?:ma|mozna potwierdzic|można potwierdzić|mo[żz]na potwierdzi[ćc]|wymienia|promuje|oferuje|potwierdzają|potwierdzajacych|potwierdzających)/i,
   /\bno hay\b.{0,35}\b(?:informacion|información|evidencia|confirmacion|confirmación)\b/i,
   /\bno se\b.{0,35}\b(?:menciona|encontraron resultados|confirma)\b/i,
   /\b공식적으로\b.{0,20}\b(?:없|않)\S*/i,
@@ -1301,6 +1301,10 @@ const MILITARY_AMBIGUOUS_ENTITY_PATTERNS = [
 
 const REFERRAL_NON_CONSUMER_PATTERNS = [
   /\baffiliate program\b/i,
+  /\baffiliate\b.{0,35}\b(?:program|commission|creators?|sponsors?)\b/i,
+  /\bprograma de afiliados\b/i,
+  /\bprograma de patrocinio\b/i,
+  /\bpatrocinio\b.{0,35}\b(?:creadores?|afiliados|sponsors?)\b/i,
   /\bcommission\b/i,
   /\bcreator\w*\b/i,
   /\bblogger\w*\b/i,
@@ -1319,6 +1323,7 @@ const REFERRAL_NON_CONSUMER_PATTERNS = [
 ];
 
 const REFERRAL_HARD_NEGATIVE_PATTERNS = [
+  /\bdoes not\b.{0,25}\b(?:provide|offer|have)\b.{0,25}\b(?:a )?(?:standard|formal|public|consumer)?\b.{0,20}\brefer-a-friend\b.{0,20}\b(?:discount|program|offer)\b/i,
   /\bdoes not\b.{0,25}\b(?:provide|offer)\b.{0,25}\b(?:a )?(?:formal|standard|public|consumer)\b.{0,20}\b(?:refer(?:-a-friend)?|referral)\b.{0,20}\b(?:discount|program|offer)\b/i,
   /\bno\b.{0,25}\bformal\b.{0,20}\b(?:refer(?:-a-friend)?|referral)\b.{0,20}\b(?:program|offer)\b/i,
   /\bno\b.{0,25}\b(?:direct|public)\b.{0,20}\bevidence\b.{0,20}\b(?:of|for)\b.{0,20}\b(?:a )?(?:refer(?:-a-friend)?|referral)\b.{0,20}\b(?:discount|program|offer)\b/i,
@@ -1541,6 +1546,10 @@ const EXISTING_CUSTOMER_HARD_POSITIVE_PATTERNS = [
   /\bview renewal offers?\b/i,
   /\bexisting subscribers?\b.{0,35}\b(?:apply|receive|get|use)\b.{0,20}\b(?:discount|promo code|savings)\b/i,
   /\bcurrent members?\b.{0,35}\b(?:receive|get|unlock)\b.{0,20}\b(?:discount|benefit|offer)\b/i,
+  /\b(?:tak|sí|si|yes)\b.{0,60}\b(?:program lojalno[śs]ciow\w*|programa de fidelizaci[oó]n|loyalty program|club|rewards?)\b/i,
+  /\b(?:program lojalno[śs]ciow\w*|programa de fidelizaci[oó]n|loyalty program|club|rewards?)\b.{0,80}\b(?:sta[łl]ych klient[oó]w|clientes existentes|clientes actuales|existing customers?|repeat customers?)\b/i,
+  /\bnewsletter\b.{0,70}\b(?:clientes existentes|clientes actuales|existing customers?|sta[łl]ych klient[oó]w|loyal customers?)\b.{0,50}\b(?:descuentos?|promociones?|coupons?|codes?|zni[żz]k\w*|rabat\w*)\b/i,
+  /\b(?:clientes existentes|clientes actuales|existing customers?|sta[łl]ych klient[oó]w|loyal customers?)\b.{0,70}\bnewsletter\b.{0,50}\b(?:descuentos?|promociones?|coupons?|codes?|zni[żz]k\w*|rabat\w*)\b/i,
   /\bvaste klanten(?:bestand)?\b.{0,35}\b(?:exclusieve )?(?:actiecodes?|kortingscodes?|aanbiedingen)\b/i,
   /\bbestaande klanten\b.{0,35}\b(?:kunnen )?(?:profiteren van|ontvangen|krijgen)\b.{0,25}\b(?:kortingen|actiecodes?|aanbiedingen)\b/i,
   /现有客户.{0,24}(?:折扣|优惠|续订优惠|专用)/,
@@ -1674,6 +1683,13 @@ const PRICE_GUARANTEE_HARD_NEGATIVE_PATTERNS = [
   /\bno hay indicios p[uú]blicos o expl[ií]citos\b.{0,35}\b(?:garant[ií]a de mejor precio|igualaci[oó]n de precios)\b/i,
   /\bno hay indicios\b.{0,35}\bofrezca\b.{0,25}\b(?:una )?(?:garant[ií]a de mejor precio|igualaci[oó]n de precios)\b/i,
   /\bno hay indicios\b.{0,80}\b(?:garant|igualaci)\w*/i,
+  /\bno\b.{0,30}\b(?:ofrece|menciona|publica|indica)\b.{0,35}\b(?:formalmente )?(?:una )?(?:garant[ií]a (?:formal )?(?:de )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|price match)\b/i,
+  /\bno menciona expl[ií]citamente\b.{0,45}\b(?:garant[ií]a (?:de )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|price match)\b/i,
+  /\bnie\b.{0,35}\bpromuje\b.{0,35}\b(?:gwarancj\w*|has[łl]\w*)\b.{0,35}\b(?:najlepszej|najni[żz]szej)\b.{0,15}\bceny\b/i,
+  /\bnie\b.{0,30}\boferuje\b.{0,45}\bgwarancj\w*\b.{0,25}\b(?:najlepszej|najni[żz]szej)\b.{0,15}\bceny\b/i,
+  /\bnie jest to\b.{0,30}\b(?:price match|best price guarantee|lowest price guarantee)\b/i,
+  /\bnie\b.{0,30}\boferuje\b.{0,35}\bformaln\w*\b.{0,25}\bgwarancj\w*\b.{0,25}\b(?:najlepszej|najni[żz]szej)\b.{0,15}\bceny\b/i,
+  /\bnie posiada\b.{0,35}\bformaln\w*\b.{0,25}\bgwarancj\w*\b.{0,25}\b(?:najlepszej|najni[żz]szej)\b.{0,15}\bceny\b/i,
   /\bnie wynika\b.{0,25}\b(?:aby )?(?:firma|marka)\b.{0,35}\boferowa[łl]a\b.{0,25}\bformaln\w*\b.{0,25}\bgwarancj\w*\b(?: najlepszej ceny)?\b/i,
   /\bbrak\b.{0,35}\bformalnej\b.{0,20}\bgwarancji\b.{0,20}\bnajlepszej ceny\b/i,
   /\bno\b.{0,25}\b(?:official|public|direct|traditional)\b.{0,20}\b(?:price match|price guarantee|best price guarantee)\b/i,
@@ -1697,6 +1713,9 @@ const APP_CROSS_ENTITY_NEGATIVE_PATTERNS = [
 const BLUE_LIGHT_CARD_HARD_NEGATIVE_PATTERNS = [
   /\bno confirmation\b.{0,35}\bblue light(?: card)?\b.{0,20}\bdiscount\b/i,
   /\bthere is no confirmation\b.{0,35}\bblue light(?: card)?\b.{0,20}\bdiscount\b/i,
+  /\bno\b.{0,35}\b(?:menciona|confirma|hay evidencia|hay informaci[oó]n)\b.{0,35}\bblue light(?: card)?\b/i,
+  /\bbrak\b.{0,35}\b(?:informacji|potwierdzenia|dowod[oó]w)\b.{0,35}\bblue light(?: card)?\b/i,
+  /\bnie\b.{0,35}\b(?:wspomina|potwierdza|oferuje)\b.{0,35}\bblue light(?: card)?\b/i,
   /\binstead of blue light discounts?\b/i,
   /\bdoes not offer\b.{0,30}\bblue light(?: card)?\b.{0,20}\bdiscounts?\b/i,
   /\bblue light card is a discount service\b.{0,70}\b(?:united kingdom|uk)\b/i,
@@ -1704,7 +1723,12 @@ const BLUE_LIGHT_CARD_HARD_NEGATIVE_PATTERNS = [
 
 const FAMILY_HARD_NEGATIVE_PATTERNS = [
   /\bdoes not offer a dedicated family discount\b/i,
-  /\bdoes not offer\b.{0,25}\b(?:a )?(?:specific|dedicated)\b.{0,20}\bfamily\b.{0,15}\bdiscount\b/i,
+  /\bdoes not offer\b.{0,25}\b(?:a )?(?:standard|specific|dedicated)\b.{0,20}\bfamily\b.{0,15}\bdiscount\b/i,
+  /\bfriends and family\b.{0,35}\b(?:sale|promotion|event)s?\b.{0,45}\brather than\b.{0,25}\b(?:a )?(?:dedicated|standard)?\b.{0,15}\bfamily\b.{0,15}\bdiscount\b/i,
+  /\bno\b.{0,35}\b(?:menciona|ofrece|indica|tiene)\b.{0,35}\b(?:descuento|oferta)\b.{0,20}\b(?:familiar|familias?|familias numerosas)\b/i,
+  /\bno menciona expl[ií]citamente\b.{0,45}\b(?:descuento|oferta)\b.{0,20}\b(?:familiar|familias?|familias numerosas)\b/i,
+  /\bnie\b.{0,35}\b(?:znaleziono|ma|oferuje|wspomina)\b.{0,35}\b(?:dedykowan\w*|specjaln\w*)?\b.{0,25}\b(?:zni[żz]k\w*|rabat\w*)\b.{0,25}\b(?:rodzinn\w*|dla rodzin)\b/i,
+  /\bbrak\b.{0,35}\b(?:informacji|dedykowan\w*)\b.{0,35}\b(?:zni[żz]k\w*|rabat\w*)\b.{0,25}\b(?:rodzinn\w*|dla rodzin)\b/i,
   /\bkeine?\b.{0,15}\b(?:speziellen?|dedizierten?)\b.{0,20}\bfamilienrabatte?\b/i,
   /\bfamily(?:-size| size)\b.{0,40}\b(?:packs?|products?|bags?)\b.{0,50}\b(?:rather than|instead of|not)\b.{0,25}\b(?:a )?(?:dedicated )?family discount\b/i,
   /\b(?:for|to)\b.{0,12}\bindividuals? and families\b/i,
@@ -1730,6 +1754,9 @@ const GIFT_CARD_PLATFORM_SELF_SERVICE_POSITIVE_PATTERNS = [
 const GIFT_CARD_HARD_NEGATIVE_PATTERNS = [
   /\bno direct evidence that\b.{0,80}\boffers?\b.{0,20}\b(?:brand-specific|own)\b.{0,20}\bgift cards?\b/i,
   /\bno direct evidence\b.{0,40}\b(?:brand-specific|own)\b.{0,20}\bgift cards?\b/i,
+  /\bno\b.{0,35}\b(?:especifica|menciona|ofrece|vende|lista)\b.{0,45}\b(?:tarjetas? regalo|gift cards?|vales? regalo|e-?gift cards?)\b/i,
+  /\b(?:cajitas? de regalo|envoltorio de regalo|gift wrapping|personalized card|tarjeta personalizada)\b.{0,80}\b(?:no\b.{0,30}\b(?:tarjetas? regalo|gift cards?)|although no|aunque no)\b/i,
+  /\b(?:tarjetas? personalizadas?|personalized cards?)\b.{0,60}\b(?:no|not)\b.{0,30}\b(?:tarjetas? regalo|gift cards?)\b/i,
   /\bdoes not\b.{0,25}\b(?:currently )?(?:offer|sell|list)\b.{0,30}\b(?:traditional |official )?gift cards?\b/i,
   /\bdoes not appear to offer\b.{0,30}\b(?:traditional |official )?gift cards?\b/i,
   /\binstead of purchasing a gift card\b/i,
@@ -1747,6 +1774,89 @@ const RETURN_AMBIGUOUS_POLICY_PATTERNS = [
   /\beBay\b.{0,35}\bdoes not force free returns\b/i,
   /\bfree returns?\b.{0,30}\bif\b.{0,20}\bitem not as described\b/i,
 ];
+
+const LEAD_EXPLICIT_NO_PATTERNS: Partial<Record<string, RegExp[]>> = {
+  app: [
+    /\bdoes not\b.{0,30}\b(?:offer|have|provide|list|mention)\b.{0,35}\b(?:an? )?(?:dedicated|specific|app-exclusive|app based|app-only)?\b.{0,20}\bapp(?:-exclusive|-specific|-based)?\b.{0,20}\b(?:discount|offer|benefit|coupon|code)\b/i,
+    /\bno\b.{0,30}\b(?:dedicated|specific|app-exclusive|app based|app-only)?\b.{0,20}\bapp(?:-exclusive|-specific|-based)?\b.{0,20}\b(?:discount|offer|benefit|coupon|code)\b/i,
+    /\bkeine\b.{0,45}\bspezifische\b.{0,25}\bapp\b.{0,20}\b(?:mit|rabatt|erw[aä]hnt)\b/i,
+    /\bnie posiada\b.{0,55}\b(?:dedykowan\w+|w[łl]asnej|mobiln\w*)?\b.{0,25}\baplikacj\w+\b/i,
+    /\bnie ma\b.{0,45}\b(?:dedykowan\w+|w[łl]asnej|mobiln\w*)?\b.{0,25}\baplikacj\w+\b/i,
+    /\bno (?:cuenta con|dispone de|tiene|posee)\b.{0,45}\b(?:una )?(?:aplicaci[oó]n m[oó]vil|app)\b.{0,35}\b(?:propia|dedicada|de compras|para realizar compras)?\b/i,
+    /\bno\b.{0,35}\b(?:ofrece|hay)\b.{0,35}\b(?:descuentos?|beneficios?|cupones?)\b.{0,25}\b(?:por|en|mediante|a trav[eé]s de)\b.{0,15}\b(?:app|aplicaci[oó]n)\b/i,
+  ],
+  "price guarantee": [
+    /\bno\b.{0,30}\b(?:ofrece|menciona|publica|indica)\b.{0,35}\b(?:formalmente )?(?:una )?(?:garant[ií]a (?:formal )?(?:de )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|price match)\b/i,
+    /\bno menciona expl[ií]citamente\b.{0,45}\b(?:garant[ií]a (?:de )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|price match)\b/i,
+    /\bnie\b.{0,35}\bpromuje\b.{0,35}\b(?:gwarancj\w*|has[łl]\w*)\b.{0,35}\b(?:najlepszej|najni[żz]szej)\b.{0,15}\bceny\b/i,
+    /\bnie\b.{0,30}\boferuje\b.{0,45}\bgwarancj\w*\b.{0,25}\b(?:najlepszej|najni[żz]szej)\b.{0,15}\bceny\b/i,
+    /\bnie jest to\b.{0,30}\b(?:price match|best price guarantee|lowest price guarantee)\b/i,
+    /\bnie\b.{0,30}\boferuje\b.{0,35}\bformaln\w*\b.{0,25}\bgwarancj\w*\b.{0,25}\b(?:najlepszej|najni[żz]szej)\b.{0,15}\bceny\b/i,
+  ],
+  return: [
+    /\bno especifica\b.{0,45}\b(?:devoluciones?|returns?)\b.{0,35}\b(?:gratuitas?|gratis|free)\b/i,
+    /\bno\b.{0,30}\bindica\b.{0,45}\b(?:devoluciones?|returns?)\b.{0,35}\b(?:gratuitas?|gratis|free)\b/i,
+    /\bklient\b.{0,35}\bponosi\b.{0,35}\bkoszt\w*\b.{0,25}\bzwrot\w*\b/i,
+    /\bnie\b.{0,35}\boferuje\b.{0,35}\bdarmow\w*\b.{0,25}\bzwrot\w*\b/i,
+  ],
+  family: [
+    /\bdoes not offer\b.{0,25}\b(?:a )?(?:standard|specific|dedicated)\b.{0,20}\bfamily\b.{0,15}\bdiscount\b/i,
+    /\bfriends and family\b.{0,35}\b(?:sale|promotion|event)s?\b.{0,45}\brather than\b.{0,25}\b(?:a )?(?:dedicated|standard)?\b.{0,15}\bfamily\b.{0,15}\bdiscount\b/i,
+    /\bno menciona expl[ií]citamente\b.{0,45}\b(?:descuento|oferta)\b.{0,20}\b(?:familiar|familias?|familias numerosas)\b/i,
+    /\bnie\b.{0,35}mo[żz]na.{0,25}potwierdzi[ćc].{0,70}(?:zni[żz]k\w*|rabat\w*).{0,25}(?:rodzinn\w*|dla rodzin)/i,
+    /\bnie\b.{0,35}wymienia.{0,25}wprost.{0,35}(?:zni[żz]k\w*|rabat\w*).{0,25}(?:rodzinn\w*|dla rodzin)/i,
+    /\bnie\b.{0,35}\b(?:znaleziono|ma|oferuje|wspomina)\b.{0,35}\b(?:dedykowan\w*|specjaln\w*)?\b.{0,25}\b(?:zni[żz]k\w*|rabat\w*)\b.{0,25}\b(?:rodzinn\w*|dla rodzin)\b/i,
+  ],
+  "gift card": [
+    /\bno\b.{0,35}\b(?:especifica|menciona|ofrece|vende|lista)\b.{0,45}\b(?:tarjetas? regalo|gift cards?|vales? regalo|e-?gift cards?)\b/i,
+    /\b(?:cajitas? de regalo|envoltorio de regalo|gift wrapping|personalized card|tarjeta personalizada)\b.{0,80}\b(?:no\b.{0,30}\b(?:tarjetas? regalo|gift cards?)|aunque no|although no)\b/i,
+  ],
+  referral: [
+    /\bno\b.{0,35}\b(?:especifica|menciona|ofrece|tiene|hay)\b.{0,45}\b(?:programa|descuento|recompensa)\b.{0,25}\b(?:referir|referidos|referidos?|recomendaci[oó]n|referral)\b/i,
+    /\bno\b.{0,35}\b(?:formal|p[uú]blico|para consumidores?)\b.{0,25}\b(?:referral|refer(?:-a-friend)?|referidos?)\b/i,
+  ],
+  aaa: [
+    /\bno\b.{0,35}\b(?:menciona|confirma|hay evidencia|hay informaci[oó]n)\b.{0,35}\baaa\b/i,
+    /\bbrak\b.{0,35}\b(?:informacji|potwierdzenia|dowod[oó]w)\b.{0,35}\baaa\b/i,
+  ],
+  "blue light card": [
+    /\bno\b.{0,35}\b(?:menciona|confirma|hay evidencia|hay informaci[oó]n)\b.{0,35}\bblue light(?: card)?\b/i,
+    /\bbrak\b.{0,35}\b(?:informacji|potwierdzenia|dowod[oó]w)\b.{0,35}\bblue light(?: card)?\b/i,
+  ],
+  clearance: [
+    /\bno\b.{0,35}\b(?:tiene|dispone de|cuenta con|menciona)\b.{0,45}\b(?:secci[oó]n )?(?:outlet|liquidaci[oó]n|clearance|rebajas?)\b/i,
+    /\bnie\b.{0,35}\b(?:posiada|ma|wspomina)\b.{0,45}\b(?:dedykowan\w* )?(?:sekcj\w* )?(?:outlet|wyprzeda[żz]|clearance)\b/i,
+  ],
+};
+
+const LEAD_EXPLICIT_YES_PATTERNS: Partial<Record<string, RegExp[]>> = {
+  "existing customer": EXISTING_CUSTOMER_HARD_POSITIVE_PATTERNS,
+  family: [
+    /\bkarta du[żz]ej rodziny\b.{0,60}\b(?:zni[żz]k\w*|rabat\w*|discount)\b/i,
+    /\b(?:sí|si|yes|tak)\b.{0,70}\b(?:descuentos?|zni[żz]k\w*|rabat\w*)\b.{0,35}\b(?:familias numerosas|familias?|rodzin\w*)\b/i,
+    /\b(?:family|familias?|rodzin\w*)\b.{0,50}\b(?:ticket|package|pass|discount|descuento|zni[żz]k\w*|rabat\w*)\b/i,
+  ],
+  "price guarantee": [
+    /\b(?:price match|best price guarantee|lowest price guarantee|garant[ií]a (?:de )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|gwarancj\w* (?:najlepszej|najni[żz]szej) ceny)\b/i,
+  ],
+  return: [
+    /\b(?:free returns?|free return shipping|prepaid return label|devoluciones? gratis|devoluciones? gratuitas?|darmowe zwroty|bezp[łl]atne zwroty)\b/i,
+  ],
+  "gift card": GIFT_CARD_STRONG_POSITIVE_PATTERNS,
+  app: [
+    /\b(?:app|aplicaci[oó]n|aplikacj\w*)\b.{0,45}\b(?:exclusive|exclusiv[oa]s?|dedykowan\w*|specjaln\w*)\b.{0,35}\b(?:discount|descuento|coupon|code|zni[żz]k\w*|rabat\w*)\b/i,
+    /\b(?:download|using|order(?:ing)? via|comprar (?:por|en)|zam[oó]wienia? przez)\b.{0,35}\b(?:app|aplicaci[oó]n|aplikacj\w*)\b.{0,35}\b(?:discount|descuento|coupon|zni[żz]k\w*|rabat\w*)\b/i,
+  ],
+  referral: [
+    /\b(?:refer a friend|friend referral|referral reward|consumer referral|programa de referidos|recompensa por referir|pole[ćc] znajomemu)\b/i,
+  ],
+  clearance: [
+    /\b(?:sale|outlet|clearance|liquidaci[oó]n|rebajas?|wyprzeda[żz]|promocje)\b.{0,55}\b(?:discounted products?|productos? rebajad[oa]s|productos? con descuento|zni[żz]k\w*|rabat\w*)\b/i,
+    /\b(?:productos? rebajad[oa]s|productos? con descuento|afgeprijsde artikelen|discounted products?)\b/i,
+  ],
+};
+
+const LEAD_SCREENING_YES_FACT_TYPES = new Set(["existing customer", "family", "clearance"]);
 
 const SYMBOL_TO_CURRENCY: Record<string, string> = {
   "$": "USD",
@@ -2109,6 +2219,58 @@ function hasExplicitFactTerm(text: string, factType: string) {
   return Boolean(loweredFactType && text.toLowerCase().includes(loweredFactType));
 }
 
+function scoreLeadScreeningSentence(sentence: string, factType: string, index: number): SentenceEvidence | null {
+  if (index >= 2) return null;
+  const leadBoost = 1;
+  const explicitNoPatterns = LEAD_EXPLICIT_NO_PATTERNS[factType] || [];
+  if (hasPattern(sentence, explicitNoPatterns)) {
+    return {
+      existence: "no",
+      reasonCn: "前两句出现明确否定证据",
+      matchedRule: "lead_explicit_no",
+      evidenceSentence: sentence,
+      confidenceBucket: "strong",
+      score: 8 + leadBoost,
+    };
+  }
+
+  const explicitYesPatterns = LEAD_EXPLICIT_YES_PATTERNS[factType] || [];
+  if (
+    hasPattern(sentence, explicitYesPatterns) &&
+    !hasPattern(sentence, GENERIC_NEGATIVE_PATTERNS) &&
+    !hasPattern(sentence, LEAD_NEGATIVE_CUE_PATTERNS) &&
+    !NEGATIVE_PREFIX.test(sentence)
+  ) {
+    return {
+      existence: "yes",
+      reasonCn: "前两句出现明确肯定证据",
+      matchedRule: "lead_explicit_yes",
+      evidenceSentence: sentence,
+      confidenceBucket: "strong",
+      score: 8 + leadBoost,
+    };
+  }
+
+  if (
+    LEAD_SCREENING_YES_FACT_TYPES.has(factType) &&
+    !hasPattern(sentence, GENERIC_NEGATIVE_PATTERNS) &&
+    !hasPattern(sentence, LEAD_NEGATIVE_CUE_PATTERNS) &&
+    hasExplicitFactTerm(sentence, factType) &&
+    hasPattern(sentence, GENERIC_BENEFIT_PATTERNS)
+  ) {
+    return {
+      existence: "yes",
+      reasonCn: "前两句出现初筛正向权益信号",
+      matchedRule: "lead_screening_yes",
+      evidenceSentence: sentence,
+      confidenceBucket: "weak",
+      score: 5 + leadBoost,
+    };
+  }
+
+  return null;
+}
+
 function scoreSentence(sentence: string, factType: string, index: number): SentenceEvidence {
   const rule = getFactRule(factType);
   const fallback = FACT_FALLBACK_CLUES[factType];
@@ -2136,6 +2298,9 @@ function scoreSentence(sentence: string, factType: string, index: number): Sente
     !matchedGenericNegative &&
     !crossEntityContrast &&
     !affirmativePrefixBlocked;
+
+  const earlyLeadScreeningEvidence = scoreLeadScreeningSentence(sentence, factType, index);
+  if (earlyLeadScreeningEvidence?.existence === "no") return earlyLeadScreeningEvidence;
 
   if (rule.ignore?.some((pattern) => pattern.test(sentence)) && (!explicit || factType === "app")) {
     return {
@@ -2559,6 +2724,9 @@ function scoreSentence(sentence: string, factType: string, index: number): Sente
     };
   }
 
+  const leadScreeningEvidence = earlyLeadScreeningEvidence;
+  if (leadScreeningEvidence) return leadScreeningEvidence;
+
   if (factType === "shipping" && hasPattern(sentence, SHIPPING_INFERENCE_ONLY_PATTERNS)) {
     positiveScore = Math.max(0, positiveScore - 3);
     negativeScore = Math.max(0, negativeScore - 1);
@@ -2707,6 +2875,17 @@ function explainExistence(factType: string, snippet: string): SentenceEvidence {
     };
   }
 
+  if (factType === "app" && hasPattern(text, LEAD_EXPLICIT_NO_PATTERNS.app || [])) {
+    return {
+      existence: "no",
+      reasonCn: "全文存在明确否定证据",
+      matchedRule: "lead_explicit_no",
+      evidenceSentence: getLeadSentences(text, 2).join(" "),
+      confidenceBucket: "strong",
+      score: 8,
+    };
+  }
+
   if (
     factType === "first responder" &&
     hasPattern(text, FIRST_RESPONDER_AMBIGUOUS_ENTITY_PATTERNS)
@@ -2759,6 +2938,20 @@ function explainExistence(factType: string, snippet: string): SentenceEvidence {
       existence: "no",
       reasonCn: "全文存在明确否定证据",
       matchedRule: "first_responder_hard_negative",
+      evidenceSentence: getLeadSentences(text, 2).join(" "),
+      confidenceBucket: "strong",
+      score: 7,
+    };
+  }
+
+  if (
+    factType === "referral" &&
+    (hasPattern(text, REFERRAL_NON_CONSUMER_PATTERNS) || hasPattern(text, REFERRAL_HARD_NEGATIVE_PATTERNS))
+  ) {
+    return {
+      existence: "no",
+      reasonCn: "全文存在明确否定证据",
+      matchedRule: hasPattern(text, REFERRAL_NON_CONSUMER_PATTERNS) ? "referral_non_consumer" : "referral_hard_negative",
       evidenceSentence: getLeadSentences(text, 2).join(" "),
       confidenceBucket: "strong",
       score: 7,
