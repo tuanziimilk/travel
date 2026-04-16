@@ -350,7 +350,7 @@ function bumpMaterializedHistorySummary(row: StoredFaqOutputRow, aggregateMap: M
 
 async function rebuildMaterializedHistorySummary(scType = "faq") {
   await ensureGenerationHistorySummaryTable();
-  const rows = await listPersistedHistoryRows(scType);
+  const rows = await listDoneGenerationRows(scType);
   const aggregateMap = new Map<string, MaterializedAggregate>();
 
   for (const row of rows) {
@@ -2147,7 +2147,7 @@ export async function listGenerationHistoryRows(input: HistoryFilters): Promise<
     }));
     const hasMore = pageKeyRows[0].length > pageSize;
 
-    if (!pageKeys.length && cachedTotal === 0) {
+    if (!pageKeys.length) {
       const legacyRows = await loadLegacyHistoryRows(input);
       const pagedRows = legacyRows.slice(start, start + pageSize);
       const result = {
