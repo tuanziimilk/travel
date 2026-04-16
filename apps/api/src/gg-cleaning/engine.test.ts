@@ -1,8 +1,11 @@
 import iconv from "iconv-lite";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import * as XLSX from "xlsx";
 import { describe, expect, it } from "vitest";
 import { GG_COLLECTED_SOURCE_COLUMN, GG_COLLECTED_STATUS_COLUMN } from "./collectedSchema";
-import { executeGgCleaningChunkRows, executeGgCleaningForEval, previewGgCleaningChunkRows, previewGgCleaningFile } from "./engine";
+import { executeGgCleaningChunkRows, executeGgCleaningForEval, previewGgCleaningChunkRows, previewGgCleaningFile, previewGgCleaningFileByPath } from "./engine";
 
 function toCollectedRows(rows: Array<Record<string, unknown>>) {
   return rows.map((row) => ({
@@ -4375,6 +4378,24 @@ describe("gg cleaning engine", () => {
       { fileName: "fixture.csv", fileBase64 },
       { skipFileSizeLimit: true },
     );
+
+    expect(preview.totalRows).toBe(1);
+    expect(preview.groupedRows).toBe(1);
+  });
+
+  it("uses buffered preview fallback for small GB18030 CSV files by path", async () => {
+    const csv = [
+      `task_id,query,country,language,domain,term_id,term_name,subclass,bu,状态,${GG_COLLECTED_SOURCE_COLUMN},google_url,content,product_urls,updated_time`,
+      '1,"Does shopa.com offer free shipping?",US,en,shopa.com,1001,Shop A,shipping,hd,抓取完成,search_lab,,"[""Shop A offers free shipping on orders over $50.""]","[""https://shopa.com/shipping""]",2026-04-16 15:00:00',
+    ].join("\r\n");
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "gg-preview-"));
+    const filePath = path.join(tempDir, "fixture-gb18030.csv");
+    await writeFile(filePath, iconv.encode(csv, "gb18030"));
+
+    const preview = await previewGgCleaningFileByPath({
+      fileName: "fixture-gb18030.csv",
+      filePath,
+    });
 
     expect(preview.totalRows).toBe(1);
     expect(preview.groupedRows).toBe(1);

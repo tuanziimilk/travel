@@ -8,6 +8,7 @@ import { createGlobalDownloadTask, useDownloadCenter } from "../components/Downl
 const GG_SOURCE_COLUMN = "采集数据源";
 const uploadLimitMb = Math.round(ggCleaningUploadMaxFileBytes / 1024 / 1024);
 const ggCleaningFileChunkBytes = 8 * 1024 * 1024;
+const ggCleaningPreviewTimeoutMs = 15000;
 const ggCleaningUploadApiBase = (() => {
   const trpcUrl = import.meta.env.VITE_TRPC_URL || "/trpc";
   if (/^https?:\/\//i.test(trpcUrl)) {
@@ -90,6 +91,20 @@ function downloadTextFile(fileName: string, content: string, mimeType = "text/cs
   const url = URL.createObjectURL(blob);
   triggerBrowserDownload(url, fileName);
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
+  let timeoutHandle: number | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutHandle = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle !== null) window.clearTimeout(timeoutHandle);
+  }
 }
 
 function formatDuration(startedAt?: string | null, finishedAt?: string | null) {
@@ -200,7 +215,11 @@ export function GgCleaningPage() {
       });
       setUploadedFileId(upload.uploadId);
       setUploadedChunkCount(upload.chunkCount);
-      const preview = await previewMutation.mutateAsync({ fileName: nextFile.name, uploadId: upload.uploadId });
+      const preview = await withTimeout(
+        previewMutation.mutateAsync({ fileName: nextFile.name, uploadId: upload.uploadId }),
+        ggCleaningPreviewTimeoutMs,
+        "GG 预览生成超时，请重试；如果多次出现，请联系我排查服务器上的该次 uploadId。",
+      );
       setNotice(`文件上传完成，系统已在服务端自动解析。预览有效输入 ${preview.totalRows} 行 / ${preview.groupedRows} 组，上传分片 ${upload.chunkCount} 个。`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "文件上传失败");

@@ -4095,6 +4095,8 @@ type RawRowsProgressCallback = (progress: {
   discoveredGroups: number;
 }) => void | Promise<void>;
 
+const GG_BUFFERED_PATH_PARSE_MAX_BYTES = 2 * 1024 * 1024;
+
 async function summarizeRawRows(
   rawRows: AsyncIterable<Record<string, unknown>>,
   options?: { includeGroups?: boolean; onProgress?: RawRowsProgressCallback },
@@ -4141,8 +4143,38 @@ async function summarizeRawRows(
   };
 }
 
+async function summarizeBufferedRowsFromFile(
+  filePath: string,
+  fileName: string,
+  options?: { includeGroups?: boolean; onProgress?: RawRowsProgressCallback },
+): Promise<RawRowsSummary> {
+  const buffer = await fs.readFile(filePath);
+  const rawRows = parseBufferRows(fileName, buffer);
+  return summarizeRawRows(
+    (async function* () {
+      for (const row of rawRows) yield row;
+    })(),
+    options,
+  );
+}
+
+async function summarizeRawRowsFromFile(
+  filePath: string,
+  fileName: string,
+  options?: { includeGroups?: boolean; onProgress?: RawRowsProgressCallback },
+): Promise<RawRowsSummary> {
+  const lowerName = fileName.toLowerCase();
+  if (lowerName.endsWith(".csv") || lowerName.endsWith(".jsonl")) {
+    const stats = await fs.stat(filePath);
+    if (stats.size <= GG_BUFFERED_PATH_PARSE_MAX_BYTES) {
+      return summarizeBufferedRowsFromFile(filePath, fileName, options);
+    }
+  }
+  return summarizeRawRows(iterateRawRowsFromFile(filePath, fileName), options);
+}
+
 async function buildPreviewFromFile(filePath: string, fileName: string): Promise<GgCleaningPreview> {
-  const summary = await summarizeRawRows(iterateRawRowsFromFile(filePath, fileName));
+  const summary = await summarizeRawRowsFromFile(filePath, fileName);
   return buildGgCleaningPreviewFromMetadata(summary);
 }
 
@@ -4156,7 +4188,7 @@ export async function executeGgCleaningByPath(
     onProgress?: RawRowsProgressCallback;
   },
 ) {
-  const summary = await summarizeRawRows(iterateRawRowsFromFile(input.filePath, input.fileName), {
+  const summary = await summarizeRawRowsFromFile(input.filePath, input.fileName, {
     includeGroups: true,
     onProgress: options?.onProgress,
   });
