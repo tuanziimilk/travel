@@ -6,6 +6,7 @@ import * as XLSX from "xlsx";
 import { db } from "../db/client";
 import { ggCleaningJobs } from "../db/schema";
 import { makeId } from "../utils/id";
+import { apiRuntimePath } from "../utils/runtimePaths";
 import { formatChinaIsoOffset } from "../utils/time";
 
 const ERROR_REASON_MAX_LENGTH = 512;
@@ -16,7 +17,7 @@ const ggQueueCountCache = new Map<string, { expiresAt: number; value: number }>(
 async function resolveReadableResultPath(filePath: string | null | undefined) {
   const candidates = [String(filePath || "")].filter(Boolean);
   const legacyPrefix = "/app/.runtime/";
-  const currentRuntimePrefix = path.resolve(process.cwd(), "apps/api/.runtime").replace(/\\/g, "/");
+  const currentRuntimePrefix = apiRuntimePath().replace(/\\/g, "/");
   if (filePath?.startsWith(legacyPrefix)) {
     candidates.push(path.join(currentRuntimePrefix, filePath.slice(legacyPrefix.length)));
   }

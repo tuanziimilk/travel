@@ -7,6 +7,7 @@ import { getBatchModuleId, getBatchResult, toXlsxByModule } from "../jobs/ingest
 import { getGgCleaningJobDownloadPayload } from "../gg-cleaning/jobStore";
 import { getTranslationJobResult } from "../translation/translationJobStore";
 import { getCategoryCalibrationJobResult } from "../category-calibration/jobStore";
+import { apiRuntimePath } from "../utils/runtimePaths";
 import { formatChinaDownloadTimestamp, sanitizeFileNameSegment, shortDownloadId } from "./downloadFileNames";
 
 type DownloadTaskStatus = "queued" | "preparing" | "ready" | "failed" | "expired";
@@ -16,8 +17,7 @@ type GlobalDownloadKind =
   | "translation-batch"
   | "category-calibration";
 
-const APP_RUNTIME_DIR = path.resolve(process.cwd(), "apps/api/.runtime");
-const GLOBAL_DOWNLOAD_TASK_DIR = path.resolve(APP_RUNTIME_DIR, "global-download-tasks");
+const GLOBAL_DOWNLOAD_TASK_DIR = apiRuntimePath("global-download-tasks");
 const globalDownloadTaskRetentionMs = 24 * 60 * 60 * 1000;
 const xlsxContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
