@@ -2,6 +2,7 @@ import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ggCleaningUploadMaxFileBytes } from "@about-demo/trpc";
 import { makeId } from "../utils/id";
+import { apiRuntimePath } from "../utils/runtimePaths";
 
 export type GgCleaningUploadRow = Record<string, unknown>;
 
@@ -36,7 +37,7 @@ type StoredChunkFile = {
   rows: GgCleaningUploadRow[];
 };
 
-const GG_UPLOAD_DIR = path.resolve(process.cwd(), ".runtime", "gg-cleaning-uploads");
+const GG_UPLOAD_DIR = apiRuntimePath("gg-cleaning-uploads");
 
 function uploadDirOf(uploadId: string) {
   return path.join(GG_UPLOAD_DIR, uploadId);

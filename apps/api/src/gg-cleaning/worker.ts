@@ -13,10 +13,11 @@ import {
   updateGgCleaningJobProgress,
 } from "./jobStore";
 import { getCompletedGgCleaningUpload, iterateGgCleaningUploadChunks } from "./uploadStore";
+import { apiRuntimePath } from "../utils/runtimePaths";
 
 let loopStarted = false;
 let activeJobId = "";
-const GG_RESULT_DIR = path.resolve(process.cwd(), ".runtime", "gg-cleaning-results");
+const GG_RESULT_DIR = apiRuntimePath("gg-cleaning-results");
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
