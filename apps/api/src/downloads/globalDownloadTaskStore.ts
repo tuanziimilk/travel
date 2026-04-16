@@ -20,6 +20,68 @@ const GLOBAL_DOWNLOAD_TASK_DIR = path.resolve(APP_RUNTIME_DIR, "global-download-
 const globalDownloadTaskRetentionMs = 24 * 60 * 60 * 1000;
 const xlsxContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
+function sanitizeFileNameSegment(value: unknown, fallback: string) {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return normalized || fallback;
+}
+
+function formatDownloadTimestamp(date = new Date()) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+    "-",
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds()),
+  ].join("");
+}
+
+function summarizeCountries(rows: Array<Record<string, unknown>>) {
+  const countries = Array.from(
+    new Set(
+      rows
+        .map((row) => String(row.Country || row.country || "").trim().toUpperCase())
+        .filter(Boolean),
+    ),
+  );
+  if (countries.length === 0) return "NA";
+  if (countries.length === 1) return countries[0];
+  return `MULTI${countries.length}`;
+}
+
+async function getQualityBatchMeta(batchId: string) {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    "SELECT uploader FROM upload_batches WHERE id = ? LIMIT 1",
+    [batchId],
+  );
+  return {
+    uploader: String(rows[0]?.uploader || ""),
+  };
+}
+
+function buildQualityBatchFileName(input: {
+  moduleId: string;
+  batchId: string;
+  uploader: string;
+  rowCount: number;
+  country: string;
+}) {
+  const tool = input.moduleId === "faq" ? "FAQ评分" : "About评分";
+  const uploader = sanitizeFileNameSegment(input.uploader, "unknown");
+  const country = sanitizeFileNameSegment(input.country, "NA");
+  const rowCount = Math.max(0, Number(input.rowCount || 0));
+  const timestamp = formatDownloadTimestamp();
+  const shortId = sanitizeFileNameSegment(input.batchId.slice(0, 8), "batch");
+  return `${tool}_${uploader}_${country}_${rowCount}行_${timestamp}_${shortId}.xlsx`;
+}
+
 function mapDownloadTaskRow(row: RowDataPacket) {
   return {
     taskId: String(row.id || ""),
@@ -90,10 +152,18 @@ async function writeTaskFile(taskId: string, fileName: string, buffer: Buffer) {
 async function prepareQualityBatchDownload(batchId: string) {
   const data = await getBatchResult(batchId);
   const moduleId = await getBatchModuleId(batchId);
-  const fileName = `${moduleId === "faq" ? "faq" : "about"}-batch-${batchId}.xlsx`;
+  const rows = data.rows as unknown as Array<Record<string, unknown>>;
+  const meta = await getQualityBatchMeta(batchId);
+  const fileName = buildQualityBatchFileName({
+    moduleId,
+    batchId,
+    uploader: meta.uploader,
+    rowCount: rows.length,
+    country: summarizeCountries(rows),
+  });
   const xlsxBase64 = toXlsxByModule(
     moduleId,
-    data.rows as unknown as Array<Record<string, unknown>>,
+    rows,
     data.summary as Record<string, unknown>,
   );
   return { fileName, buffer: Buffer.from(xlsxBase64, "base64"), contentType: xlsxContentType };
