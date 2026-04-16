@@ -112,7 +112,7 @@ export const ingestJobs = mysqlTable("ingest_jobs", {
   updatedAt: timestamp("updated_at")
     .defaultNow()
     .notNull()
-    .$onUpdateFn(() => sql`CURRENT_TIMESTAMP`),
+    .$onUpdateFn(() => new Date()),
 });
 
 export const contentGenerationJobs = mysqlTable("content_generation_jobs", {
