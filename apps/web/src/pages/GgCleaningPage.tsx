@@ -145,6 +145,20 @@ function formatProgress(processedRows: number, totalRows: number) {
   return Math.max(0, Math.min(100, Math.round((processedRows / totalRows) * 100)));
 }
 
+function resolveQueueTotalRows(row: {
+  totalRows: number;
+  groupedRows: number;
+  summary?: Record<string, unknown> | null;
+}) {
+  const summary = (row.summary as Record<string, unknown> | undefined) || {};
+  const summaryTotalRows = Number(summary.totalRows || 0);
+  const summaryGroupedRows = Number(summary.groupedRows || 0);
+  return {
+    totalRows: summaryTotalRows > 0 ? summaryTotalRows : row.totalRows,
+    groupedRows: summaryGroupedRows > 0 ? summaryGroupedRows : row.groupedRows,
+  };
+}
+
 function formatSummaryHeadline(processedRows: number, groupedRows: number, successRows: number, failedRows: number) {
   return `${processedRows}/${groupedRows} | 成功 ${successRows} | 失败 ${failedRows}`;
 }
@@ -519,7 +533,8 @@ export function GgCleaningPage() {
             </thead>
             <tbody>
               {queueRows.map((row) => {
-                const progressPercent = formatProgress(row.processedRows, row.groupedRows);
+                const resolvedTotals = resolveQueueTotalRows(row);
+                const progressPercent = formatProgress(row.processedRows, resolvedTotals.groupedRows);
                 const canDownload = Boolean(row.canDownload || row.resultFilePath);
                 return (
                   <tr key={row.id}>
@@ -529,14 +544,14 @@ export function GgCleaningPage() {
                     <td title={row.errorReason || row.inputFileName}>
                       <div className="gg-cleaning-summary-cell">
                         <div className="progress-label" style={{ marginBottom: 6 }}>
-                          <span>{formatSummaryHeadline(row.processedRows, row.groupedRows, row.successRows, row.failedRows)}</span>
+                          <span>{formatSummaryHeadline(row.processedRows, resolvedTotals.groupedRows, row.successRows, row.failedRows)}</span>
                           <strong>{progressPercent}%</strong>
                         </div>
                         <div className="progress-track" style={{ marginBottom: 6 }}>
                           <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
                         </div>
                         <div className="muted gg-cleaning-summary-meta">
-                          {formatSummaryMeta(row.summary as Record<string, unknown> | undefined, row.inputMode, row.totalRows, row.groupedRows)}
+                          {formatSummaryMeta(row.summary as Record<string, unknown> | undefined, row.inputMode, resolvedTotals.totalRows, resolvedTotals.groupedRows)}
                         </div>
                         {row.errorReason ? (
                           <div className="muted" style={{ fontSize: 12, color: "#b42318", marginTop: 6 }}>

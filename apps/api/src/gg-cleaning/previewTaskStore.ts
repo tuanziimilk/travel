@@ -3,7 +3,7 @@ import path from "node:path";
 import { makeId } from "../utils/id";
 import { apiRuntimePath } from "../utils/runtimePaths";
 import type { GgCleaningPreview } from "./engine";
-import { previewGgCleaningFile, previewGgCleaningFileByPath, previewGgCleaningChunkRows } from "./engine";
+import { previewGgCleaningFile, previewGgCleaningChunkRows, previewGgCleaningFileByPathWithProgress } from "./engine";
 import {
   getCompletedGgCleaningUpload,
   getGgCleaningUploadPreviewCache,
@@ -54,7 +54,7 @@ async function patchTask(taskId: string, patch: Partial<StoredPreviewTask>) {
   return next;
 }
 
-async function buildPreviewFromUpload(uploadId: string, fileName: string) {
+async function buildPreviewFromUpload(taskId: string, uploadId: string, fileName: string) {
   const cached = await getGgCleaningUploadPreviewCache(uploadId);
   if (cached) {
     return { preview: cached, fromCache: true };
@@ -63,9 +63,17 @@ async function buildPreviewFromUpload(uploadId: string, fileName: string) {
   const uploaded = await getCompletedGgCleaningUpload(uploadId);
   const preview =
     uploaded.kind === "file-chunks" && uploaded.rawFilePath
-      ? await previewGgCleaningFileByPath({
+      ? await previewGgCleaningFileByPathWithProgress({
           fileName: uploaded.fileName || fileName,
           filePath: uploaded.rawFilePath,
+        }, {
+          onProgress: async ({ processedInputRows, discoveredGroups }) => {
+            const progressPercent = processedInputRows < 100 ? 18 : Math.min(92, 18 + Math.round(Math.log10(processedInputRows + 1) * 18));
+            await patchTask(taskId, {
+              progressPercent,
+              statusText: `正在扫描有效输入... 已识别 ${processedInputRows.toLocaleString()} 行 / ${discoveredGroups.toLocaleString()} 组`,
+            });
+          },
         })
       : await previewGgCleaningChunkRows({
           columns: uploaded.columns,
@@ -96,7 +104,7 @@ async function preparePreviewTask(taskId: string, input: { fileName: string; upl
         progressPercent: 40,
         statusText: "正在后台解析文件结构...",
       });
-      const resolved = await buildPreviewFromUpload(input.uploadId, input.fileName);
+      const resolved = await buildPreviewFromUpload(taskId, input.uploadId, input.fileName);
       preview = resolved.preview;
       statusText = resolved.fromCache ? "已复用上次预览结果。" : "预览生成完成。";
     } else {

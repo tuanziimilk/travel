@@ -246,6 +246,15 @@ export async function listGgCleaningJobs(page: number, pageSize: number) {
   return {
     total,
     rows: rows.slice(start, start + pageSize).map((row) => ({
+      ...(function () {
+        const summary = (row.summaryJson as Record<string, unknown> | null) || {};
+        const summaryTotalRows = Number(summary.totalRows || 0);
+        const summaryGroupedRows = Number(summary.groupedRows || 0);
+        return {
+          resolvedTotalRows: summaryTotalRows > 0 ? summaryTotalRows : row.totalRows,
+          resolvedGroupedRows: summaryGroupedRows > 0 ? summaryGroupedRows : row.groupedRows,
+        };
+      })(),
       id: row.id,
       uploader: row.uploader,
       note: row.note,
@@ -271,6 +280,9 @@ export async function listGgCleaningJobs(page: number, pageSize: number) {
 
 export async function getGgCleaningJobStatus(jobId: string) {
   const row = await getGgCleaningJobById(jobId);
+  const summary = (row.summaryJson as Record<string, unknown> | null) || {};
+  const summaryTotalRows = Number(summary.totalRows || 0);
+  const summaryGroupedRows = Number(summary.groupedRows || 0);
   return {
     id: row.id,
     uploader: row.uploader,
@@ -280,6 +292,8 @@ export async function getGgCleaningJobStatus(jobId: string) {
     inputFileName: row.inputFileName,
     totalRows: row.totalRows,
     groupedRows: row.groupedRows,
+    resolvedTotalRows: summaryTotalRows > 0 ? summaryTotalRows : row.totalRows,
+    resolvedGroupedRows: summaryGroupedRows > 0 ? summaryGroupedRows : row.groupedRows,
     processedRows: row.processedRows,
     successRows: row.successRows,
     failedRows: row.failedRows,
@@ -287,7 +301,7 @@ export async function getGgCleaningJobStatus(jobId: string) {
     resultFileName: row.resultFileName,
     resultFilePath: row.resultFilePath || "",
     canDownload: Boolean(row.resultFilePath || row.resultFileBase64 || row.status === "done"),
-    summary: (row.summaryJson as Record<string, unknown> | null) || {},
+    summary,
     createdAt: formatChinaIsoOffset(row.createdAt),
     startedAt: formatChinaIsoOffset(row.startedAt),
     finishedAt: formatChinaIsoOffset(row.finishedAt),

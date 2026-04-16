@@ -4212,6 +4212,16 @@ export async function previewGgCleaningFileByPath(input: { fileName: string; fil
   return buildPreviewFromFile(input.filePath, input.fileName);
 }
 
+export async function previewGgCleaningFileByPathWithProgress(
+  input: { fileName: string; filePath: string },
+  options?: { onProgress?: RawRowsProgressCallback },
+): Promise<GgCleaningPreview> {
+  const summary = await summarizeRawRowsFromFile(input.filePath, input.fileName, {
+    onProgress: options?.onProgress,
+  });
+  return buildGgCleaningPreviewFromMetadata(summary);
+}
+
 export async function executeGgCleaningByPath(
   input: { fileName: string; filePath: string },
   options?: {

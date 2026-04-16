@@ -1,7 +1,7 @@
 import type { Uploader } from "@about-demo/trpc";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { executeGgCleaning, executeGgCleaningByPath, executeGgCleaningChunkRows, previewGgCleaningChunkRows, previewGgCleaningFile, previewGgCleaningFileByPath } from "./engine";
+import { executeGgCleaning, executeGgCleaningByPath, executeGgCleaningChunkRows, previewGgCleaningChunkRows, previewGgCleaningFile, previewGgCleaningFileByPathWithProgress } from "./engine";
 import {
   completeGgCleaningJob,
   createGgCleaningJob,
@@ -44,7 +44,7 @@ async function resolveUploadedPreview(uploadId: string, fileName: string) {
   const uploaded = await getCompletedGgCleaningUpload(uploadId);
   const preview =
     uploaded.kind === "file-chunks" && uploaded.rawFilePath
-      ? await previewGgCleaningFileByPath({
+      ? await previewGgCleaningFileByPathWithProgress({
           fileName: uploaded.fileName || fileName,
           filePath: uploaded.rawFilePath,
         })
