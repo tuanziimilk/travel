@@ -1533,10 +1533,19 @@ const CHILD_STRONG_POSITIVE_PATTERNS = [
 ];
 
 const AAA_HARD_NEGATIVE_PATTERNS = [
+  /\bno\b.{0,35}\b(?:menciona|indica|ofrece|hay indicios|hay evidencia|hay informaci[oó]n)\b.{0,45}\b(?:descuentos? )?(?:para )?(?:miembros? )?(?:de )?aaa\b/i,
+  /\bno\b.{0,35}\b(?:descuento|beneficio)\b.{0,25}\baaa\b/i,
+  /\bgeen\b.{0,35}\b(?:aaa|anwb)\b.{0,25}\b(?:korting|voordeel)\b/i,
+  /\bkeine?\b.{0,35}\baaa\b.{0,25}\b(?:rabatt|vorteil)\b/i,
+  /\b(?:ne mentionne pas|aucune?|pas de)\b.{0,45}\b(?:r[ée]duction|avantage)\b.{0,25}\baaa\b/i,
   /\bnie znaleziono żadnych dowodów\b.{0,45}\baaa\b/i,
   /\bbezpośrednich informacji\b.{0,45}\baaa\b/i,
+  /\bnie\b.{0,35}\b(?:oferuje|wskazuje|informuje|akceptuje)\b.{0,45}\baaa\b/i,
+  /\bbrak\b.{0,35}\b(?:informacji|potwierdzenia|dowod[oó]w)\b.{0,45}\baaa\b/i,
   /\b공식 온라인몰에서는 AAA 할인 혜택을 받을 수 없습니다\b/i,
   /\b직접적인 정보는 .*aaa.*확인되지 않았습니다\b/i,
+  /\baaa\b.{0,30}(?:할인|혜택)\b.{0,20}(?:없|않|확인되지)/i,
+  /(?:没有|未|并未).{0,35}AAA.{0,20}(?:折扣|优惠|会员)/i,
   /\bdoes not offer\b.{0,25}\baaa\b.{0,20}\b(?:discount|benefit)\b/i,
   /\bnot\b.{0,20}\baaa\b.{0,20}\b(?:partner|participating merchant|affiliate)\b/i,
 ];
@@ -1546,6 +1555,11 @@ const EXISTING_CUSTOMER_HARD_POSITIVE_PATTERNS = [
   /\bview renewal offers?\b/i,
   /\bexisting subscribers?\b.{0,35}\b(?:apply|receive|get|use)\b.{0,20}\b(?:discount|promo code|savings)\b/i,
   /\bcurrent members?\b.{0,35}\b(?:receive|get|unlock)\b.{0,20}\b(?:discount|benefit|offer)\b/i,
+  /\b(?:yes|sí|si|tak|oui|ja)\b.{0,80}\b(?:existing customers?|clientes existentes|clientes recurrentes|clientes actuales|sta[łl]ych klient[oó]w|loyal customers?|bestaande klanten|clients fid[eé]les)\b.{0,80}\b(?:discounts?|descuentos?|beneficios?|benefits?|zni[żz]k\w*|rabat\w*|korting|avantages?|r[ée]ductions?)\b/i,
+  /\b(?:programa de puntos|programa de fidelizaci[oó]n|puntos de fidelidad|program lojalno[śs]ciow\w*|punkty lojalno[śs]ciow\w*|loyalty points?|rewards? program|programme de fid[eé]lit[eé]|loyaliteitsprogramma)\b.{0,90}\b(?:discounts?|descuentos?|beneficios?|canjeables?|zni[żz]k\w*|rabat\w*|korting|r[ée]ductions?|avantages?)\b/i,
+  /\b(?:sta[łl]ych klient[oó]w|clientes existentes|clientes recurrentes|existing customers?|repeat customers?|bestaande klanten|clients fid[eé]les)\b.{0,90}\b(?:programa de puntos|program lojalno[śs]ciow\w*|punkty|loyalty points?|rewards?|newsletter|club|korting|r[ée]duction)\b/i,
+  /\bindywidualn\w*\b.{0,30}\brabat\w*\b.{0,45}\b(?:klient[oó]w|kolejnych zakupach|sta[łl]ych)\b/i,
+  /\bzni[żz]ki\b.{0,45}\b(?:przy kolejnych zam[oó]wieniach|dla sta[łl]ych klient[oó]w)\b/i,
   /\b(?:tak|sí|si|yes)\b.{0,60}\b(?:program lojalno[śs]ciow\w*|programa de fidelizaci[oó]n|loyalty program|club|rewards?)\b/i,
   /\b(?:program lojalno[śs]ciow\w*|programa de fidelizaci[oó]n|loyalty program|club|rewards?)\b.{0,80}\b(?:sta[łl]ych klient[oó]w|clientes existentes|clientes actuales|existing customers?|repeat customers?)\b/i,
   /\bnewsletter\b.{0,70}\b(?:clientes existentes|clientes actuales|existing customers?|sta[łl]ych klient[oó]w|loyal customers?)\b.{0,50}\b(?:descuentos?|promociones?|coupons?|codes?|zni[żz]k\w*|rabat\w*)\b/i,
@@ -1611,6 +1625,18 @@ const EXISTING_CUSTOMER_AMBIGUOUS_PATTERNS = [
 ];
 
 const EXISTING_CUSTOMER_HARD_NEGATIVE_PATTERNS = [
+  /\bno\b.{0,35}\b(?:menciona|anuncia|detalla|ofrece|indica)\b.{0,55}\b(?:programas? de (?:descuento|fidelizaci[oó]n)|descuentos? (?:autom[aá]ticos?|fijos?|especiales?)|clientes existentes|clientes recurrentes)\b/i,
+  /\bno hay\b.{0,45}\b(?:programa|descuento|beneficio)\b.{0,35}\b(?:fidelizaci[oó]n|clientes existentes|clientes recurrentes)\b/i,
+  /\bsin mencionar expl[ií]citamente\b.{0,55}\b(?:descuento|programa|beneficio)\b.{0,35}\b(?:clientes existentes|clientes recurrentes|fidelizaci[oó]n)\b/i,
+  /\bnie\b.{0,35}\b(?:posiada|promuje|reklamuje|informuje|ma)\b.{0,65}\b(?:program\w* lojalno[śs]ciow\w*|zni[żz]k\w* dla sta[łl]ych klient[oó]w|rabat\w* dla sta[łl]ych klient[oó]w)\b/i,
+  /\bnie\b.{0,35}promuje.{0,45}(?:zni\w*|rabat\w*).{0,25}sta[łl]ych klient[oó]w/i,
+  /\bnie\b.{0,35}(?:posiada|ma|informuje).{0,55}(?:zni\w*|rabat\w*).{0,25}sta[łl]ych klient[oó]w/i,
+  /\bbrak\b.{0,45}\b(?:bezpo[śs]redniej|wyra[źz]nych?)?\b.{0,25}\binformacj\w*\b.{0,65}\b(?:program\w* lojalno[śs]ciow\w*|sta[łl]ych klient[oó]w|lojalnych klient[oó]w)\b/i,
+  /\bgeen\b.{0,45}\b(?:loyaliteitsprogramma|kortingsprogramma|vaste klantenkorting|korting voor bestaande klanten)\b/i,
+  /\bkeine?\b.{0,45}\b(?:treueprogramm|kundenprogramm|bestandskundenrabatt|rabatt f[uü]r bestehende kunden)\b/i,
+  /\b(?:ne mentionne pas|aucune?|pas de)\b.{0,55}\b(?:programme de fid[eé]lit[eé]|r[ée]duction pour clients? existants?|avantage clients? fid[eé]les)\b/i,
+  /\bne mentionne pas\b.{0,80}\b(?:r[eé]duction|remise|avantage)\b.{0,35}\b(?:clients? existants?|clients? fid[eé]les)\b/i,
+  /\bpas de\b.{0,45}\b(?:programme de fid[eé]lit[eé]|r[eé]duction|remise)\b.{0,35}\b(?:clients? existants?|clients? fid[eé]les)?\b/i,
   /\bgeen\b.{0,35}\b(?:specifiek|structureel)\b.{0,20}\bkortingsprogramma\b.{0,20}\bvoor\b.{0,20}\bbestaande klanten\b/i,
   /\bgeen\b.{0,35}\b(?:specifiek|formeel|vast)\b.{0,20}\b(?:loyaliteitsprogramma|klantenprogramma)\b/i,
   /\ber is\b.{0,20}\bgeen\b.{0,20}\bspecifiek\b.{0,20}\bstructureel\b.{0,20}\bkortingsprogramma\b/i,
@@ -1680,6 +1706,9 @@ const LOYALTY_HARD_NEGATIVE_PATTERNS = [
 ];
 
 const PRICE_GUARANTEE_HARD_NEGATIVE_PATTERNS = [
+  /\bno\b.{0,35}\b(?:anuncia|menciona|ofrece|indica|publica|cuenta con)\b.{0,60}\b(?:garant[ií]a (?:formal )?(?:de )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|equiparaci[oó]n de precios?|price match)\b/i,
+  /\bno hay\b.{0,45}\b(?:constancia|evidencia|indicios|informaci[oó]n)\b.{0,45}\b(?:garant[ií]a (?:del? )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|price match)\b/i,
+  /\b(?:precio competitivo|precios competitivos|relaci[oó]n calidad-precio|mejores precios online)\b.{0,100}\b(?:no\b.{0,35}\b(?:garant[ií]a|igualaci[oó]n|equiparaci[oó]n|price match))\b/i,
   /\bno hay indicios p[uú]blicos o expl[ií]citos\b.{0,35}\b(?:garant[ií]a de mejor precio|igualaci[oó]n de precios)\b/i,
   /\bno hay indicios\b.{0,35}\bofrezca\b.{0,25}\b(?:una )?(?:garant[ií]a de mejor precio|igualaci[oó]n de precios)\b/i,
   /\bno hay indicios\b.{0,80}\b(?:garant|igualaci)\w*/i,
@@ -1713,9 +1742,17 @@ const APP_CROSS_ENTITY_NEGATIVE_PATTERNS = [
 const BLUE_LIGHT_CARD_HARD_NEGATIVE_PATTERNS = [
   /\bno confirmation\b.{0,35}\bblue light(?: card)?\b.{0,20}\bdiscount\b/i,
   /\bthere is no confirmation\b.{0,35}\bblue light(?: card)?\b.{0,20}\bdiscount\b/i,
-  /\bno\b.{0,35}\b(?:menciona|confirma|hay evidencia|hay informaci[oó]n)\b.{0,35}\bblue light(?: card)?\b/i,
+  /\bno\b.{0,35}\b(?:menciona|confirma|hay evidencia|hay informaci[oó]n|hay indicios|indica|acepta|acepten|ofrece)\b.{0,45}\b(?:la tarjeta )?blue light(?: card)?\b/i,
+  /\bblue light(?: card)?\b.{0,45}\b(?:no\b.{0,25}\b(?:acepta|aceptan|menciona|ofrece|figura|aparece|confirma))\b/i,
   /\bbrak\b.{0,35}\b(?:informacji|potwierdzenia|dowod[oó]w)\b.{0,35}\bblue light(?: card)?\b/i,
-  /\bnie\b.{0,35}\b(?:wspomina|potwierdza|oferuje)\b.{0,35}\bblue light(?: card)?\b/i,
+  /\bnie\b.{0,45}\b(?:wspomina|potwierdza|oferuje|informuje|akceptuje|wynika|wskazuje)\b.{0,45}\bblue light(?: card)?\b/i,
+  /\bnie\b.{0,35}\b(?:figuruje|znajduje si[eę])\b.{0,45}\b(?:partner[oó]w )?blue light(?: card)?\b/i,
+  /\bgeen\b.{0,45}\bblue light(?: card)?\b.{0,25}\b(?:korting|acceptatie|voordeel)\b/i,
+  /\bkeine?\b.{0,45}\bblue light(?: card)?\b.{0,25}\b(?:rabatt|akzeptanz|vorteil)\b/i,
+  /\b(?:ne mentionne pas|aucune?|pas de)\b.{0,45}\bblue light(?: card)?\b.{0,25}\b(?:r[ée]duction|acceptation|avantage)\b/i,
+  /(?:没有|未|并未).{0,35}Blue Light Card.{0,20}(?:折扣|优惠|接受|支持)/i,
+  /\bblue light(?: card)?\b.{0,30}(?:할인|혜택|제휴)\b.{0,20}(?:없|않|확인되지)/i,
+  /blue light(?: card)?.{0,60}(?:확인되지|없|않)/i,
   /\binstead of blue light discounts?\b/i,
   /\bdoes not offer\b.{0,30}\bblue light(?: card)?\b.{0,20}\bdiscounts?\b/i,
   /\bblue light card is a discount service\b.{0,70}\b(?:united kingdom|uk)\b/i,
@@ -1776,6 +1813,18 @@ const RETURN_AMBIGUOUS_POLICY_PATTERNS = [
 ];
 
 const LEAD_EXPLICIT_NO_PATTERNS: Partial<Record<string, RegExp[]>> = {
+  "existing customer": [
+    /\bno\b.{0,35}\b(?:menciona|anuncia|detalla|ofrece|indica)\b.{0,55}\b(?:programas? de (?:descuento|fidelizaci[oó]n)|descuentos? (?:autom[aá]ticos?|fijos?|especiales?)|clientes existentes|clientes recurrentes)\b/i,
+    /\bsin mencionar expl[ií]citamente\b.{0,55}\b(?:descuento|programa|beneficio)\b.{0,35}\b(?:clientes existentes|clientes recurrentes|fidelizaci[oó]n)\b/i,
+    /\bnie\b.{0,35}\b(?:posiada|promuje|reklamuje|informuje|ma)\b.{0,65}\b(?:program\w* lojalno[śs]ciow\w*|zni[żz]k\w* dla sta[łl]ych klient[oó]w|rabat\w* dla sta[łl]ych klient[oó]w)\b/i,
+    /\bnie\b.{0,35}promuje.{0,45}(?:zni\w*|rabat\w*).{0,25}sta[łl]ych klient[oó]w/i,
+    /\bnie\b.{0,35}(?:posiada|ma|informuje).{0,55}(?:zni\w*|rabat\w*).{0,25}sta[łl]ych klient[oó]w/i,
+    /\bbrak\b.{0,45}\b(?:bezpo[śs]redniej|wyra[źz]nych?)?\b.{0,25}\binformacj\w*\b.{0,65}\b(?:program\w* lojalno[śs]ciow\w*|sta[łl]ych klient[oó]w|lojalnych klient[oó]w)\b/i,
+    /\bgeen\b.{0,45}\b(?:loyaliteitsprogramma|kortingsprogramma|vaste klantenkorting|korting voor bestaande klanten)\b/i,
+    /\bkeine?\b.{0,45}\b(?:treueprogramm|kundenprogramm|bestandskundenrabatt|rabatt f[uü]r bestehende kunden)\b/i,
+    /\b(?:ne mentionne pas|aucune?|pas de)\b.{0,55}\b(?:programme de fid[eé]lit[eé]|r[ée]duction pour clients? existants?|avantage clients? fid[eé]les)\b/i,
+    /\bne mentionne pas\b.{0,80}\b(?:r[eé]duction|remise|avantage)\b.{0,35}\b(?:clients? existants?|clients? fid[eé]les)\b/i,
+  ],
   app: [
     /\bdoes not\b.{0,30}\b(?:offer|have|provide|list|mention)\b.{0,35}\b(?:an? )?(?:dedicated|specific|app-exclusive|app based|app-only)?\b.{0,20}\bapp(?:-exclusive|-specific|-based)?\b.{0,20}\b(?:discount|offer|benefit|coupon|code)\b/i,
     /\bno\b.{0,30}\b(?:dedicated|specific|app-exclusive|app based|app-only)?\b.{0,20}\bapp(?:-exclusive|-specific|-based)?\b.{0,20}\b(?:discount|offer|benefit|coupon|code)\b/i,
@@ -1787,6 +1836,7 @@ const LEAD_EXPLICIT_NO_PATTERNS: Partial<Record<string, RegExp[]>> = {
   ],
   "price guarantee": [
     /\bno\b.{0,30}\b(?:ofrece|menciona|publica|indica)\b.{0,35}\b(?:formalmente )?(?:una )?(?:garant[ií]a (?:formal )?(?:de )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|price match)\b/i,
+    /\bno hay\b.{0,45}\b(?:constancia|evidencia|indicios|informaci[oó]n)\b.{0,45}\b(?:garant[ií]a (?:del? )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|price match)\b/i,
     /\bno menciona expl[ií]citamente\b.{0,45}\b(?:garant[ií]a (?:de )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|price match)\b/i,
     /\bnie\b.{0,35}\bpromuje\b.{0,35}\b(?:gwarancj\w*|has[łl]\w*)\b.{0,35}\b(?:najlepszej|najni[żz]szej)\b.{0,15}\bceny\b/i,
     /\bnie\b.{0,30}\boferuje\b.{0,45}\bgwarancj\w*\b.{0,25}\b(?:najlepszej|najni[żz]szej)\b.{0,15}\bceny\b/i,
@@ -1816,12 +1866,14 @@ const LEAD_EXPLICIT_NO_PATTERNS: Partial<Record<string, RegExp[]>> = {
     /\bno\b.{0,35}\b(?:formal|p[uú]blico|para consumidores?)\b.{0,25}\b(?:referral|refer(?:-a-friend)?|referidos?)\b/i,
   ],
   aaa: [
-    /\bno\b.{0,35}\b(?:menciona|confirma|hay evidencia|hay informaci[oó]n)\b.{0,35}\baaa\b/i,
+    /\bno\b.{0,35}\b(?:menciona|confirma|hay evidencia|hay informaci[oó]n|hay indicios|indica|ofrece)\b.{0,45}\b(?:descuentos? )?(?:para )?(?:miembros? )?(?:de )?aaa\b/i,
     /\bbrak\b.{0,35}\b(?:informacji|potwierdzenia|dowod[oó]w)\b.{0,35}\baaa\b/i,
+    /\bnie\b.{0,35}\b(?:oferuje|wskazuje|informuje|akceptuje)\b.{0,45}\baaa\b/i,
   ],
   "blue light card": [
-    /\bno\b.{0,35}\b(?:menciona|confirma|hay evidencia|hay informaci[oó]n)\b.{0,35}\bblue light(?: card)?\b/i,
+    /\bno\b.{0,35}\b(?:menciona|confirma|hay evidencia|hay informaci[oó]n|hay indicios|indica|acepta|acepten|ofrece)\b.{0,45}\b(?:la tarjeta )?blue light(?: card)?\b/i,
     /\bbrak\b.{0,35}\b(?:informacji|potwierdzenia|dowod[oó]w)\b.{0,35}\bblue light(?: card)?\b/i,
+    /\bnie\b.{0,45}\b(?:wspomina|potwierdza|oferuje|informuje|akceptuje|wynika|wskazuje)\b.{0,45}\bblue light(?: card)?\b/i,
   ],
   clearance: [
     /\bno\b.{0,35}\b(?:tiene|dispone de|cuenta con|menciona)\b.{0,45}\b(?:secci[oó]n )?(?:outlet|liquidaci[oó]n|clearance|rebajas?)\b/i,
@@ -1837,7 +1889,7 @@ const LEAD_EXPLICIT_YES_PATTERNS: Partial<Record<string, RegExp[]>> = {
     /\b(?:family|familias?|rodzin\w*)\b.{0,50}\b(?:ticket|package|pass|discount|descuento|zni[żz]k\w*|rabat\w*)\b/i,
   ],
   "price guarantee": [
-    /\b(?:price match|best price guarantee|lowest price guarantee|garant[ií]a (?:de )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|gwarancj\w* (?:najlepszej|najni[żz]szej) ceny)\b/i,
+    /\b(?:price match|best price guarantee|lowest price guarantee|garant[ií]a (?:de )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|gwarancj\w* (?:najlepszej|najni[żz]szej) ceny|gwarancj[ęe] ceny)\b/i,
   ],
   return: [
     /\b(?:free returns?|free return shipping|prepaid return label|devoluciones? gratis|devoluciones? gratuitas?|darmowe zwroty|bezp[łl]atne zwroty)\b/i,
@@ -1853,6 +1905,14 @@ const LEAD_EXPLICIT_YES_PATTERNS: Partial<Record<string, RegExp[]>> = {
   clearance: [
     /\b(?:sale|outlet|clearance|liquidaci[oó]n|rebajas?|wyprzeda[żz]|promocje)\b.{0,55}\b(?:discounted products?|productos? rebajad[oa]s|productos? con descuento|zni[żz]k\w*|rabat\w*)\b/i,
     /\b(?:productos? rebajad[oa]s|productos? con descuento|afgeprijsde artikelen|discounted products?)\b/i,
+  ],
+  "blue light card": [
+    /\b(?:accepts?|acepta|akceptuje|honors?|honou?rs?|aceptan|akceptuj[ąa])\b.{0,45}\bblue light(?: card)?\b/i,
+    /\bblue light(?: card)?\b.{0,55}\b(?:discounts?|descuentos?|zni[żz]k\w*|rabat\w*|benefits?|혜택|할인)\b/i,
+  ],
+  aaa: [
+    /\b(?:accepts?|acepta|akceptuje|honors?|honou?rs?)\b.{0,35}\baaa\b/i,
+    /\baaa\b.{0,45}\b(?:discounts?|descuentos?|zni[żz]k\w*|rabat\w*|benefits?|혜택|할인)\b/i,
   ],
 };
 
@@ -2996,6 +3056,22 @@ function explainExistence(factType: string, snippet: string): SentenceEvidence {
       existence: "yes",
       reasonCn: "全文存在明确肯定证据",
       matchedRule: "new_customer_hard_positive",
+      evidenceSentence: getLeadSentences(text, 2).join(" "),
+      confidenceBucket: "strong",
+      score: 7,
+    };
+  }
+
+  if (
+    factType === "existing customer" &&
+    hasPattern(text, EXISTING_CUSTOMER_HARD_POSITIVE_PATTERNS) &&
+    !hasPattern(text, EXISTING_CUSTOMER_HARD_NEGATIVE_PATTERNS) &&
+    !hasPattern(text, EXISTING_CUSTOMER_AMBIGUOUS_PATTERNS)
+  ) {
+    return {
+      existence: "yes",
+      reasonCn: "全文存在明确肯定证据",
+      matchedRule: "existing_customer_strong_positive",
       evidenceSentence: getLeadSentences(text, 2).join(" "),
       confidenceBucket: "strong",
       score: 7,

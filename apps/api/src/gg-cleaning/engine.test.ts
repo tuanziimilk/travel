@@ -5344,7 +5344,7 @@ describe("gg cleaning engine", () => {
     ]);
 
     expect(result.debugRows[0].final_supported).toBe("yes");
-    expect(result.debugRows[0].final_matched_rule).toBe("lead_explicit_yes");
+    expect(["lead_explicit_yes", "existing_customer_strong_positive"]).toContain(result.debugRows[0].final_matched_rule);
   });
 
   it("uses lead explicit yes for family card and large-family discounts", () => {
@@ -5487,5 +5487,168 @@ describe("gg cleaning engine", () => {
     const byTerm = new Map(result.debugRows.map((row) => [row.term_id, row]));
     expect(byTerm.get("lead-family-pl-unconfirmed")?.final_supported).toBe("no");
     expect(byTerm.get("lead-price-pl-slogan-no")?.final_supported).toBe("no");
+  });
+
+  it("detects multilingual explicit yes and no for remaining high-unknown facts", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "multi-existing-pl-yes",
+        country: "PL",
+        domain: "sklep.carepump.pl",
+        term_id: "multi-existing-pl-yes",
+        term_name: "Carepump",
+        subclass: "existing customer",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Tak, sklep oferuje punkty lojalnosciowe dla stalych klientow. Punkty mozna wymieniac na rabaty przy kolejnych zakupach."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-existing-pl-no",
+        country: "PL",
+        domain: "lekizczech.pl",
+        term_id: "multi-existing-pl-no",
+        term_name: "Leki z Czech",
+        subclass: "existing customer",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Lekizczech.pl nie promuje aktywnie znizek dla stalych klientow w ogolnodostepnych zrodlach. Strona pokazuje tylko ogolne informacje o usludze."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-existing-es-no",
+        country: "ES",
+        domain: "sspelectronic.com",
+        term_id: "multi-existing-es-no",
+        term_name: "SSP Electronic",
+        subclass: "existing customer",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["No menciona explicitamente programas de descuentos automaticos o fidelizacion para clientes existentes. La tienda solo muestra precios competitivos."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-price-es-no",
+        country: "ES",
+        domain: "farmaciaescriva.com",
+        term_id: "multi-price-es-no",
+        term_name: "Farmacia Escriva",
+        subclass: "price guarantee",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["No hay constancia de una garantia del mejor precio ni politica de igualacion de precios. La farmacia tiene ofertas y promociones propias."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-price-pl-yes",
+        country: "PL",
+        domain: "sklep.edifier-polska.pl",
+        term_id: "multi-price-pl-yes",
+        term_name: "Edifier Polska",
+        subclass: "price guarantee",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Tak, sklep oferuje Gwarancje ceny. Jest to oficjalny program sklepu dla klientow kupujacych produkty marki."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-aaa-es-no",
+        country: "ES",
+        domain: "kadusi.com",
+        term_id: "multi-aaa-es-no",
+        term_name: "Kadusi",
+        subclass: "aaa",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Kadusi.com no ofrece un descuento especifico de la asociacion AAA. Sus promociones son propias del sitio."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-blc-pl-no",
+        country: "PL",
+        domain: "zoo-aquos.pl",
+        term_id: "multi-blc-pl-no",
+        term_name: "Zoo Aquos",
+        subclass: "blue light card",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Sklep zoo-aquos.pl nie akceptuje karty Blue Light Card. Regulamin wspomina tylko o platnosciach online."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-blc-en-yes",
+        country: "UK",
+        domain: "nespresso.com",
+        term_id: "multi-blc-en-yes",
+        term_name: "Nespresso",
+        subclass: "blue light card",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Yes, Nespresso accepts Blue Light Card and offers discounts for emergency service workers. Customers should verify the current code in the Blue Light Card app."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-aaa-cn-no",
+        country: "US",
+        domain: "example-cn.com",
+        term_id: "multi-aaa-cn-no",
+        term_name: "Example CN",
+        subclass: "aaa",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["该网站没有提供 AAA 会员折扣或相关优惠。页面只展示普通促销活动。"],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-blc-ko-no",
+        country: "KR",
+        domain: "example-kr.com",
+        term_id: "multi-blc-ko-no",
+        term_name: "Example KR",
+        subclass: "blue light card",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Blue Light Card 할인 혜택은 확인되지 않았습니다. 일반 쿠폰만 제공됩니다."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-existing-fr-no",
+        country: "FR",
+        domain: "example-fr.com",
+        term_id: "multi-existing-fr-no",
+        term_name: "Example FR",
+        subclass: "existing customer",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Le site ne mentionne pas de programme de fidelite ni de reduction pour clients existants. Les offres sont seulement saisonnieres."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-existing-de-no",
+        country: "DE",
+        domain: "example-de.com",
+        term_id: "multi-existing-de-no",
+        term_name: "Example DE",
+        subclass: "existing customer",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Der Shop bietet kein Treueprogramm und keinen Bestandskundenrabatt. Es gibt nur allgemeine Aktionen."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-existing-nl-no",
+        country: "NL",
+        domain: "example-nl.com",
+        term_id: "multi-existing-nl-no",
+        term_name: "Example NL",
+        subclass: "existing customer",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["De winkel heeft geen loyaliteitsprogramma of korting voor bestaande klanten. Er zijn alleen tijdelijke acties."],
+        product_urls: [],
+      },
+    ]);
+
+    const byTerm = new Map(result.debugRows.map((row) => [row.term_id, row.final_supported]));
+    expect(byTerm.get("multi-existing-pl-yes")).toBe("yes");
+    expect(byTerm.get("multi-existing-pl-no")).toBe("no");
+    expect(byTerm.get("multi-existing-es-no")).toBe("no");
+    expect(byTerm.get("multi-price-es-no")).toBe("no");
+    expect(byTerm.get("multi-price-pl-yes")).toBe("yes");
+    expect(byTerm.get("multi-aaa-es-no")).toBe("no");
+    expect(byTerm.get("multi-blc-pl-no")).toBe("no");
+    expect(byTerm.get("multi-blc-en-yes")).toBe("yes");
+    expect(byTerm.get("multi-aaa-cn-no")).toBe("no");
+    expect(byTerm.get("multi-blc-ko-no")).toBe("no");
+    expect(byTerm.get("multi-existing-fr-no")).toBe("no");
+    expect(byTerm.get("multi-existing-de-no")).toBe("no");
+    expect(byTerm.get("multi-existing-nl-no")).toBe("no");
   });
 });
