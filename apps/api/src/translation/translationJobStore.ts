@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNull, ne, or } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { translationJobs } from "../db/schema";
@@ -394,18 +394,52 @@ export async function getTranslationJobForRetry(jobId: string) {
 export async function listTranslationJobs(page: number, pageSize: number) {
   await ensureTranslationJobsTable();
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const [{ value: total }] = await db
+    .select({
+      value: count(),
+    })
+    .from(translationJobs)
+    .where(gte(translationJobs.createdAt, since));
+
+  const start = (page - 1) * pageSize;
   const rows = await db
-    .select()
+    .select({
+      id: translationJobs.id,
+      uploader: translationJobs.uploader,
+      note: translationJobs.note,
+      provider: translationJobs.provider,
+      executionMode: translationJobs.executionMode,
+      targetLanguage: translationJobs.targetLanguage,
+      detectLanguage: translationJobs.detectLanguage,
+      status: translationJobs.status,
+      inputFileName: translationJobs.inputFileName,
+      providerBatchId: translationJobs.providerBatchId,
+      selectedColumnsJson: translationJobs.selectedColumnsJson,
+      totalRows: translationJobs.totalRows,
+      processedRows: translationJobs.processedRows,
+      successRows: translationJobs.successRows,
+      failedRows: translationJobs.failedRows,
+      mixedRows: translationJobs.mixedRows,
+      predictedTotalTokens: translationJobs.predictedTotalTokens,
+      predictedCostUsd: translationJobs.predictedCostUsd,
+      totalTokensSum: translationJobs.totalTokensSum,
+      estimatedCostUsdSum: translationJobs.estimatedCostUsdSum,
+      languageSummaryJson: translationJobs.languageSummaryJson,
+      aiModel: translationJobs.aiModel,
+      errorReason: translationJobs.errorReason,
+      resultFileName: translationJobs.resultFileName,
+      createdAt: translationJobs.createdAt,
+      startedAt: translationJobs.startedAt,
+      finishedAt: translationJobs.finishedAt,
+    })
     .from(translationJobs)
     .where(gte(translationJobs.createdAt, since))
-    .orderBy(desc(translationJobs.createdAt));
-
-  const total = rows.length;
-  const start = (page - 1) * pageSize;
-  const sliced = rows.slice(start, start + pageSize);
+    .orderBy(desc(translationJobs.createdAt))
+    .limit(pageSize)
+    .offset(start);
   return {
-    total,
-    rows: sliced.map((row) => ({
+    total: Number(total || 0),
+    rows: rows.map((row) => ({
       id: row.id,
       uploader: row.uploader,
       note: row.note,

@@ -75,24 +75,72 @@ yarn dev
 
 ## 4. 环境变量说明（详细）
 
-以下变量定义在 `.env`（可参考 `.env.example`）。
+以下变量定义在仓库根目录 `.env`（可参考 `.env.example`）。
+
+常规开发场景下，请把 API key 填在：
+
+- [\.env](D:\python-tool\SC-quality-scoring\.env)
+
+如果你是单独进入 `apps/api` 再启动后端，也可以在这里放一份同样内容：
+
+- [apps/api/.env](D:\python-tool\SC-quality-scoring\apps\api\.env)
 
 ### 4.1 AI / 成本相关
 
-- `AI_BASE_URL`
-  - 说明：模型 API 网关地址
+服务器默认模型运维说明见：
+
+- [docs/server-ai-defaults-ops.md](D:\python-tool\SC-quality-scoring\docs\server-ai-defaults-ops.md)
+
+如果你需要快速检查“服务器 `.env` 是否又漂移回 OpenAI 默认”，可以执行：
+
+```bash
+yarn workspace @about-demo/api check:server-ai-defaults
+```
+
+这个脚本会同时检查：
+
+- 服务器 `.env` 中的 AI 默认字段
+- 线上运行时 `output-faq / translation-batch / translation-text / category-calibration` 默认值
+
+- `GEMINI_API_KEY`
+  - 说明：Gemini API Key
+  - 默认：无
+  - 推荐：必填，当前所有 AI 工具默认模型已切为 `gemini-2.5-flash-lite`
+
+- `GEMINI_BASE_URL`
+  - 说明：Gemini OpenAI 兼容网关地址
+  - 默认：`https://generativelanguage.googleapis.com/v1beta/openai`
+
+- `OPENAI_API_KEY`
+  - 说明：OpenAI API Key
+  - 默认：无
+  - 用途：当你把某个工具切回 OpenAI 模型时需要
+
+- `OPENAI_BASE_URL`
+  - 说明：OpenAI API 网关地址
   - 默认：`https://api.openai.com/v1`
-  - 示例：`https://api.openai.com/v1`
+
+- `AI_BASE_URL`
+  - 说明：旧版单提供商兼容地址
+  - 默认：空
+  - 建议：新接入优先使用 `OPENAI_BASE_URL` / `GEMINI_BASE_URL`
 
 - `AI_API_KEY`
-  - 说明：模型 API Key
-  - 默认：无（必填）
-  - 示例：`sk-xxxx`
+  - 说明：旧版单提供商兼容 Key
+  - 默认：空
+  - 建议：新接入优先使用 `OPENAI_API_KEY` / `GEMINI_API_KEY`
 
 - `AI_MODEL`
-  - 说明：调用模型名
-  - 默认：`gpt-4.1-mini`
-  - 示例：`gpt-5-mini`
+  - 说明：质量评分 / FAQ 生成等工具的默认模型
+  - 默认：`gemini-2.5-flash-lite`
+
+- `TRANSLATION_AI_MODEL`
+  - 说明：翻译工具默认模型
+  - 默认：`gemini-2.5-flash-lite`
+
+- `CATEGORY_CALIBRATION_AI_MODEL`
+  - 说明：Category Calibration 默认模型
+  - 默认：`gemini-2.5-flash-lite`
 
 - `AI_MAX_OUTPUT_TOKENS`
   - 说明：限制模型单次最大输出 token
@@ -106,11 +154,11 @@ yarn dev
 
 - `AI_INPUT_COST_PER_1M`
   - 说明：输入 token 单价（每 1M）
-  - 默认：`0.25`
+  - 默认：`0.10`
 
 - `AI_OUTPUT_COST_PER_1M`
   - 说明：输出 token 单价（每 1M）
-  - 默认：`2.00`
+  - 默认：`0.40`
 
 ### 4.2 数据库与服务地址
 
@@ -243,4 +291,3 @@ yarn test
 ```bash
 yarn install
 ```
-
