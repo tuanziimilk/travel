@@ -25,6 +25,8 @@ apps/web/dist
 *.log
 tmp/
 apps/api/tmp-*
+apps/api/.runtime/
+**/.runtime/
 
 # 测试
 coverage/
