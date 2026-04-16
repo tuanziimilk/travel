@@ -2135,7 +2135,7 @@ export async function listGenerationHistoryRows(input: HistoryFilters): Promise<
             r.job_id,
             r.row_index
           FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_status_created_id)
-          INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_status_country_subclass_job_row) ON r.job_id = j.id
+          STRAIGHT_JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_job_status_country_subclass_term_row) ON r.job_id = j.id
           ${whereSql}
           ORDER BY j.created_at DESC, r.row_index ASC
           LIMIT ? OFFSET ?
@@ -2192,7 +2192,7 @@ export async function listGenerationHistoryRows(input: HistoryFilters): Promise<
             r.brief_introduction,
             r.row_index
           FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_status_created_id)
-          INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_status_country_subclass_job_row) ON r.job_id = j.id
+          STRAIGHT_JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_job_status_country_subclass_term_row) ON r.job_id = j.id
           WHERE (r.job_id, r.row_index) IN (${tuplePlaceholders})
           ORDER BY FIELD(CONCAT(r.job_id, ':', r.row_index), ${fieldPlaceholders})
         `,
