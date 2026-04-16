@@ -4401,6 +4401,22 @@ describe("gg cleaning engine", () => {
     expect(preview.groupedRows).toBe(1);
   });
 
+  it("accepts plain text content cells in collected-table csv rows", () => {
+    const csv = [
+      `task_id,query,country,language,domain,term_id,term_name,subclass,bu,状态,${GG_COLLECTED_SOURCE_COLUMN},google_url,content,product_urls,updated_time`,
+      '1,"Does shopa.com offer free shipping?",US,en,shopa.com,1001,Shop A,shipping,hd,抓取完成,search_lab,https://www.google.com/search?q=shopa+free+shipping,"Shop A offers free shipping on orders over $50.","https://shopa.com/shipping",2026-04-16 15:00:00',
+    ].join("\n");
+    const fileBase64 = iconv.encode(csv, "gb18030").toString("base64");
+
+    const preview = previewGgCleaningFile(
+      { fileName: "fixture-plain-text.csv", fileBase64 },
+      { skipFileSizeLimit: true },
+    );
+
+    expect(preview.totalRows).toBe(1);
+    expect(preview.groupedRows).toBe(1);
+  });
+
   it("supports collected-table rows in JSONL uploads", () => {
     const rows = [
       {
