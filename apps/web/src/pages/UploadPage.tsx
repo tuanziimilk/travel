@@ -178,10 +178,12 @@ export function UploadPage() {
   const queueQuery = trpc.batch.ingest.queue.useQuery(
     { moduleId: "about", page: queuePage, pageSize: queuePageSize },
     {
+      placeholderData: (previousData) => previousData,
+      refetchOnWindowFocus: false,
       refetchInterval: (query) => {
         const list = query.state.data?.rows ?? [];
         const hasRunning = list.some((item) => item.status === "pending" || item.status === "running");
-        return hasRunning ? 1500 : 4000;
+        return hasRunning ? 4000 : 12000;
       },
     },
   );
@@ -308,6 +310,7 @@ export function UploadPage() {
   return (
     <div className="card">
       <h2>批量上传评分</h2>
+      {queueQuery.error && queueQuery.data ? <p className="error-text">队列刷新失败，正在重试。当前先展示上一次成功结果。</p> : null}
       <p className="muted">上传 CSV 或 XLSX，异步执行评分并追踪队列进度，完成后可直接下载结果。</p>
 
       <div className="grid">

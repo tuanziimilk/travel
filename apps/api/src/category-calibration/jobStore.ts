@@ -7,13 +7,49 @@ import { makeId } from "../utils/id";
 import { formatChinaIsoOffset } from "../utils/time";
 
 const ERROR_REASON_MAX_LENGTH = 512;
+const queueCountCacheTtlMs = 15 * 1000;
 let ensureJobsTablePromise: Promise<void> | null = null;
+const categoryQueueCountCache = new Map<string, { expiresAt: number; value: number }>();
 
 function compactErrorMessage(message: string | null | undefined) {
   const normalized = String(message || "").replace(/\s+/g, " ").trim();
   if (!normalized) return null;
   if (normalized.length <= ERROR_REASON_MAX_LENGTH) return normalized;
   return `${normalized.slice(0, ERROR_REASON_MAX_LENGTH - 1).trimEnd()}…`;
+}
+
+function getCachedQueueCount(key: string) {
+  const cached = categoryQueueCountCache.get(key);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    categoryQueueCountCache.delete(key);
+    return null;
+  }
+  return cached.value;
+}
+
+function setCachedQueueCount(key: string, value: number) {
+  categoryQueueCountCache.set(key, { expiresAt: Date.now() + queueCountCacheTtlMs, value });
+}
+
+function buildQueueSummary(summary: Record<string, unknown> | null | undefined) {
+  if (!summary) return {};
+  const totalRows = Number(summary.totalRows || 0);
+  const processedRows = Number(summary.processedRows || 0);
+  const successRows = Number(summary.successRows || 0);
+  const failedRows = Number(summary.failedRows || 0);
+  const aiModel = String(summary.aiModel || "").trim();
+  return { totalRows, processedRows, successRows, failedRows, aiModel };
+}
+
+function logQueuePerf(route: string, meta: { durationMs: number; rows: number; payloadBytes: number }) {
+  const heapUsedMb = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+  const line = `[queue] route=${route} duration_ms=${meta.durationMs} rows=${meta.rows} payload_bytes=${meta.payloadBytes} heap_used_mb=${heapUsedMb}`;
+  if (meta.durationMs > 2000 || meta.payloadBytes > 256 * 1024) {
+    console.warn(`${line} warn=threshold_exceeded`);
+    return;
+  }
+  console.log(line);
 }
 
 async function ensureCategoryCalibrationJobsTable() {
@@ -191,17 +227,51 @@ export async function recoverInterruptedCategoryCalibrationJobs() {
 
 export async function listCategoryCalibrationJobs(page: number, pageSize: number) {
   await ensureCategoryCalibrationJobsTable();
+  const startedAtMs = Date.now();
+  const safePage = Math.max(1, Number(page || 1));
+  const safePageSize = Math.max(1, Math.min(50, Number(pageSize || 10)));
+  const offset = (safePage - 1) * safePageSize;
   const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
-  const rows = await db
-    .select()
-    .from(categoryCalibrationJobs)
-    .where(gte(categoryCalibrationJobs.createdAt, since))
-    .orderBy(desc(categoryCalibrationJobs.createdAt));
-  const total = rows.length;
-  const start = (page - 1) * pageSize;
-  return {
-    total,
-    rows: rows.slice(start, start + pageSize).map((row) => ({
+  const countCacheKey = since.toISOString();
+  const cachedTotal = getCachedQueueCount(countCacheKey);
+  const [countRows, rows] = await Promise.all([
+    cachedTotal !== null
+      ? Promise.resolve([{ value: cachedTotal }])
+      : db
+          .select({ value: sql<number>`count(*)` })
+          .from(categoryCalibrationJobs)
+          .where(gte(categoryCalibrationJobs.createdAt, since)),
+    db
+      .select({
+        id: categoryCalibrationJobs.id,
+        uploader: categoryCalibrationJobs.uploader,
+        note: categoryCalibrationJobs.note,
+        status: categoryCalibrationJobs.status,
+        inputMode: categoryCalibrationJobs.inputMode,
+        inputFileName: categoryCalibrationJobs.inputFileName,
+        totalRows: categoryCalibrationJobs.totalRows,
+        processedRows: categoryCalibrationJobs.processedRows,
+        successRows: categoryCalibrationJobs.successRows,
+        failedRows: categoryCalibrationJobs.failedRows,
+        aiModel: categoryCalibrationJobs.aiModel,
+        summaryJson: categoryCalibrationJobs.summaryJson,
+        errorReason: categoryCalibrationJobs.errorReason,
+        resultFileName: categoryCalibrationJobs.resultFileName,
+        resultFilePath: categoryCalibrationJobs.resultFilePath,
+        createdAt: categoryCalibrationJobs.createdAt,
+        startedAt: categoryCalibrationJobs.startedAt,
+        finishedAt: categoryCalibrationJobs.finishedAt,
+      })
+      .from(categoryCalibrationJobs)
+      .where(gte(categoryCalibrationJobs.createdAt, since))
+      .orderBy(desc(categoryCalibrationJobs.createdAt))
+      .limit(safePageSize + 1)
+      .offset(offset),
+  ]);
+  const total = Number((countRows as Array<{ value: number }>)[0]?.value || 0);
+  setCachedQueueCount(countCacheKey, total);
+  const pageRows = rows.slice(0, safePageSize);
+  const mappedRows = pageRows.map((row) => ({
       id: row.id,
       uploader: row.uploader,
       note: row.note,
@@ -217,11 +287,20 @@ export async function listCategoryCalibrationJobs(page: number, pageSize: number
       resultFileName: row.resultFileName,
       resultFilePath: row.resultFilePath || "",
       canDownload: Boolean(row.resultFilePath || row.status === "done"),
-      summary: (row.summaryJson as Record<string, unknown> | null) || {},
+      summary: buildQueueSummary((row.summaryJson as Record<string, unknown> | null) || {}),
       createdAt: formatChinaIsoOffset(row.createdAt),
       startedAt: formatChinaIsoOffset(row.startedAt),
       finishedAt: formatChinaIsoOffset(row.finishedAt),
-    })),
+    }));
+  logQueuePerf("category-calibration.queue", {
+    durationMs: Date.now() - startedAtMs,
+    rows: mappedRows.length,
+    payloadBytes: Buffer.byteLength(JSON.stringify(mappedRows), "utf8"),
+  });
+  return {
+    total,
+    hasMore: rows.length > safePageSize,
+    rows: mappedRows,
   };
 }
 

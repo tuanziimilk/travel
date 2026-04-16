@@ -81,10 +81,12 @@ export function FaqUploadPage() {
   const queueQuery = trpc.batch.ingest.queue.useQuery(
     { moduleId: "faq", page: queuePage, pageSize: queuePageSize },
     {
+      placeholderData: (previousData) => previousData,
+      refetchOnWindowFocus: false,
       refetchInterval: (query) => {
         const list = query.state.data?.rows ?? [];
         const hasRunning = list.some((item) => item.status === "pending" || item.status === "running");
-        return hasRunning ? 1500 : 4000;
+        return hasRunning ? 4000 : 12000;
       },
     },
   );
@@ -320,6 +322,7 @@ export function FaqUploadPage() {
 
       <div className="card faq-card" style={{ marginTop: 16 }}>
         <h3>FAQ 历史任务队列</h3>
+        {queueQuery.error && queueQuery.data ? <p className="error-text">队列刷新失败，正在重试。当前先展示上一次成功结果。</p> : null}
         <table className="history-table queue-table faq-queue-table faq-upload-queue-table">
             <thead>
               <tr>

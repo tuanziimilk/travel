@@ -74,6 +74,8 @@ const pendingIngestJobsByModule: Record<ModuleId, PendingIngestJob[]> = {
   about: [],
   faq: [],
 };
+const ingestQueueCountCache = new Map<string, { expiresAt: number; value: number }>();
+const ingestQueueCountCacheTtlMs = 15 * 1000;
 const ingestRunnerWorkingByModule: Record<ModuleId, boolean> = {
   about: false,
   faq: false,
@@ -1216,35 +1218,101 @@ export async function listIngestJobs(page = 1, pageSize = 20, moduleId?: "about"
   const safePage = Math.max(1, page);
   const safePageSize = Math.max(1, Math.min(50, pageSize));
   const offset = (safePage - 1) * safePageSize;
-  const rows = await db.select().from(ingestJobs).orderBy(desc(ingestJobs.startedAt));
-  const batchRows = await db.select().from(uploadBatches);
-  const moduleByBatchId = new Map(batchRows.map((item) => [item.id, String(item.moduleId || "about")]));
-  const filtered = moduleId
-    ? rows.filter((item) => moduleByBatchId.get(item.batchId) === moduleId)
-    : rows;
+  const startedAtMs = Date.now();
+  const queueKey = `${moduleId || "all"}`;
+  const cachedCount = ingestQueueCountCache.get(queueKey);
+  const countPromise =
+    cachedCount && cachedCount.expiresAt > Date.now()
+      ? Promise.resolve(cachedCount.value)
+      : pool
+          .query(
+            `
+              SELECT COUNT(*) AS total_count
+              FROM ingest_jobs j
+              INNER JOIN upload_batches b ON b.id = j.batch_id
+              ${moduleId ? "WHERE b.module_id = ?" : ""}
+            `,
+            moduleId ? [moduleId] : [],
+          )
+          .then(([rows]) => {
+            const totalCount = Number((rows as Array<{ total_count?: number }>)[0]?.total_count || 0);
+            ingestQueueCountCache.set(queueKey, {
+              expiresAt: Date.now() + ingestQueueCountCacheTtlMs,
+              value: totalCount,
+            });
+            return totalCount;
+          });
+  const pageRows = await db
+    .select({
+      id: ingestJobs.id,
+      batchId: ingestJobs.batchId,
+      status: ingestJobs.status,
+      retryScope: ingestJobs.retryScope,
+      merchantTotal: ingestJobs.merchantTotal,
+      totalRows: ingestJobs.totalRows,
+      doneRows: ingestJobs.doneRows,
+      failedRows: ingestJobs.failedRows,
+      initialFailedRows: ingestJobs.initialFailedRows,
+      recoveredRows: ingestJobs.recoveredRows,
+      finalFailedRows: ingestJobs.finalFailedRows,
+      elapsedMs: ingestJobs.elapsedMs,
+      etaSeconds: ingestJobs.etaSeconds,
+      promptTokensSum: ingestJobs.promptTokensSum,
+      completionTokensSum: ingestJobs.completionTokensSum,
+      totalTokensSum: ingestJobs.totalTokensSum,
+      estimatedCostUsdSum: ingestJobs.estimatedCostUsdSum,
+      predictedTotalTokens: ingestJobs.predictedTotalTokens,
+      predictedCostUsd: ingestJobs.predictedCostUsd,
+      failureReasonStatsJson: ingestJobs.failureReasonStatsJson,
+      errorReason: ingestJobs.errorReason,
+      startedAt: ingestJobs.startedAt,
+      finishedAt: ingestJobs.finishedAt,
+      updatedAt: ingestJobs.updatedAt,
+    })
+    .from(ingestJobs)
+    .innerJoin(uploadBatches, eq(uploadBatches.id, ingestJobs.batchId))
+    .where(moduleId ? eq(uploadBatches.moduleId, moduleId) : undefined)
+    .orderBy(desc(ingestJobs.startedAt))
+    .limit(safePageSize)
+    .offset(offset);
+  const batchRows = await db
+    .select({
+      id: uploadBatches.id,
+      moduleId: uploadBatches.moduleId,
+      outputMode: uploadBatches.outputMode,
+      uploader: uploadBatches.uploader,
+    })
+    .from(uploadBatches)
+    .where(inArray(uploadBatches.id, pageRows.map((item) => item.batchId)));
   const batchById = new Map(batchRows.map((item) => [item.id, item]));
-  const pageRows = filtered.slice(offset, offset + safePageSize);
   const rawTimeMap = await getIngestJobRawTimeMap(pageRows.map((item) => item.id));
+  const total = await countPromise;
+  const mappedRows = pageRows.map((item) => {
+    const batch = batchById.get(item.batchId);
+    const rawTimes = rawTimeMap.get(item.id);
+    return {
+      ...withChinaJobTimestamps(item),
+      ...(rawTimes || {}),
+      outputMode: (batch?.outputMode || "full") as OutputMode,
+      uploader: batch?.uploader || "",
+      retryScope: String(item.retryScope || "all"),
+      isFailedOnlyRetry: String(item.retryScope || "all") === "failed_only",
+      failureReasonSummary:
+        formatFailureReasonStats(item.failureReasonStatsJson) ||
+        (item.errorReason || (item.failedRows > 0 ? "存在失败行，请下载结果查看失败原因列" : "")),
+    };
+  });
+  const payloadBytes = Buffer.byteLength(JSON.stringify(mappedRows), "utf8");
+  const heapUsedMb = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+  const logLine = `[queue] route=batch.ingest.queue duration_ms=${Date.now() - startedAtMs} rows=${mappedRows.length} payload_bytes=${payloadBytes} heap_used_mb=${heapUsedMb}`;
+  if (Date.now() - startedAtMs > 2000 || payloadBytes > 256 * 1024) console.warn(`${logLine} warn=threshold_exceeded`);
+  else console.log(logLine);
   return {
-    total: filtered.length,
+    total,
     page: safePage,
     pageSize: safePageSize,
-    rows: pageRows.map((item) => {
-      const batch = batchById.get(item.batchId);
-      const rawTimes = rawTimeMap.get(item.id);
-      return {
-        ...withChinaJobTimestamps(item),
-        ...(rawTimes || {}),
-        outputMode: (batch?.outputMode || "full") as OutputMode,
-        uploader: batch?.uploader || "",
-        retryScope: String(item.retryScope || "all"),
-        isFailedOnlyRetry: String(item.retryScope || "all") === "failed_only",
-        failureReasonStats: item.failureReasonStatsJson || {},
-        failureReasonSummary:
-          formatFailureReasonStats(item.failureReasonStatsJson) ||
-          (item.errorReason || (item.failedRows > 0 ? "存在失败行，请下载结果查看失败原因列" : "")),
-      };
-    }),
+    hasMore: offset + mappedRows.length < total,
+    rows: mappedRows,
   };
 }
 

@@ -110,7 +110,15 @@ export function TranslationBatchPage() {
 
   const queueQuery = trpc.translation.queue.useQuery(
     { page: queuePage, pageSize: queuePageSize },
-    { refetchInterval: 4000 },
+    {
+      placeholderData: (previousData) => previousData,
+      refetchOnWindowFocus: false,
+      refetchInterval: (query) => {
+        const rows = query.state.data?.rows ?? [];
+        const hasActive = rows.some((row) => row.status === "queued" || row.status === "running" || row.status === "submitted");
+        return hasActive ? 4000 : 12000;
+      },
+    },
   );
 
   const statusQuery = trpc.translation.status.useQuery(
@@ -370,6 +378,7 @@ export function TranslationBatchPage() {
             </div>
           </div>
 
+          {queueQuery.error && queueQuery.data ? <p className="error-text">队列刷新失败，正在重试。当前先展示上一次成功结果。</p> : null}
           {error ? <p className="error-text">{error}</p> : null}
           {notice ? <p className="output-success-text">{notice}</p> : null}
 

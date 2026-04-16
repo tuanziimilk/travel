@@ -215,7 +215,18 @@ export function GgCleaningPage() {
       },
     },
   );
-  const queueQuery = trpc.ggCleaning.queue.useQuery({ page: queuePage, pageSize: queuePageSize }, { refetchInterval: 4000 });
+  const queueQuery = trpc.ggCleaning.queue.useQuery(
+    { page: queuePage, pageSize: queuePageSize },
+    {
+      placeholderData: (previousData) => previousData,
+      refetchOnWindowFocus: false,
+      refetchInterval: (query) => {
+        const rows = query.state.data?.rows ?? [];
+        const hasActive = rows.some((row) => row.status === "queued" || row.status === "running");
+        return hasActive ? 4000 : 12000;
+      },
+    },
+  );
   const statusQuery = trpc.ggCleaning.status.useQuery(
     { jobId: currentJobId },
     {
@@ -485,6 +496,7 @@ export function GgCleaningPage() {
           </button>
         </div>
 
+        {queueQuery.error && queueQuery.data ? <div className="translation-feedback error">队列刷新失败，正在重试。当前先展示上一次成功结果。</div> : null}
         {error ? <div className="translation-feedback error">{error}</div> : null}
         {notice ? <div className="translation-feedback success">{notice}</div> : null}
       </div>

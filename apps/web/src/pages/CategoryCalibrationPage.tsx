@@ -297,9 +297,11 @@ export function CategoryCalibrationPage() {
   const queueQuery = trpc.categoryCalibration.queue.useQuery(
     { page: queuePage, pageSize: queuePageSize },
     {
+      placeholderData: (previousData) => previousData,
+      refetchOnWindowFocus: false,
       refetchInterval: (query) => {
         const rows = query.state.data?.rows ?? [];
-        return rows.some((row) => row.status === "running") ? 1500 : 5000;
+        return rows.some((row) => row.status === "queued" || row.status === "running") ? 4000 : 12000;
       },
     },
   );
@@ -563,6 +565,7 @@ export function CategoryCalibrationPage() {
           </button>
         </div>
 
+        {queueQuery.error && queueQuery.data ? <div className="translation-feedback error">队列刷新失败，正在重试。当前先展示上一次成功结果。</div> : null}
         {error ? <div className="translation-feedback error">{error}</div> : null}
         {notice ? <div className="translation-feedback success">{notice}</div> : null}
       </div>
