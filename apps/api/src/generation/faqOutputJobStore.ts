@@ -14,6 +14,7 @@ import {
   listPersistedHistoryJobIds,
   listPersistedHistoryRows,
 } from "./faqOutputRowStore";
+import { formatChinaDownloadTimestamp, sanitizeFileNameSegment, shortDownloadId } from "../downloads/downloadFileNames";
 
 const FAQ_BOARD_NAME_FIELD = "板块名称" as const;
 
@@ -2298,7 +2299,7 @@ async function writeHistoryExportFile(input: HistoryFilters & { format?: "xlsx" 
   const filteredRows = filterHistoryRows(allRows, input);
   const exportRows = buildHistoryExportRows(filteredRows);
   const format = input.format || "xlsx";
-  const fileName = `faq-history-${Date.now()}.${format}`;
+  const fileName = buildGenerationHistoryFileName(input, format);
   const resultFilePath = path.join(FAQ_DOWNLOAD_TASK_DIR, `${taskId}.${format}`);
 
   if (format === "csv") {
@@ -2320,6 +2321,64 @@ async function writeHistoryExportFile(input: HistoryFilters & { format?: "xlsx" 
     resultFilePath,
     contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   };
+}
+
+function generationVariantLabel(variant: GenerationDownloadTaskVariant) {
+  if (variant === "field_extract") return "字段提取";
+  if (variant === "full") return "完整结果";
+  if (variant === "main") return "main";
+  return sanitizeFileNameSegment(variant, "结果");
+}
+
+async function getGenerationDownloadMeta(jobId: string) {
+  const [jobRows] = await pool.query<RowDataPacket[]>(
+    `
+      SELECT sc_type, uploader, total_rows
+      FROM content_generation_jobs
+      WHERE id = ?
+      LIMIT 1
+    `,
+    [jobId],
+  );
+  const [countryRows] = await pool.query<RowDataPacket[]>(
+    `
+      SELECT DISTINCT country
+      FROM content_generation_job_rows
+      WHERE job_id = ? AND country IS NOT NULL AND country <> ''
+      LIMIT 4
+    `,
+    [jobId],
+  );
+  const countries = countryRows.map((row) => String(row.country || "").trim().toUpperCase()).filter(Boolean);
+  const country = countries.length <= 0 ? "NA" : countries.length === 1 ? countries[0] : `MULTI${countries.length}`;
+  const job = jobRows[0] || {};
+  return {
+    scType: String(job.sc_type || "faq"),
+    uploader: String(job.uploader || ""),
+    totalRows: Number(job.total_rows || 0),
+    country,
+  };
+}
+
+function buildGenerationJobFileName(input: {
+  jobId: string;
+  variant: GenerationDownloadTaskVariant;
+  scType: string;
+  country: string;
+  totalRows: number;
+}) {
+  const scType = sanitizeFileNameSegment(input.scType || "faq", "faq");
+  const country = sanitizeFileNameSegment(input.country, "NA");
+  const rowCount = Math.max(0, Number(input.totalRows || 0));
+  const variant = generationVariantLabel(input.variant);
+  return `FAQ输出_${scType}_${country}_${rowCount}行_${variant}_${formatChinaDownloadTimestamp()}_${shortDownloadId(input.jobId, "job")}.xlsx`;
+}
+
+function buildGenerationHistoryFileName(input: HistoryFilters & { format?: "xlsx" | "csv" }, format: "xlsx" | "csv") {
+  const scType = sanitizeFileNameSegment(input.scType || "faq", "faq");
+  const country = sanitizeFileNameSegment(input.country ? normalizeCountry(input.country) : "ALL", "ALL");
+  const uploader = sanitizeFileNameSegment(input.uploader || "ALL", "ALL");
+  return `FAQ历史_${scType}_${country}_${uploader}_${format}_${formatChinaDownloadTimestamp()}.${format}`;
 }
 
 function mapDownloadTaskRow(row: RowDataPacket) {
@@ -2413,7 +2472,14 @@ async function prepareGenerationDownloadTask(taskId: string, input: HistoryFilte
       contentType = exportResult.contentType;
     } else {
       const payload = await getGenerationJobDownloadPayload(input.jobId, { variant: input.variant });
-      fileName = payload.fileName;
+      const meta = await getGenerationDownloadMeta(input.jobId);
+      fileName = buildGenerationJobFileName({
+        jobId: input.jobId,
+        variant: input.variant,
+        scType: meta.scType,
+        country: meta.country,
+        totalRows: meta.totalRows,
+      });
       contentType = payload.contentType;
       resultFilePath = path.join(FAQ_DOWNLOAD_TASK_DIR, `${taskId}.xlsx`);
       await writeFile(resultFilePath, payload.buffer);
@@ -2644,7 +2710,7 @@ export async function exportGenerationCountryRollup(input: { scType?: string; co
 
   const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
   return {
-    fileName: `faq-result-${country}.xlsx`,
+    fileName: `FAQ国家汇总_${sanitizeFileNameSegment(scType, "faq")}_${sanitizeFileNameSegment(country, "NA")}_${formatChinaDownloadTimestamp()}.xlsx`,
     contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     buffer,
     summary: {

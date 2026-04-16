@@ -7,6 +7,7 @@ import { getBatchModuleId, getBatchResult, toXlsxByModule } from "../jobs/ingest
 import { getGgCleaningJobDownloadPayload } from "../gg-cleaning/jobStore";
 import { getTranslationJobResult } from "../translation/translationJobStore";
 import { getCategoryCalibrationJobResult } from "../category-calibration/jobStore";
+import { formatChinaDownloadTimestamp, sanitizeFileNameSegment, shortDownloadId } from "./downloadFileNames";
 
 type DownloadTaskStatus = "queued" | "preparing" | "ready" | "failed" | "expired";
 type GlobalDownloadKind =
@@ -19,30 +20,6 @@ const APP_RUNTIME_DIR = path.resolve(process.cwd(), "apps/api/.runtime");
 const GLOBAL_DOWNLOAD_TASK_DIR = path.resolve(APP_RUNTIME_DIR, "global-download-tasks");
 const globalDownloadTaskRetentionMs = 24 * 60 * 60 * 1000;
 const xlsxContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-
-function sanitizeFileNameSegment(value: unknown, fallback: string) {
-  const normalized = String(value || "")
-    .trim()
-    .replace(/[\\/:*?"<>|]+/g, "-")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-  return normalized || fallback;
-}
-
-function formatDownloadTimestamp(date = new Date()) {
-  const chinaDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return [
-    chinaDate.getUTCFullYear(),
-    pad(chinaDate.getUTCMonth() + 1),
-    pad(chinaDate.getUTCDate()),
-    "-",
-    pad(chinaDate.getUTCHours()),
-    pad(chinaDate.getUTCMinutes()),
-    pad(chinaDate.getUTCSeconds()),
-  ].join("");
-}
 
 function summarizeCountries(rows: Array<Record<string, unknown>>) {
   const countries = Array.from(
@@ -78,9 +55,82 @@ function buildQualityBatchFileName(input: {
   const uploader = sanitizeFileNameSegment(input.uploader, "unknown");
   const country = sanitizeFileNameSegment(input.country, "NA");
   const rowCount = Math.max(0, Number(input.rowCount || 0));
-  const timestamp = formatDownloadTimestamp();
-  const shortId = sanitizeFileNameSegment(input.batchId.slice(0, 8), "batch");
+  const timestamp = formatChinaDownloadTimestamp();
+  const shortId = shortDownloadId(input.batchId, "batch");
   return `${tool}_${uploader}_${country}_${rowCount}行_${timestamp}_${shortId}.xlsx`;
+}
+
+async function getGgCleaningMeta(jobId: string) {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    "SELECT uploader, total_rows, processed_rows FROM gg_cleaning_jobs WHERE id = ? LIMIT 1",
+    [jobId],
+  );
+  const row = rows[0] || {};
+  return {
+    uploader: String(row.uploader || ""),
+    rowCount: Number(row.processed_rows || row.total_rows || 0),
+  };
+}
+
+async function getTranslationMeta(jobId: string) {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    "SELECT uploader, target_language, total_rows, processed_rows FROM translation_jobs WHERE id = ? LIMIT 1",
+    [jobId],
+  );
+  const row = rows[0] || {};
+  return {
+    uploader: String(row.uploader || ""),
+    targetLanguage: String(row.target_language || ""),
+    rowCount: Number(row.processed_rows || row.total_rows || 0),
+  };
+}
+
+async function getCategoryCalibrationMeta(jobId: string) {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    "SELECT uploader, total_rows, processed_rows, row_results_json FROM category_calibration_jobs WHERE id = ? LIMIT 1",
+    [jobId],
+  );
+  const row = rows[0] || {};
+  let country = "NA";
+  const rowResults =
+    typeof row.row_results_json === "string"
+      ? (() => {
+          try {
+            return JSON.parse(row.row_results_json);
+          } catch {
+            return null;
+          }
+        })()
+      : row.row_results_json;
+  if (Array.isArray(rowResults)) {
+    country = summarizeCountries(rowResults as Array<Record<string, unknown>>);
+  }
+  return {
+    uploader: String(row.uploader || ""),
+    country,
+    rowCount: Number(row.processed_rows || row.total_rows || 0),
+  };
+}
+
+function buildGgCleaningFileName(input: { jobId: string; uploader: string; rowCount: number; includeDebug?: boolean }) {
+  const uploader = sanitizeFileNameSegment(input.uploader, "unknown");
+  const rowCount = Math.max(0, Number(input.rowCount || 0));
+  const variant = input.includeDebug ? "完整结果" : "商家结果";
+  return `GG清洗_${uploader}_${rowCount}行_${variant}_${formatChinaDownloadTimestamp()}_${shortDownloadId(input.jobId, "job")}.xlsx`;
+}
+
+function buildTranslationFileName(input: { jobId: string; uploader: string; targetLanguage: string; rowCount: number }) {
+  const uploader = sanitizeFileNameSegment(input.uploader, "unknown");
+  const targetLanguage = sanitizeFileNameSegment(input.targetLanguage, "NA");
+  const rowCount = Math.max(0, Number(input.rowCount || 0));
+  return `批量翻译_${uploader}_${targetLanguage}_${rowCount}行_${formatChinaDownloadTimestamp()}_${shortDownloadId(input.jobId, "job")}.xlsx`;
+}
+
+function buildCategoryCalibrationFileName(input: { jobId: string; uploader: string; country: string; rowCount: number }) {
+  const uploader = sanitizeFileNameSegment(input.uploader, "unknown");
+  const country = sanitizeFileNameSegment(input.country, "NA");
+  const rowCount = Math.max(0, Number(input.rowCount || 0));
+  return `Category校准_${uploader}_${country}_${rowCount}行_${formatChinaDownloadTimestamp()}_${shortDownloadId(input.jobId, "job")}.xlsx`;
 }
 
 function mapDownloadTaskRow(row: RowDataPacket) {
@@ -207,10 +257,16 @@ async function prepareGlobalDownloadTask(
       prepared = await prepareQualityBatchDownload(input.jobId);
     } else if (input.kind === "gg-cleaning") {
       prepared = await getGgCleaningJobDownloadPayload(input.jobId, { includeDebug: input.includeDebug });
+      const meta = await getGgCleaningMeta(input.jobId);
+      prepared = { ...prepared, fileName: buildGgCleaningFileName({ jobId: input.jobId, ...meta, includeDebug: input.includeDebug }) };
     } else if (input.kind === "translation-batch") {
       prepared = await prepareTranslationBatchDownload(input.jobId);
+      const meta = await getTranslationMeta(input.jobId);
+      prepared = { ...prepared, fileName: buildTranslationFileName({ jobId: input.jobId, ...meta }) };
     } else if (input.kind === "category-calibration") {
       prepared = await prepareCategoryCalibrationDownload(input.jobId);
+      const meta = await getCategoryCalibrationMeta(input.jobId);
+      prepared = { ...prepared, fileName: buildCategoryCalibrationFileName({ jobId: input.jobId, ...meta }) };
     } else {
       throw new Error("Unsupported download task type.");
     }
