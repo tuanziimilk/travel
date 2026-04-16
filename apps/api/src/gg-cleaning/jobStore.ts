@@ -1,6 +1,7 @@
 import { desc, eq, gte } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
+import path from "node:path";
 import * as XLSX from "xlsx";
 import { db } from "../db/client";
 import { ggCleaningJobs } from "../db/schema";
@@ -9,6 +10,24 @@ import { formatChinaIsoOffset } from "../utils/time";
 
 const ERROR_REASON_MAX_LENGTH = 512;
 let ensureGgCleaningJobsTablePromise: Promise<void> | null = null;
+
+async function resolveReadableResultPath(filePath: string | null | undefined) {
+  const candidates = [String(filePath || "")].filter(Boolean);
+  const legacyPrefix = "/app/.runtime/";
+  const currentRuntimePrefix = path.resolve(process.cwd(), "apps/api/.runtime").replace(/\\/g, "/");
+  if (filePath?.startsWith(legacyPrefix)) {
+    candidates.push(path.join(currentRuntimePrefix, filePath.slice(legacyPrefix.length)));
+  }
+  for (const candidate of candidates) {
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+      // Try the next historical runtime location.
+    }
+  }
+  return candidates[0] || "";
+}
 
 function compactErrorMessage(message: string | null | undefined) {
   const normalized = String(message || "").replace(/\s+/g, " ").trim();
@@ -279,7 +298,7 @@ export async function getGgCleaningJobResult(jobId: string) {
   const row = await getGgCleaningJobById(jobId);
   let xlsxBase64 = row.resultFileBase64 || "";
   if (!xlsxBase64 && row.resultFilePath) {
-    const fileBuffer = await readFile(row.resultFilePath);
+    const fileBuffer = await readFile(await resolveReadableResultPath(row.resultFilePath));
     xlsxBase64 = fileBuffer.toString("base64");
   }
   return {
@@ -321,7 +340,7 @@ export async function getGgCleaningJobDownloadPayload(jobId: string, options?: {
   const preferredFileName = includeDebug ? `${fileNameBase}.xlsx` : `${fileNameBase}-merchant-only.xlsx`;
   let fileBuffer: Buffer | null = null;
   if (row.resultFilePath) {
-    fileBuffer = await readFile(row.resultFilePath);
+    fileBuffer = await readFile(await resolveReadableResultPath(row.resultFilePath));
   } else if (row.resultFileBase64) {
     fileBuffer = Buffer.from(row.resultFileBase64, "base64");
   }
