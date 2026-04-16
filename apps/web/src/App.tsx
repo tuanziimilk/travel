@@ -3,6 +3,7 @@ import * as Select from "@radix-ui/react-select";
 import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import {
+  aiModelOptions,
   categoryCalibrationDefaultAiModel,
   translationDefaultAiModel,
   type AiModel,
@@ -40,6 +41,11 @@ const TranslationTextPage = lazy(() =>
   import("./pages/TranslationTextPage").then((module) => ({ default: module.TranslationTextPage })),
 );
 const UploadPage = lazy(() => import("./pages/UploadPage").then((module) => ({ default: module.UploadPage })));
+
+const fallbackModelsByProvider: Record<AiProvider, AiModel[]> = {
+  openai: aiModelOptions.filter((model) => model.startsWith("gpt-")) as AiModel[],
+  gemini: aiModelOptions.filter((model) => model.startsWith("gemini-")) as AiModel[],
+};
 
 type WorkspaceId =
   | "quality"
@@ -223,8 +229,8 @@ export default function App() {
     : toolScopedKey
       ? aiConfigQuery.data?.aiModel || fallbackModelByTool[toolScopedKey]
       : "";
-  const modelsByProvider = aiConfigQuery.data?.availableModelsByProvider || { openai: [], gemini: [] };
-  const modelOptions = isAiSwitchDisabledWorkspace ? ["无需AI"] : modelsByProvider[currentProvider] || [];
+  const modelsByProvider = aiConfigQuery.data?.availableModelsByProvider || fallbackModelsByProvider;
+  const modelOptions = isAiSwitchDisabledWorkspace ? ["无需AI"] : modelsByProvider[currentProvider] || fallbackModelsByProvider[currentProvider] || [];
   const providerOptions = aiConfigQuery.data?.availableProviders || ["openai", "gemini"];
 
   const handleModelChange = (value: string) => {
@@ -236,7 +242,7 @@ export default function App() {
   const handleProviderChange = (value: string) => {
     if (!toolScopedKey || aiConfigSetMutation.isPending) return;
     const provider = value as AiProvider;
-    const nextModel = ((modelsByProvider[provider] || [])[0] as AiModel | undefined);
+    const nextModel = ((modelsByProvider[provider] || fallbackModelsByProvider[provider] || [])[0] as AiModel | undefined);
     aiConfigSetMutation.mutate({
       toolKey: toolScopedKey,
       provider,
