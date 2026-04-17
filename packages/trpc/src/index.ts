@@ -65,16 +65,21 @@ export type OutputMode = z.infer<typeof outputModeSchema>;
 
 export const qualityBatchUploadMaxFileBytes = 12 * 1024 * 1024;
 export const qualityBatchUploadMaxRows = 2000;
-export const faqOutputUploadMaxFileBytes = 12 * 1024 * 1024;
-export const faqOutputUploadMaxRows = 3000;
+export const faqOutputUploadMaxFileBytes = 20 * 1024 * 1024;
+export const faqOutputUploadMaxRows = 30000;
 export const translationUploadMaxFileBytes = 12 * 1024 * 1024;
 export const translationUploadMaxRows = 3000;
 export const translationTextMaxChars = 12000;
 export const translationDefaultTargetLanguage = "Simplified Chinese";
 export const translationDefaultAiModel = "gpt-4o-mini";
-export const translationRealtimeCellThreshold = Number.MAX_SAFE_INTEGER;
-export const translationRealtimeTokenThreshold = Number.MAX_SAFE_INTEGER;
-export const translationRealtimeChunkSize = 120;
+export const categoryCalibrationDefaultAiModel = "gpt-4o-mini";
+export const ggCleaningUploadMaxFileBytes = 300 * 1024 * 1024;
+export const ggCleaningUploadMaxRows = 500000;
+export const categoryCalibrationUploadMaxFileBytes = 50 * 1024 * 1024;
+export const categoryCalibrationUploadMaxRows = 50000;
+export const translationRealtimeCellThreshold = 3000;
+export const translationRealtimeTokenThreshold = 100000;
+export const translationRealtimeChunkSize = 40;
 export const translationBatchChunkSize = 80;
 export const translationBatchInputCostPer1M = 0.075;
 export const translationBatchOutputCostPer1M = 0.3;
@@ -201,6 +206,7 @@ export const batchCancelInputSchema = z.object({
 
 export const batchRetryInputSchema = z.object({
   jobId: z.string(),
+  scope: z.enum(["all", "failed_only"]).optional().default("all"),
 });
 
 export const batchQueueInputSchema = z.object({
@@ -303,7 +309,7 @@ export const generationRunInputSchema = z.object({
 export const generationQueueInputSchema = z.object({
   scType: scTypeSchema.optional().default("faq"),
   page: z.number().int().min(1).optional().default(1),
-  pageSize: z.number().int().min(1).max(50).optional().default(10),
+  pageSize: z.number().int().min(1).max(50).optional().default(20),
 });
 
 export const generationResultInputSchema = z.object({
@@ -368,6 +374,7 @@ export const translationBatchRunInputSchema = z.object({
   fileBase64: z.string().min(1),
   targetLanguage: translationTargetLanguageSchema,
   selectedColumns: z.array(z.string().trim().min(1)).min(1),
+  detectLanguage: z.boolean().optional().default(false),
 });
 
 export const translationQueueInputSchema = z.object({
@@ -380,6 +387,65 @@ export const translationStatusInputSchema = z.object({
 });
 
 export const translationResultInputSchema = z.object({
+  jobId: z.string().min(1),
+});
+
+export const ggCleaningPreviewInputSchema = z
+  .object({
+    fileName: z.string().min(1),
+    uploadId: z.string().min(1).optional(),
+  })
+  .refine((value) => Boolean(value.uploadId), "uploadId is required");
+
+export const ggCleaningRunInputSchema = z
+  .object({
+    uploader: uploaderSchema,
+    note: z.string().optional().default(""),
+    fileName: z.string().min(1),
+    uploadId: z.string().min(1).optional(),
+  })
+  .refine((value) => Boolean(value.uploadId), "uploadId is required");
+
+export const ggCleaningQueueInputSchema = z.object({
+  page: z.number().int().min(1).optional().default(1),
+  pageSize: z.number().int().min(1).max(50).optional().default(10),
+});
+
+export const ggCleaningStatusInputSchema = z.object({
+  jobId: z.string().min(1),
+});
+
+export const ggCleaningResultInputSchema = z.object({
+  jobId: z.string().min(1),
+});
+
+export const categoryCalibrationPreviewInputSchema = z
+  .object({
+    fileName: z.string().min(1),
+    uploadId: z.string().min(1).optional(),
+  })
+  .refine((value) => Boolean(value.uploadId), "uploadId is required");
+
+export const categoryCalibrationRunInputSchema = z
+  .object({
+    uploader: uploaderSchema,
+    note: z.string().optional().default(""),
+    fileName: z.string().min(1),
+    uploadId: z.string().min(1).optional(),
+    aiModel: aiModelSchema.optional().default(categoryCalibrationDefaultAiModel),
+  })
+  .refine((value) => Boolean(value.uploadId), "uploadId is required");
+
+export const categoryCalibrationQueueInputSchema = z.object({
+  page: z.number().int().min(1).optional().default(1),
+  pageSize: z.number().int().min(1).max(50).optional().default(10),
+});
+
+export const categoryCalibrationStatusInputSchema = z.object({
+  jobId: z.string().min(1),
+});
+
+export const categoryCalibrationResultInputSchema = z.object({
   jobId: z.string().min(1),
 });
 

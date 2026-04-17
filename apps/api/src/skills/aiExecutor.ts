@@ -33,6 +33,8 @@ export type ExecuteOptions<T> = {
   buildRepairMessages?: (candidate: string, errors: string[]) => Promise<ExecutorMessages> | ExecutorMessages;
   maxRetries?: number;
   requestTimeoutMs?: number;
+  aiModel?: string;
+  useConfiguredTemperature?: boolean;
 };
 
 type ResponseFormatMode = "json_object" | "json_schema";
@@ -148,9 +150,10 @@ export class AiExecutor {
     allowResponseFormat = true,
     allowMaxCompletionTokens = true,
     requestTimeoutMs = env.aiRequestTimeoutMs,
+    aiModel = env.aiModel,
   ): Promise<{ content: string; usage: LlmCallUsage }> {
     const payload: Record<string, unknown> = {
-      model: env.aiModel,
+      model: aiModel,
       messages: [
         { role: "system", content: messages.system },
         { role: "user", content: messages.user },
@@ -179,9 +182,9 @@ export class AiExecutor {
           "Content-Type": "application/json",
           Authorization: `Bearer ${env.aiApiKey}`,
         },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
     } finally {
       clearTimeout(timer);
     }
@@ -190,13 +193,13 @@ export class AiExecutor {
 
     if (!response.ok) {
       if (allowTemperature && this.shouldFallbackWithoutTemperature(response.status, body)) {
-        return this.callLLMOnce(messages, formatMode, false, allowResponseFormat, allowMaxCompletionTokens, requestTimeoutMs);
+        return this.callLLMOnce(messages, formatMode, false, allowResponseFormat, allowMaxCompletionTokens, requestTimeoutMs, aiModel);
       }
       if (allowResponseFormat && this.shouldFallbackWithoutResponseFormat(response.status, body)) {
-        return this.callLLMOnce(messages, formatMode, allowTemperature, false, allowMaxCompletionTokens, requestTimeoutMs);
+        return this.callLLMOnce(messages, formatMode, allowTemperature, false, allowMaxCompletionTokens, requestTimeoutMs, aiModel);
       }
       if (allowMaxCompletionTokens && this.shouldFallbackWithoutMaxCompletionTokens(response.status, body)) {
-        return this.callLLMOnce(messages, formatMode, allowTemperature, allowResponseFormat, false, requestTimeoutMs);
+        return this.callLLMOnce(messages, formatMode, allowTemperature, allowResponseFormat, false, requestTimeoutMs, aiModel);
       }
       if (this.shouldFallbackToJsonObject(response.status, body, formatMode)) {
         return this.callLLMOnce(
@@ -206,6 +209,7 @@ export class AiExecutor {
           allowResponseFormat,
           allowMaxCompletionTokens,
           requestTimeoutMs,
+          aiModel,
         );
       }
       throw new Error(`LLM 请求失败: ${response.status} ${body}`);
@@ -237,14 +241,27 @@ export class AiExecutor {
     return { content, usage };
   }
 
-  async callLLM(messages: ExecutorMessages, requestTimeoutMs?: number): Promise<{ content: string; usage: LlmCallUsage }> {
+  async callLLM(
+    messages: ExecutorMessages,
+    requestTimeoutMs?: number,
+    aiModel = env.aiModel,
+    useConfiguredTemperature = false,
+  ): Promise<{ content: string; usage: LlmCallUsage }> {
     const maxRetries = env.aiHttpMaxRetries;
     const formatMode = this.normalizeFormatMode(env.aiResponseFormatMode);
     const errors: string[] = [];
 
     for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
       try {
-        return await this.callLLMOnce(messages, formatMode, false, true, true, requestTimeoutMs ?? env.aiRequestTimeoutMs);
+        return await this.callLLMOnce(
+          messages,
+          formatMode,
+          useConfiguredTemperature,
+          true,
+          true,
+          requestTimeoutMs ?? env.aiRequestTimeoutMs,
+          aiModel,
+        );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         errors.push(`attempt${attempt + 1}: ${message}`);
@@ -266,7 +283,8 @@ export class AiExecutor {
   async execute<T>(options: ExecuteOptions<T>): Promise<{ result: T; usage: LlmCallUsage }> {
     const maxRetries = options.maxRetries ?? env.aiExecutorMaxRetries;
     const init = await options.buildMessages();
-    const initial = await this.callLLM(init, options.requestTimeoutMs);
+    const aiModel = options.aiModel || env.aiModel;
+    const initial = await this.callLLM(init, options.requestTimeoutMs, aiModel, options.useConfiguredTemperature === true);
     let candidate = initial.content;
     const usage: LlmCallUsage = {
       promptTokens: initial.usage.promptTokens,
@@ -282,13 +300,23 @@ export class AiExecutor {
       if (i === maxRetries) break;
       if (options.buildRepairMessages) {
         const repair = await options.buildRepairMessages(candidate, lastErrors);
-        const repaired = await this.callLLM(repair, options.requestTimeoutMs);
+        const repaired = await this.callLLM(
+          repair,
+          options.requestTimeoutMs,
+          aiModel,
+          options.useConfiguredTemperature === true,
+        );
         candidate = repaired.content;
         usage.promptTokens += repaired.usage.promptTokens;
         usage.completionTokens += repaired.usage.completionTokens;
         usage.totalTokens += repaired.usage.totalTokens;
       } else {
-        const retried = await this.callLLM(init, options.requestTimeoutMs);
+        const retried = await this.callLLM(
+          init,
+          options.requestTimeoutMs,
+          aiModel,
+          options.useConfiguredTemperature === true,
+        );
         candidate = retried.content;
         usage.promptTokens += retried.usage.promptTokens;
         usage.completionTokens += retried.usage.completionTokens;

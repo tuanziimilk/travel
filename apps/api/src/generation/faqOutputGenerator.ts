@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import * as XLSX from "xlsx";
 import { z } from "zod";
-import { faqOutputUploadMaxFileBytes, type ScType, type Uploader } from "@about-demo/trpc";
+import { faqOutputUploadMaxFileBytes, faqOutputUploadMaxRows, type ScType, type Uploader } from "@about-demo/trpc";
 import { env } from "../env";
 import { aiExecutor } from "../skills/aiExecutor";
 import { resolveSkillRoot } from "../skills/skillPath";
@@ -613,6 +613,9 @@ async function executeFaqOutputGeneration(
     throw new Error(`上传文件过大，请控制在 ${Math.round(faqOutputUploadMaxFileBytes / 1024 / 1024)}MB 以内后再试`);
   }
   const rows = parseFaqOutputFile(input.fileName, input.fileBase64);
+  if (rows.length > faqOutputUploadMaxRows) {
+    throw new Error(`上传行数过多，请控制在 ${faqOutputUploadMaxRows} 行以内后再试`);
+  }
   if (!rows.length) throw new Error("上传文件为空，无法生成 FAQ 输出。");
 
   const routedRows = rows.map((row, index) => {

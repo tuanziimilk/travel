@@ -33,10 +33,12 @@ const parseNumericEnv = (value: string | undefined): number | null => {
 
 const resolvedAiModel = process.env.AI_MODEL || "gpt-5-mini";
 const translationResolvedAiModel = process.env.TRANSLATION_AI_MODEL || "gpt-4o-mini";
+const categoryCalibrationResolvedAiModel = process.env.CATEGORY_CALIBRATION_AI_MODEL || "gpt-4o-mini";
 const inputCostOverride = parseNumericEnv(process.env.AI_INPUT_COST_PER_1M);
 const outputCostOverride = parseNumericEnv(process.env.AI_OUTPUT_COST_PER_1M);
 const aiCostAutoMatch = (process.env.AI_COST_AUTO_MATCH || "true").toLowerCase() !== "false";
 let runtimeAiModel = resolvedAiModel;
+let categoryCalibrationRuntimeAiModel = categoryCalibrationResolvedAiModel;
 
 function resolveAiUnitCost(aiModel: string) {
   const mapped = MODEL_UNIT_COSTS[aiModel];
@@ -50,6 +52,10 @@ function resolveAiUnitCost(aiModel: string) {
     inputPer1M: inputCostOverride ?? mapped?.inputPer1M ?? 0,
     outputPer1M: outputCostOverride ?? mapped?.outputPer1M ?? 0,
   };
+}
+
+export function getAiUnitCostForModel(aiModel: string) {
+  return resolveAiUnitCost(aiModel);
 }
 
 export function getAiRuntimeConfig() {
@@ -69,6 +75,25 @@ export function setAiRuntimeModel(aiModel: string) {
   }
   runtimeAiModel = aiModel;
   return getAiRuntimeConfig();
+}
+
+export function getCategoryCalibrationAiRuntimeConfig() {
+  const cost = resolveAiUnitCost(categoryCalibrationRuntimeAiModel);
+  return {
+    aiModel: categoryCalibrationRuntimeAiModel,
+    aiCostAutoMatch,
+    aiInputCostPer1M: cost.inputPer1M,
+    aiOutputCostPer1M: cost.outputPer1M,
+    availableModels: aiModelOptions,
+  };
+}
+
+export function setCategoryCalibrationAiRuntimeModel(aiModel: string) {
+  if (!aiModelOptions.includes(aiModel)) {
+    throw new Error(`Unsupported AI model: ${aiModel}`);
+  }
+  categoryCalibrationRuntimeAiModel = aiModel;
+  return getCategoryCalibrationAiRuntimeConfig();
 }
 
 export const env = {
@@ -100,21 +125,21 @@ export const env = {
   aboutSkillPath: process.env.ABOUT_SKILL_PATH || "skills/about-quality-scoring",
   faqSkillPath: process.env.FAQ_SKILL_PATH || "skills/faq-quality-scoring",
   snapshotEnabled: (process.env.SNAPSHOT_ENABLED || "true").toLowerCase() === "true",
-  ingestRowConcurrency: Math.max(1, Number(process.env.INGEST_ROW_CONCURRENCY || 10)),
+  ingestRowConcurrency: Math.max(1, Number(process.env.INGEST_ROW_CONCURRENCY || 8)),
   ingestAdaptiveThrottleEnabled: (process.env.INGEST_ADAPTIVE_THROTTLE_ENABLED || "true").toLowerCase() === "true",
-  ingestFailureStreakThreshold: Math.max(1, Number(process.env.INGEST_FAILURE_STREAK_THRESHOLD || 3)),
-  ingestThrottleMs: Math.max(0, Number(process.env.INGEST_THROTTLE_MS || 2000)),
-  ingestProgressFlushMs: Math.max(200, Number(process.env.INGEST_PROGRESS_FLUSH_MS || 1000)),
+  ingestFailureStreakThreshold: Math.max(1, Number(process.env.INGEST_FAILURE_STREAK_THRESHOLD || 2)),
+  ingestThrottleMs: Math.max(0, Number(process.env.INGEST_THROTTLE_MS || 4000)),
+  ingestProgressFlushMs: Math.max(200, Number(process.env.INGEST_PROGRESS_FLUSH_MS || 2000)),
   ingestRowMaxRetries: Math.max(0, Number(process.env.INGEST_ROW_MAX_RETRIES || 2)),
   ingestRowRetryBaseMs: Math.max(100, Number(process.env.INGEST_ROW_RETRY_BASE_MS || 500)),
   ingestRowRetryMaxMs: Math.max(500, Number(process.env.INGEST_ROW_RETRY_MAX_MS || 5000)),
   ingestFinalRetryPasses: Math.max(0, Number(process.env.INGEST_FINAL_RETRY_PASSES || 1)),
-  ingestFinalRetryConcurrency: Math.max(1, Number(process.env.INGEST_FINAL_RETRY_CONCURRENCY || 4)),
+  ingestFinalRetryConcurrency: Math.max(1, Number(process.env.INGEST_FINAL_RETRY_CONCURRENCY || 2)),
   ingestJobStallMs: Math.max(60_000, Number(process.env.INGEST_JOB_STALL_MS || 1_200_000)),
   faqOutputJobConcurrency: Math.max(1, Number(process.env.FAQ_OUTPUT_JOB_CONCURRENCY || 4)),
   faqOutputRowConcurrencyCap: Math.max(1, Number(process.env.FAQ_OUTPUT_ROW_CONCURRENCY_CAP || 6)),
   translationJobConcurrency: Math.max(1, Number(process.env.TRANSLATION_JOB_CONCURRENCY || 2)),
-  translationRealtimeChunkConcurrency: Math.max(1, Number(process.env.TRANSLATION_REALTIME_CHUNK_CONCURRENCY || 2)),
+  translationRealtimeChunkConcurrency: Math.max(1, Number(process.env.TRANSLATION_REALTIME_CHUNK_CONCURRENCY || 6)),
   translationRealtimeTimeoutMs: Math.max(30_000, Number(process.env.TRANSLATION_REALTIME_TIMEOUT_MS || 1_800_000)),
   translationRealtimeMaxRetries: Math.max(0, Number(process.env.TRANSLATION_REALTIME_MAX_RETRIES || 1)),
   aiHttpMaxRetries: Math.max(0, Number(process.env.AI_HTTP_MAX_RETRIES || 2)),

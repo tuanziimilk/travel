@@ -11,13 +11,24 @@ export default defineConfig({
         target: "http://localhost:3001",
         changeOrigin: true,
       },
+      "/gg-cleaning/uploads": {
+        target: "http://localhost:3001",
+        changeOrigin: true,
+      },
+      "/gg-cleaning/jobs": {
+        target: "http://localhost:3001",
+        changeOrigin: true,
+      },
+      "/category-calibration/uploads": {
+        target: "http://localhost:3001",
+        changeOrigin: true,
+      },
     },
   },
   build: {
     rollupOptions: {
       output: {
         manualChunks: {
-          react: ["react", "react-dom"],
           radix: [
             "@radix-ui/react-accordion",
             "@radix-ui/react-select",

@@ -12,6 +12,8 @@
     "db:migrate": "tsx scripts/dbMigrateSafe.ts",
     "backfill:china-timezone": "tsx scripts/backfillChinaTimezone.ts",
     "repair:content-generation-job-timezone": "tsx scripts/repairContentGenerationJobTimezone.ts",
+    "repair:ingest-job-timezone": "tsx scripts/repairIngestJobTimezone.ts",
+    "repair:upload-batch-timezone": "tsx scripts/repairUploadBatchTimezone.ts",
     "bootstrap:skill-history": "tsx scripts/bootstrapSkillHistory.ts",
     "repair:bootstrap-skill-history-notes": "tsx scripts/repairBootstrapSkillHistoryNotes.ts"
   },
@@ -23,6 +25,7 @@
     "dotenv": "^16.4.7",
     "drizzle-orm": "0.44.2",
     "express": "4.21.2",
+    "iconv-lite": "^0.7.2",
     "jose": "^5.9.6",
     "mysql2": "^3.12.0",
     "xlsx": "^0.18.5",

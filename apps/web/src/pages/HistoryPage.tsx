@@ -21,6 +21,12 @@ function winnerLabel(version: "online" | "ai" | "op") {
   return "OP";
 }
 
+function publishCandidateLabel(version?: "ai" | "op" | null) {
+  if (version === "ai") return "AI";
+  if (version === "op") return "OP";
+  return "\u65e0";
+}
+
 function formatRawDateTime(dateLike: string | Date) {
   return formatChinaDateTime(dateLike);
 }
@@ -105,14 +111,18 @@ export function HistoryPage() {
   }
 
   const batches = listQuery.data?.rows || [];
-  const summary = useMemo(() => {
-    const count = batches.length;
-    if (!count) return { batchCount: 0, totalCount: 0, publishPassCount: 0, publishPassRate: 0 };
-    const validRowCount = batches.reduce((acc, item) => acc + Number(item.validRowCount || 0), 0);
-    const publishPassCount = batches.reduce((acc, item) => acc + Number(item.publishPassCount || 0), 0);
-    const publishPassRate = validRowCount ? Number(((publishPassCount / validRowCount) * 100).toFixed(1)) : 0;
-    return { batchCount: count, totalCount: validRowCount, publishPassCount, publishPassRate };
-  }, [batches]);
+  const summary = useMemo(
+    () =>
+      listQuery.data?.summary || {
+        batchCount: 0,
+        totalRowCount: 0,
+        validRowCount: 0,
+        failedRowCount: 0,
+        publishPassCount: 0,
+        publishPassRate: 0,
+      },
+    [listQuery.data?.summary],
+  );
 
   const totalPages = Math.max(1, Math.ceil((listQuery.data?.total || 0) / 20));
 
@@ -209,7 +219,7 @@ export function HistoryPage() {
           </div>
           <div className="kpi-card">
             <span className="kpi-label">有效行数</span>
-            <strong className="kpi-value">{summary.totalCount}</strong>
+            <strong className="kpi-value">{summary.validRowCount}</strong>
           </div>
           <div className="kpi-card">
             <span className="kpi-label">通过数量</span>
@@ -237,7 +247,7 @@ export function HistoryPage() {
                     通过统计
                     <span className="help-tip-wrap" tabIndex={0}>
                       ?
-                      <span className="help-tip-pop">通过 = AI 或 OP 任一版本可发布，不统计线上版本。</span>
+                      <span className="help-tip-pop">通过 = AI/OP 中存在一个版本同时满足“大于线上且大于 8 分”；若 AI 和 OP 同时满足，取更高分，同分优先 OP。</span>
                     </span>
                   </span>
                 </th>
@@ -247,7 +257,6 @@ export function HistoryPage() {
             </thead>
             <tbody>
               {batches.map((item) => {
-                const winner = pickWinner(item.avgOnline, item.avgAi, item.avgOp, item.hasOpData);
                 const aiLift = Number((Number(item.avgAi) - Number(item.avgOnline)).toFixed(1));
                 const opLift = item.hasOpData ? Number((Number(item.avgOp) - Number(item.avgAi)).toFixed(1)) : 0;
                 const onlinePct = Math.max(0, Math.min(100, (Number(item.avgOnline) / 10) * 100));
@@ -258,7 +267,7 @@ export function HistoryPage() {
                     <td>{formatRawDateTime(item.createdAt)}</td>
                     <td>{item.uploader}</td>
                     <td>{renderNote(item.note || "")}</td>
-                    <td>{item.rowCount}</td>
+                    <td title={`valid ${item.validRowCount} / failed ${item.failedRowCount || 0}`}>{item.totalRowCount ?? item.rowCount}</td>
                     <td>
                       <div className="mini-score-stack">
                         <div className="mini-score-row">
@@ -313,7 +322,9 @@ export function HistoryPage() {
                       </div>
                     </td>
                     <td>
-                      <span className={`winner-chip ${winner}`}>{winnerLabel(winner)}</span>
+                      <span className={`winner-chip ${item.publishCandidateVersion || "none"}`}>
+                        {publishCandidateLabel(item.publishCandidateVersion)}
+                      </span>
                     </td>
                     <td>
                       <button className="btn-ghost history-action-btn" type="button" onClick={() => void downloadBatchXlsx(item.id)}>

@@ -106,6 +106,7 @@ export function TranslationBatchPage() {
   const [note, setNote] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
+  const [detectLanguage, setDetectLanguage] = useState(false);
   const [currentJobId, setCurrentJobId] = useState("");
   const [queuePage, setQueuePage] = useState(1);
   const [error, setError] = useState("");
@@ -202,6 +203,7 @@ export function TranslationBatchPage() {
         fileBase64,
         targetLanguage: translationDefaultTargetLanguage,
         selectedColumns,
+        detectLanguage,
       });
       setCurrentJobId(result.jobId);
       setQueuePage(1);
@@ -313,9 +315,7 @@ export function TranslationBatchPage() {
               ))}
             </div>
 
-            <div className="translation-rule-banner">
-              结果文件会保留原列，并新增 `__translated` 与 `__detected_langs_summary` 列。
-            </div>
+            <div className="translation-rule-banner">结果文件默认只新增 `__translated` 列；开启语言检测后才会额外输出 `__detected_langs_summary`。</div>
           </div>
         ) : null}
 
@@ -357,6 +357,17 @@ export function TranslationBatchPage() {
               <label>任务备注</label>
               <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="例如：4 月欧语市场活动翻译" />
             </div>
+            <label className="translation-inline-toggle">
+              <input
+                type="checkbox"
+                checked={detectLanguage}
+                onChange={(event) => setDetectLanguage(event.target.checked)}
+              />
+              <span>
+                <strong>输出语言检测列</strong>
+                <span>默认关闭；开启后才会在结果文件中附加 `__detected_langs_summary`。</span>
+              </span>
+            </label>
           </div>
         </div>
 

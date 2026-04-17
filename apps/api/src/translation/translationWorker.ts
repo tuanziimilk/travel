@@ -3,9 +3,6 @@ import * as XLSX from "xlsx";
 import {
   translationBatchChunkSize,
   translationDefaultTargetLanguage,
-  translationRealtimeCellThreshold,
-  translationRealtimeChunkSize,
-  translationRealtimeTokenThreshold,
   translationTextMaxChars,
   translationUploadMaxFileBytes,
   translationUploadMaxRows,
@@ -28,6 +25,13 @@ import {
   recoverInterruptedTranslationJobs,
 } from "./translationJobStore";
 
+const translationRealtimeCellThreshold = Math.max(1, Number(process.env.TRANSLATION_REALTIME_CELL_THRESHOLD || 3000));
+const translationRealtimeTokenThreshold = Math.max(
+  1,
+  Number(process.env.TRANSLATION_REALTIME_TOKEN_THRESHOLD || 100000),
+);
+const translationRealtimeChunkSize = Math.max(1, Number(process.env.TRANSLATION_REALTIME_CHUNK_SIZE || 40));
+
 type ParsedTranslationFile = {
   rows: Array<Record<string, string>>;
   columns: string[];
@@ -41,6 +45,7 @@ type QueuedTranslationJobInput = {
   fileBase64: string;
   targetLanguage: TranslationTargetLanguage;
   selectedColumns: string[];
+  detectLanguage?: boolean;
   executionMode?: "batch" | "realtime";
   predictedTotalTokens?: number;
   predictedCostUsd?: number;
@@ -68,7 +73,9 @@ type PreparedJob = {
   totalRows: number;
   predictedTotalTokens: number;
   predictedCostUsd: number;
-  executionMode: "realtime";
+  executionMode: "realtime" | "batch";
+  targetLanguage: string;
+  detectLanguage: boolean;
 };
 
 type RealtimeChunkExecutionResult = {
@@ -82,6 +89,90 @@ type RealtimeChunkExecutionResult = {
   };
   errors: Array<{ rowIndex: number; column: string; message: string }>;
 };
+
+function normalizeForComparison(value: string) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function containsChineseText(value: string) {
+  return /[\u3400-\u9fff]/.test(String(value || ""));
+}
+
+function containsTranslatableLetters(value: string) {
+  return /\p{L}/u.test(String(value || ""));
+}
+
+function isSuspiciousUntranslated(source: string, translated: string) {
+  const normalizedSource = normalizeForComparison(source);
+  const normalizedTranslated = normalizeForComparison(translated);
+  if (!normalizedSource || !normalizedTranslated) return false;
+  if (containsChineseText(normalizedSource)) return false;
+  if (!containsTranslatableLetters(normalizedSource)) return false;
+  return normalizedSource === normalizedTranslated;
+}
+
+async function retrySuspiciousItems(
+  chunk: PreparedCell[],
+  initial: RealtimeChunkExecutionResult,
+  targetLanguage: string,
+): Promise<RealtimeChunkExecutionResult> {
+  const sourceById = new Map(chunk.map((item) => [item.i, item.t]));
+  const suspiciousItems = initial.items.filter((item) =>
+    isSuspiciousUntranslated(sourceById.get(item.i) || "", item.translatedText),
+  );
+  if (suspiciousItems.length === 0) return initial;
+
+  try {
+    const retried = await mapWithConcurrency(
+      chunkItems(
+        suspiciousItems.map((item) => ({
+          i: item.i,
+          t: sourceById.get(item.i) || "",
+        })),
+        8,
+      ),
+      2,
+      async (items) =>
+        translationProvider.translateCellsRealtime({
+          items,
+          targetLanguage,
+          strictTranslation: true,
+        }),
+    );
+
+    const replacedById = new Map(initial.items.map((item) => [item.i, item]));
+    let promptTokens = initial.runtime.promptTokens;
+    let completionTokens = initial.runtime.completionTokens;
+    let totalTokens = initial.runtime.totalTokens;
+    let estimatedCostUsd = initial.runtime.estimatedCostUsd;
+
+    for (const retriedChunk of retried) {
+      promptTokens += retriedChunk.runtime.promptTokens;
+      completionTokens += retriedChunk.runtime.completionTokens;
+      totalTokens += retriedChunk.runtime.totalTokens;
+      estimatedCostUsd += retriedChunk.runtime.estimatedCostUsd;
+      for (const item of retriedChunk.items) {
+        replacedById.set(item.i, item);
+      }
+    }
+
+    return {
+      items: initial.items.map((item) => replacedById.get(item.i) || item),
+      runtime: {
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        estimatedCostUsd: Math.round(estimatedCostUsd * 1_000_000) / 1_000_000,
+        aiModel: initial.runtime.aiModel,
+      },
+      errors: initial.errors,
+    };
+  } catch {
+    return initial;
+  }
+}
 
 function normalizeCell(value: unknown) {
   return String(value ?? "").replace(/\r\n/g, "\n");
@@ -210,11 +301,15 @@ async function translateChunkWithFallback(
       items: chunk.map((item) => ({ i: item.i, t: item.t })),
       targetLanguage,
     });
-    return {
-      items: translated.items,
-      runtime: translated.runtime,
-      errors: [],
-    };
+    return retrySuspiciousItems(
+      chunk,
+      {
+        items: translated.items,
+        runtime: translated.runtime,
+        errors: [],
+      },
+      targetLanguage,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (chunk.length <= 1) {
@@ -261,12 +356,20 @@ function estimateRealtimeCost(predictedInputTokens: number) {
   return Math.round(usd * 1_000_000) / 1_000_000;
 }
 
-function buildPreparedJob(parsed: ParsedTranslationFile, selectedColumnsRaw: string[]): PreparedJob {
+function buildPreparedJob(
+  parsed: ParsedTranslationFile,
+  selectedColumnsRaw: string[],
+  targetLanguage: string,
+  detectLanguage = false,
+): PreparedJob {
   const selectedColumns = selectedColumnsRaw.filter((item) => parsed.columns.includes(item));
   if (!selectedColumns.length) throw new Error("未匹配到可翻译列，请重新选择后再试。");
 
   const resultColumns = [...parsed.columns];
-  for (const column of selectedColumns) resultColumns.push(`${column}__translated`, `${column}__detected_langs_summary`);
+  for (const column of selectedColumns) {
+    resultColumns.push(`${column}__translated`);
+    if (detectLanguage) resultColumns.push(`${column}__detected_langs_summary`);
+  }
 
   const rows = parsed.rows.map((row) => ({ ...row })) as Array<Record<string, string>>;
   const cells: PreparedCell[] = [];
@@ -277,7 +380,7 @@ function buildPreparedJob(parsed: ParsedTranslationFile, selectedColumnsRaw: str
       const value = String(row[column] || "");
       if (shouldSkipCell(value)) {
         row[`${column}__translated`] = "";
-        row[`${column}__detected_langs_summary`] = "";
+        if (detectLanguage) row[`${column}__detected_langs_summary`] = "";
         continue;
       }
       const item = {
@@ -291,7 +394,10 @@ function buildPreparedJob(parsed: ParsedTranslationFile, selectedColumnsRaw: str
     }
   });
 
-  const executionMode: "realtime" = "realtime";
+  const executionMode: "realtime" | "batch" =
+    cells.length <= translationRealtimeCellThreshold && predictedInputTokens <= translationRealtimeTokenThreshold
+      ? "realtime"
+      : "batch";
 
   return {
     rows,
@@ -301,8 +407,11 @@ function buildPreparedJob(parsed: ParsedTranslationFile, selectedColumnsRaw: str
     cells,
     totalRows: rows.length,
     predictedTotalTokens: predictedInputTokens,
-    predictedCostUsd: estimateRealtimeCost(predictedInputTokens),
+    predictedCostUsd:
+      executionMode === "batch" ? estimateBatchCost(predictedInputTokens) : estimateRealtimeCost(predictedInputTokens),
     executionMode,
+    targetLanguage,
+    detectLanguage,
   };
 }
 
@@ -311,6 +420,7 @@ function applyTranslationItems(input: {
   items: TranslationCellOutput[];
   languageCounts: Map<string, number>;
   rowStates: Map<number, TranslationRowResult>;
+  detectLanguage: boolean;
 }) {
   for (const item of input.items) {
     const [rowIndexRaw, ...columnParts] = item.i.split("__");
@@ -320,7 +430,7 @@ function applyTranslationItems(input: {
     if (!row || !column) continue;
 
     row[`${column}__translated`] = item.translatedText;
-    row[`${column}__detected_langs_summary`] = item.detectedLanguages.join(", ");
+    if (input.detectLanguage) row[`${column}__detected_langs_summary`] = item.detectedLanguages.join(", ");
 
     const rowState =
       input.rowStates.get(rowIndex + 1) ||
@@ -429,6 +539,7 @@ async function processTranslationQueue() {
             fileBase64: nextJob.inputFileBase64,
             targetLanguage: nextJob.targetLanguage as TranslationTargetLanguage,
             selectedColumns: (nextJob.selectedColumnsJson as string[] | null) || [],
+            detectLanguage: Boolean(nextJob.detectLanguage),
             executionMode: (nextJob.executionMode as "batch" | "realtime") || undefined,
             predictedTotalTokens: nextJob.predictedTotalTokens,
             predictedCostUsd: Number(nextJob.predictedCostUsd || 0),
@@ -460,7 +571,12 @@ async function runQueuedTranslationJob(jobId: string, input: QueuedTranslationJo
       aiModel: env.translationAiModel,
       errorReason: null,
     });
-    const prepared = buildPreparedJob(parseTranslationFile(input.fileName, input.fileBase64), input.selectedColumns);
+    const prepared = buildPreparedJob(
+      parseTranslationFile(input.fileName, input.fileBase64),
+      input.selectedColumns,
+      input.targetLanguage,
+      Boolean(input.detectLanguage),
+    );
 
     await updateTranslationJobProgress({
       jobId,
@@ -480,7 +596,11 @@ async function runQueuedTranslationJob(jobId: string, input: QueuedTranslationJo
       aiModel: env.translationAiModel,
     });
 
-    await executeRealtimeTranslation(jobId, prepared);
+    if (prepared.executionMode === "batch") {
+      await submitBatchTranslation(jobId, prepared);
+    } else {
+      await executeRealtimeTranslation(jobId, prepared);
+    }
   } catch (error) {
     await failTranslationJob(jobId, error instanceof Error ? error.message : String(error));
   } finally {
@@ -513,6 +633,7 @@ async function executeRealtimeTranslation(jobId: string, prepared: PreparedJob) 
         items: result.items,
         languageCounts,
         rowStates,
+        detectLanguage: prepared.detectLanguage,
       });
       promptTokensSum += result.runtime.promptTokens;
       completionTokensSum += result.runtime.completionTokens;
@@ -562,7 +683,7 @@ async function executeRealtimeTranslation(jobId: string, prepared: PreparedJob) 
         nextChunkIndex += 1;
         const chunk = chunks[currentIndex];
         if (!chunk) break;
-        const result = await translateChunkWithFallback(chunk, translationDefaultTargetLanguage);
+        const result = await translateChunkWithFallback(chunk, prepared.targetLanguage);
         progressChain = progressChain.then(() => applyChunkResult(chunk, result));
         await progressChain;
       }
@@ -606,7 +727,7 @@ async function submitBatchTranslation(jobId: string, prepared: PreparedJob) {
   }));
   const submitted = await translationProvider.submitBatchTranslation({
     chunks,
-    targetLanguage: translationDefaultTargetLanguage,
+    targetLanguage: prepared.targetLanguage,
   });
   await updateTranslationJobPhase({
     jobId,
@@ -649,8 +770,14 @@ async function pollBatchTranslationJob(jobId: string, providerBatchId: string) {
       fileBase64: job.inputFileBase64 || "",
       targetLanguage: (job.targetLanguage as TranslationTargetLanguage) || translationDefaultTargetLanguage,
       selectedColumns: (job.selectedColumnsJson as string[] | null) || [],
+      detectLanguage: Boolean(job.detectLanguage),
     } satisfies QueuedTranslationJobInput;
-    const prepared = buildPreparedJob(parseTranslationFile(input.fileName, input.fileBase64), input.selectedColumns);
+    const prepared = buildPreparedJob(
+      parseTranslationFile(input.fileName, input.fileBase64),
+      input.selectedColumns,
+      input.targetLanguage,
+      Boolean(input.detectLanguage),
+    );
     const batchRows = await translationProvider.fetchBatchTranslationResult({ outputFileId: status.outputFileId });
 
     const languageCounts = new Map<string, number>();
@@ -679,6 +806,7 @@ async function pollBatchTranslationJob(jobId: string, providerBatchId: string) {
         items: chunk.items,
         languageCounts,
         rowStates,
+        detectLanguage: prepared.detectLanguage,
       });
       promptTokensSum += chunk.runtime.promptTokens;
       completionTokensSum += chunk.runtime.completionTokens;
@@ -748,7 +876,7 @@ export async function translateTextNow(input: {
   }
   const translated = await translationProvider.translateTextSync({
     text: input.text,
-    targetLanguage: translationDefaultTargetLanguage,
+    targetLanguage: input.targetLanguage,
   });
   return {
     translatedText: translated.result.translatedText,
@@ -761,13 +889,19 @@ export async function translateTextNow(input: {
 }
 
 export async function startBatchTranslation(input: QueuedTranslationJobInput) {
-  const prepared = buildPreparedJob(parseTranslationFile(input.fileName, input.fileBase64), input.selectedColumns);
+  const prepared = buildPreparedJob(
+    parseTranslationFile(input.fileName, input.fileBase64),
+    input.selectedColumns,
+    input.targetLanguage,
+    Boolean(input.detectLanguage),
+  );
   const reusableJob = await findReusableTranslationJob({
     uploader: input.uploader,
-    targetLanguage: translationDefaultTargetLanguage,
+    targetLanguage: prepared.targetLanguage,
     inputFileName: input.fileName,
     inputFileBase64: input.fileBase64,
     selectedColumns: prepared.selectedColumns,
+    detectLanguage: prepared.detectLanguage,
   });
 
   if (reusableJob) {
@@ -775,7 +909,7 @@ export async function startBatchTranslation(input: QueuedTranslationJobInput) {
       jobId: reusableJob.id,
       totalRows: reusableJob.totalRows || prepared.totalRows,
       selectedColumns: prepared.selectedColumns,
-      executionMode: reusableJob.executionMode as "realtime",
+      executionMode: reusableJob.executionMode as "realtime" | "batch",
       predictedCostUsd: Number(reusableJob.predictedCostUsd || prepared.predictedCostUsd),
       predictedTotalTokens: reusableJob.predictedTotalTokens || prepared.predictedTotalTokens,
       reusedExisting: true,
@@ -787,18 +921,20 @@ export async function startBatchTranslation(input: QueuedTranslationJobInput) {
     note: input.note || "",
     provider: "openai",
     executionMode: prepared.executionMode,
-    targetLanguage: translationDefaultTargetLanguage,
+    targetLanguage: prepared.targetLanguage,
     inputFileName: input.fileName,
     inputFileBase64: input.fileBase64,
     selectedColumns: prepared.selectedColumns,
+    detectLanguage: prepared.detectLanguage,
     predictedTotalTokens: prepared.predictedTotalTokens,
     predictedCostUsd: prepared.predictedCostUsd,
   });
 
   translationJobInputs.set(jobId, {
     ...input,
-    targetLanguage: translationDefaultTargetLanguage,
+    targetLanguage: prepared.targetLanguage,
     selectedColumns: prepared.selectedColumns,
+    detectLanguage: prepared.detectLanguage,
     executionMode: prepared.executionMode,
     predictedTotalTokens: prepared.predictedTotalTokens,
     predictedCostUsd: prepared.predictedCostUsd,
@@ -827,6 +963,7 @@ export async function retryBatchTranslation(jobId: string) {
     fileBase64: job.inputFileBase64,
     targetLanguage: (job.targetLanguage as TranslationTargetLanguage) || translationDefaultTargetLanguage,
     selectedColumns: (job.selectedColumnsJson as string[] | null) || [],
+    detectLanguage: Boolean(job.detectLanguage),
     executionMode: (job.executionMode as "batch" | "realtime") || undefined,
     predictedTotalTokens: job.predictedTotalTokens,
     predictedCostUsd: Number(job.predictedCostUsd || 0),

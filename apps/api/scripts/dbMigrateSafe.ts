@@ -178,9 +178,19 @@ async function columnExists(connection: mysql.Connection, tableName: string, col
   return Boolean((rows as unknown[]).length);
 }
 
+async function indexExists(connection: mysql.Connection, tableName: string, indexName: string) {
+  const [rows] = await connection.query(`SHOW INDEX FROM \`${tableName}\` WHERE Key_name = ?`, [indexName]);
+  return Boolean((rows as unknown[]).length);
+}
+
 async function addColumnIfMissing(connection: mysql.Connection, tableName: string, columnName: string, definition: string) {
   if (await columnExists(connection, tableName, columnName)) return;
   await connection.query(`ALTER TABLE \`${tableName}\` ADD COLUMN \`${columnName}\` ${definition}`);
+}
+
+async function addIndexIfMissing(connection: mysql.Connection, tableName: string, indexName: string, definitionSql: string) {
+  if (await indexExists(connection, tableName, indexName)) return;
+  await connection.query(`ALTER TABLE \`${tableName}\` ADD INDEX \`${indexName}\` ${definitionSql}`);
 }
 
 async function recordMigration(connection: mysql.Connection, tag: string, when: number) {
@@ -328,6 +338,57 @@ async function applyTranslationJobsMigration(connection: mysql.Connection, migra
   console.log("[db:migrate:safe] applied 0004_translation_jobs");
 }
 
+async function ensureContentGenerationHistoryIndexes(connection: mysql.Connection) {
+  if (!(await tableExists(connection, "content_generation_jobs"))) return;
+  if (!(await tableExists(connection, "content_generation_job_rows"))) return;
+
+  await addIndexIfMissing(connection, "content_generation_jobs", "idx_generation_jobs_sc_type_id", `(\`sc_type\`, \`id\`)`);
+  await addIndexIfMissing(connection, "content_generation_jobs", "idx_generation_jobs_sc_type_uploader_id", `(\`sc_type\`, \`uploader\`, \`id\`)`);
+  await addIndexIfMissing(connection, "content_generation_jobs", "idx_generation_jobs_sc_type_created_id", `(\`sc_type\`, \`created_at\`, \`id\`)`);
+  await addIndexIfMissing(connection, "content_generation_jobs", "idx_generation_jobs_sc_type_status_created_id", `(\`sc_type\`, \`status\`, \`created_at\`, \`id\`)`);
+  await addIndexIfMissing(
+    connection,
+    "content_generation_job_rows",
+    "idx_generation_rows_job_status_country_subclass_term_row",
+    `(\`job_id\`, \`status\`, \`country\`, \`subclass\`, \`term_id\`, \`row_index\`)`,
+  );
+  await addIndexIfMissing(
+    connection,
+    "content_generation_job_rows",
+    "idx_generation_rows_status_country_subclass_job_row",
+    `(\`status\`, \`country\`, \`subclass\`, \`job_id\`, \`row_index\`)`,
+  );
+}
+
+async function ensureContentGenerationHistorySummaryTable(connection: mysql.Connection) {
+  await connection.query(`
+    CREATE TABLE IF NOT EXISTS content_generation_history_summary (
+      sc_type varchar(32) NOT NULL,
+      summary_version int NOT NULL DEFAULT 1,
+      uploader_filter varchar(32) NOT NULL DEFAULT '__ALL__',
+      country_filter varchar(32) NOT NULL DEFAULT '__ALL__',
+      subclass_filter varchar(255) NOT NULL DEFAULT '__ALL__',
+      dimension_type varchar(16) NOT NULL,
+      dimension_value varchar(255) NOT NULL,
+      row_count int NOT NULL DEFAULT 0,
+      unique_result_count int NOT NULL DEFAULT 0,
+      merchant_count int NOT NULL DEFAULT 0,
+      country_count int NOT NULL DEFAULT 0,
+      subclass_count int NOT NULL DEFAULT 0,
+      refreshed_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (sc_type, summary_version, uploader_filter, country_filter, subclass_filter, dimension_type, dimension_value),
+      KEY idx_generation_history_summary_lookup (
+        sc_type,
+        summary_version,
+        uploader_filter,
+        country_filter,
+        subclass_filter,
+        dimension_type
+      )
+    )
+  `);
+}
+
 async function main() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
@@ -378,6 +439,9 @@ async function main() {
       await applyTranslationJobsMigration(connection, translationJobsMigration);
       appliedTimes.add(translationJobsMigration.when);
     }
+
+    await ensureContentGenerationHistoryIndexes(connection);
+    await ensureContentGenerationHistorySummaryTable(connection);
   } finally {
     await connection.end();
   }
