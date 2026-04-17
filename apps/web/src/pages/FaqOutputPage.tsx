@@ -93,29 +93,6 @@ function normalizeHeader(value: string) {
   return String(value || "").trim().toLowerCase();
 }
 
-async function downloadFileFromResponse(response: Response, fallbackFileName: string) {
-  if (!response.ok) {
-    const contentType = response.headers.get("content-type") || "";
-    if (contentType.includes("application/json")) {
-      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-      throw new Error(payload?.error || `HTTP ${response.status}`);
-    }
-    throw new Error(`HTTP ${response.status}`);
-  }
-  const blob = await response.blob();
-  const disposition = response.headers.get("content-disposition") || "";
-  const fileNameMatch = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^"]+)"?/i);
-  const fileName = fileNameMatch?.[1] ? decodeURIComponent(fileNameMatch[1]) : fileNameMatch?.[2] || fallbackFileName;
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = fileName;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-}
-
 function formatUsd(value?: number | string | null) {
   return `$${Number(value || 0).toFixed(6)}`;
 }
@@ -306,6 +283,7 @@ export function FaqOutputPage() {
   const uploadInputId = "faq-output-file-input";
   const queuePageSize = 20;
   const isPageVisible = usePageVisible();
+  const downloadCenter = useDownloadCenter();
   const [uploader, setUploader] = useState<(typeof uploaderOptions)[number]>("Ella");
   const [note, setNote] = useState("");
   const [fileName, setFileName] = useState("");
@@ -589,14 +567,11 @@ export function FaqOutputPage() {
     setError("");
     setDownloadingStates((current) => ({ ...current, [jobId]: variant }));
     try {
-      const url = new URL(`${faqOutputApiBase}/generation/jobs/${encodeURIComponent(jobId)}/download`);
-      url.searchParams.set("variant", variant);
-      const response = await fetch(url.toString(), {
-        method: "GET",
-        credentials: "include",
+      await downloadCenter.createDownloadTask({
+        toolType: "faq-output",
+        sourceLabel: variant === "field_extract" ? "FAQ 输出提取表" : "FAQ 输出结果",
+        create: () => createFaqJobDownloadTask(jobId, variant),
       });
-      const fallbackFileName = variant === "field_extract" ? `faq-field-extract-${jobId}.xlsx` : `faq-output-${jobId}.xlsx`;
-      await downloadFileFromResponse(response, fallbackFileName);
     } catch (err) {
       const message = getReadableFaqOutputError(err);
       setError(variant === "field_extract" ? `下载提取文件失败：${message}` : `下载结果文件失败：${message}`);
