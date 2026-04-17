@@ -33,10 +33,19 @@ async function resolveReadableResultPath(filePath: string | null | undefined) {
 }
 
 function compactErrorMessage(message: string | null | undefined) {
-  const normalized = String(message || "").replace(/\s+/g, " ").trim();
+  const normalized = normalizeGgCleaningErrorMessage(message);
   if (!normalized) return null;
   if (normalized.length <= ERROR_REASON_MAX_LENGTH) return normalized;
   return `${normalized.slice(0, ERROR_REASON_MAX_LENGTH - 1).trimEnd()}…`;
+}
+
+function normalizeGgCleaningErrorMessage(message: string | null | undefined) {
+  const normalized = String(message || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  if (/ENOENT/i.test(normalized) && normalized.includes("gg-cleaning-uploads")) {
+    return "GG 清洗任务的上传文件已失效，请重新上传后再运行。";
+  }
+  return normalized;
 }
 
 function getCachedQueueCount(key: string) {
@@ -357,7 +366,7 @@ export async function listGgCleaningJobs(page: number, pageSize: number) {
       processedRows: row.processedRows,
       successRows: row.successRows,
       failedRows: row.failedRows,
-      errorReason: row.errorReason || "",
+      errorReason: normalizeGgCleaningErrorMessage(row.errorReason),
       resultFileName: row.resultFileName,
       resultFilePath: row.resultFilePath || "",
       canDownload: Boolean(row.resultFilePath || row.status === "done"),
@@ -398,7 +407,7 @@ export async function getGgCleaningJobStatus(jobId: string) {
     processedRows: row.processedRows,
     successRows: row.successRows,
     failedRows: row.failedRows,
-    errorReason: row.errorReason || "",
+    errorReason: normalizeGgCleaningErrorMessage(row.errorReason),
     resultFileName: row.resultFileName,
     resultFilePath: row.resultFilePath || "",
     canDownload: Boolean(row.resultFilePath || row.resultFileBase64 || row.status === "done"),
@@ -421,7 +430,7 @@ export async function getGgCleaningJobResult(jobId: string) {
     fileName: row.resultFileName || `gg-cleaning-${row.id}.xlsx`,
     xlsxBase64,
     status: row.status,
-    errorReason: row.errorReason || "",
+    errorReason: normalizeGgCleaningErrorMessage(row.errorReason),
     rowResults: (row.rowResultsJson as Array<Record<string, unknown>> | null) || [],
     summary: (row.summaryJson as Record<string, unknown> | null) || {},
   };
@@ -432,7 +441,7 @@ export async function getGgCleaningJobDownloadMeta(jobId: string) {
   return {
     id: row.id,
     status: row.status,
-    errorReason: row.errorReason || "",
+    errorReason: normalizeGgCleaningErrorMessage(row.errorReason),
     fileName: row.resultFileName || `gg-cleaning-${row.id}.xlsx`,
     resultFilePath: row.resultFilePath || "",
     resultFileBase64: row.resultFileBase64 || "",
