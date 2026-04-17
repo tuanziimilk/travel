@@ -7,6 +7,7 @@ import * as XLSX from "xlsx";
 import { db, pool } from "../db/client";
 import { contentGenerationJobs } from "../db/schema";
 import { env } from "../env";
+import { sha256 } from "../utils/hash";
 import { formatChinaDateTime, formatChinaIsoOffset } from "../utils/time";
 import {
   getPersistedGenerationValidationLogs,
@@ -18,6 +19,7 @@ import {
 import { formatChinaDownloadTimestamp, sanitizeFileNameSegment, shortDownloadId } from "../downloads/downloadFileNames";
 
 const FAQ_BOARD_NAME_FIELD = "板块名称" as const;
+const generationDuplicateWindowMs = 5 * 60 * 1000;
 
 type RouteSummaryRow = {
   factType: string;
@@ -1272,6 +1274,15 @@ export async function createGenerationJob(input: {
   inputFileBase64: string;
 }) {
   const { makeId } = await import("../utils/id");
+  const inputBuffer = Buffer.from(input.inputFileBase64, "base64");
+  const inputHash = sha256(inputBuffer.toString("base64"));
+  const duplicate = await findRecentDuplicateGenerationJob({
+    scType: input.scType,
+    inputHash,
+  });
+  if (duplicate) {
+    throw new Error(`5分钟内已上传相同文件，请勿重复提交。可继续查看已有任务：${duplicate.id}`);
+  }
   const id = makeId();
   const inputFilePath = await persistFaqInputWorkbook(id, input.inputFileName, input.inputFileBase64);
 
@@ -1292,6 +1303,39 @@ export async function createGenerationJob(input: {
   });
 
   return { jobId: id, inputFilePath };
+}
+
+async function findRecentDuplicateGenerationJob(input: {
+  scType: string;
+  inputHash: string;
+}) {
+  const windowStart = new Date(Date.now() - generationDuplicateWindowMs);
+  const rows = await db
+    .select({
+      id: contentGenerationJobs.id,
+      inputFilePath: contentGenerationJobs.inputFilePath,
+      createdAt: contentGenerationJobs.createdAt,
+    })
+    .from(contentGenerationJobs)
+    .where(eq(contentGenerationJobs.scType, input.scType))
+    .orderBy(desc(contentGenerationJobs.createdAt))
+    .limit(50);
+
+  for (const row of rows) {
+    if (!row.createdAt || row.createdAt.getTime() < windowStart.getTime()) continue;
+    const filePath = String(row.inputFilePath || "").trim();
+    if (!filePath) continue;
+    try {
+      const buffer = await readFile(filePath);
+      const existingHash = sha256(buffer.toString("base64"));
+      if (existingHash === input.inputHash) {
+        return row;
+      }
+    } catch {
+      // Ignore unreadable historical files and keep scanning recent candidates.
+    }
+  }
+  return null;
 }
 
 function getElapsedExecutionSnapshot(
