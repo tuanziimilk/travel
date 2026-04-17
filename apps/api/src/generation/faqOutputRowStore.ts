@@ -5,6 +5,19 @@ import { contentGenerationJobs } from "../db/schema";
 
 const FAQ_BOARD_NAME_FIELD = "板块名称" as const;
 
+export type PassthroughFieldName = "Country" | "TermID" | "TermName" | "Domain";
+
+export type PassthroughFieldMismatch = {
+  field: PassthroughFieldName;
+  inputValue: string;
+  modelValue: string;
+};
+
+export type GenerationValidationLog = {
+  hasPassthroughMismatch: boolean;
+  passthroughMismatches: PassthroughFieldMismatch[];
+};
+
 export type PersistedGenerationRow = {
   jobId: string;
   rowIndex: number;
@@ -36,6 +49,7 @@ export type PersistedGenerationRow = {
   elapsedMs: number;
   aiModel: string;
   errorReason: string;
+  validationLog: GenerationValidationLog | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -81,6 +95,7 @@ type PersistGenerationRowInput = {
   elapsedMs?: number;
   aiModel?: string;
   errorReason?: string;
+  validationLog?: GenerationValidationLog | null;
 };
 
 type PersistedHistoryRow = {
@@ -141,6 +156,7 @@ async function ensureGenerationRowsTable() {
       elapsed_ms int NOT NULL DEFAULT 0,
       ai_model varchar(100) NOT NULL DEFAULT '',
       error_reason varchar(512) NOT NULL DEFAULT '',
+      validation_log_json json DEFAULT NULL,
       created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       PRIMARY KEY (job_id, row_index),
@@ -150,7 +166,44 @@ async function ensureGenerationRowsTable() {
       KEY idx_generation_rows_job_status_country_subclass_term_row (job_id, status, country, subclass, term_id, row_index)
     )
   `);
+  await pool.query(`
+    ALTER TABLE content_generation_job_rows
+    ADD COLUMN IF NOT EXISTS validation_log_json json DEFAULT NULL
+  `);
   rowsTableEnsured = true;
+}
+
+function parseValidationLog(value: unknown): GenerationValidationLog | null {
+  if (!value) return null;
+  let raw: unknown = value;
+  if (typeof raw === "string") {
+    try {
+      raw = JSON.parse(raw) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const record = raw as Record<string, unknown>;
+  const mismatches = Array.isArray(record.passthroughMismatches)
+    ? record.passthroughMismatches
+        .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+        .map((item) => ({
+          field: String(item.field || "") as PassthroughFieldName,
+          inputValue: String(item.inputValue || ""),
+          modelValue: String(item.modelValue || ""),
+        }))
+        .filter(
+          (item): item is PassthroughFieldMismatch =>
+            (item.field === "Country" || item.field === "TermID" || item.field === "TermName" || item.field === "Domain") &&
+            item.modelValue !== "",
+        )
+    : [];
+  if (!mismatches.length) return null;
+  return {
+    hasPassthroughMismatch: true,
+    passthroughMismatches: mismatches,
+  };
 }
 
 function toPersistedRow(record: Record<string, unknown>): PersistedGenerationRow {
@@ -185,6 +238,7 @@ function toPersistedRow(record: Record<string, unknown>): PersistedGenerationRow
     elapsedMs: Number(record.elapsed_ms || 0),
     aiModel: String(record.ai_model || ""),
     errorReason: String(record.error_reason || ""),
+    validationLog: parseValidationLog(record.validation_log_json),
     createdAt: record.created_at instanceof Date ? record.created_at : new Date(String(record.created_at || "")),
     updatedAt: record.updated_at instanceof Date ? record.updated_at : new Date(String(record.updated_at || "")),
   };
@@ -198,8 +252,8 @@ export async function persistGenerationRow(input: PersistGenerationRowInput) {
         job_id,row_index,status,fact_type,subclass,route_key,country,term_id,term_name,domain,
         source,board_name,title1,brief_introduction,href_kw,href_url,
         supported,input_status,discount_type,discount_value,currency,discount_details,url,
-        prompt_tokens,completion_tokens,total_tokens,estimated_cost_usd,elapsed_ms,ai_model,error_reason
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        prompt_tokens,completion_tokens,total_tokens,estimated_cost_usd,elapsed_ms,ai_model,error_reason,validation_log_json
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       ON DUPLICATE KEY UPDATE
         status = VALUES(status),
         fact_type = VALUES(fact_type),
@@ -228,7 +282,8 @@ export async function persistGenerationRow(input: PersistGenerationRowInput) {
         estimated_cost_usd = VALUES(estimated_cost_usd),
         elapsed_ms = VALUES(elapsed_ms),
         ai_model = VALUES(ai_model),
-        error_reason = VALUES(error_reason)
+        error_reason = VALUES(error_reason),
+        validation_log_json = VALUES(validation_log_json)
     `,
     [
       input.jobId,
@@ -261,8 +316,39 @@ export async function persistGenerationRow(input: PersistGenerationRowInput) {
       input.elapsedMs || 0,
       input.aiModel || "",
       input.errorReason || "",
+      input.validationLog ? JSON.stringify(input.validationLog) : null,
     ],
   );
+}
+
+export async function getPersistedGenerationValidationLogs(jobId: string) {
+  const rows = await listPersistedGenerationRows(jobId);
+  const mismatchRows = rows.filter((row) => row.validationLog?.hasPassthroughMismatch);
+  const fieldCounts = mismatchRows.reduce(
+    (counts, row) => {
+      for (const item of row.validationLog?.passthroughMismatches || []) {
+        counts[item.field] += 1;
+      }
+      return counts;
+    },
+    { Country: 0, TermID: 0, TermName: 0, Domain: 0 } as Record<PassthroughFieldName, number>,
+  );
+
+  return {
+    summary: {
+      totalRows: rows.length,
+      mismatchRowCount: mismatchRows.length,
+      fieldCounts,
+    },
+    rows: mismatchRows.map((row) => ({
+      rowIndex: row.rowIndex,
+      factType: row.factType,
+      subclass: row.subclass,
+      termId: row.termId,
+      termName: row.termName,
+      passthroughMismatches: row.validationLog?.passthroughMismatches || [],
+    })),
+  };
 }
 
 export async function listPersistedGenerationRows(jobId: string) {

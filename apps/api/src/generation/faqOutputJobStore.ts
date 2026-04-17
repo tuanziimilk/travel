@@ -8,6 +8,7 @@ import { db, pool } from "../db/client";
 import { contentGenerationJobs } from "../db/schema";
 import { formatChinaDateTime, formatChinaIsoOffset } from "../utils/time";
 import {
+  getPersistedGenerationValidationLogs,
   getPersistedGenerationSummary,
   listPersistedGenerationRows,
   listPersistedHistoryJobIds,
@@ -1400,6 +1401,13 @@ export async function getGenerationJobStatus(jobId: string) {
     finishedAt: formatChinaIsoOffset(row.finishedAt),
     routeSummary: (row.routeSummaryJson as RouteSummaryRow[] | null) || [],
   };
+}
+
+export async function getGenerationValidationLogs(jobId: string) {
+  const rows = await db.select().from(contentGenerationJobs).where(eq(contentGenerationJobs.id, jobId));
+  const row = rows[0];
+  if (!row) throw new Error("未找到 FAQ 输出任务。");
+  return getPersistedGenerationValidationLogs(jobId);
 }
 
 export async function getGenerationJobForRetry(jobId: string) {
