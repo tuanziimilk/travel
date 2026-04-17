@@ -1,5 +1,5 @@
 import type { Uploader } from "@about-demo/trpc";
-import { mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { env } from "../env";
 import { executeGgCleaning, executeGgCleaningByPath, executeGgCleaningChunkRows, previewGgCleaningChunkRows, previewGgCleaningFile, previewGgCleaningFileByPath, previewGgCleaningFileByPathWithProgress } from "./engine";
@@ -20,6 +20,8 @@ import { resolveApiRuntimePath } from "../utils/runtimePaths";
 let loopStarted = false;
 let activeJobId = "";
 const GG_RESULT_DIR = resolveApiRuntimePath("gg-cleaning-results");
+const legacyRuntimePrefix = "/app/.runtime/";
+const currentRuntimePrefix = resolveApiRuntimePath().replace(/\\/g, "/");
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -34,6 +36,26 @@ async function getUploadedInput(inputFilePath: string | null | undefined) {
   }
 }
 
+async function resolveReadableGgInputPath(filePath: string | null | undefined) {
+  const originalPath = String(filePath || "").trim();
+  if (!originalPath) return "";
+  const candidates = [originalPath];
+  if (originalPath.startsWith(legacyRuntimePrefix)) {
+    candidates.push(path.join(currentRuntimePrefix, originalPath.slice(legacyRuntimePrefix.length)));
+  }
+
+  for (const candidate of candidates) {
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+      // Try the next historical runtime location.
+    }
+  }
+
+  throw new Error("GG 清洗任务的上传文件已失效，请重新上传后再运行。");
+}
+
 async function resolveUploadedPreview(uploadId: string, fileName: string) {
   const cached = await getGgCleaningUploadPreviewCache(uploadId);
   if (cached) return cached;
@@ -42,7 +64,7 @@ async function resolveUploadedPreview(uploadId: string, fileName: string) {
     uploaded.kind === "file-chunks" && uploaded.rawFilePath
       ? await previewGgCleaningFileByPathWithProgress({
           fileName: uploaded.fileName || fileName,
-          filePath: uploaded.rawFilePath,
+          filePath: await resolveReadableGgInputPath(uploaded.rawFilePath),
         })
       : await previewGgCleaningChunkRows({
           columns: uploaded.columns,
@@ -81,7 +103,7 @@ async function processJob(jobId: string) {
     ? uploaded.kind === "file-chunks" && uploaded.rawFilePath
       ? await executeGgCleaningByPath({
           fileName: uploaded.fileName,
-          filePath: uploaded.rawFilePath,
+          filePath: await resolveReadableGgInputPath(uploaded.rawFilePath),
         })
       : await executeGgCleaningChunkRows({
           rawRowChunks: (async function* () {
@@ -99,7 +121,7 @@ async function processJob(jobId: string) {
     : job.inputFilePath
     ? await executeGgCleaningByPath({
         fileName: job.inputFileName,
-        filePath: job.inputFilePath,
+        filePath: await resolveReadableGgInputPath(job.inputFilePath),
       })
     : executeGgCleaning({
         fileName: job.inputFileName,
@@ -223,7 +245,7 @@ export async function startGgCleaningJob(input: {
   if (input.uploadId) {
     const uploaded = await getCompletedGgCleaningUpload(input.uploadId);
     storedFileName = uploaded.fileName || input.fileName;
-    storedFilePath = uploaded.kind === "file-chunks" && uploaded.rawFilePath ? uploaded.rawFilePath : uploaded.id;
+    storedFilePath = uploaded.id;
     preview ||= await resolveUploadedPreview(input.uploadId, storedFileName);
   } else {
     if (!input.fileBase64) {
