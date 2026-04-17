@@ -352,7 +352,7 @@ function bumpMaterializedHistorySummary(row: StoredFaqOutputRow, aggregateMap: M
 
 async function rebuildMaterializedHistorySummary(scType = "faq") {
   await ensureGenerationHistorySummaryTable();
-  const rows = await listDoneGenerationRows(scType);
+  const rows = await listPersistedHistoryRows(scType);
   const aggregateMap = new Map<string, MaterializedAggregate>();
 
   for (const row of rows) {
