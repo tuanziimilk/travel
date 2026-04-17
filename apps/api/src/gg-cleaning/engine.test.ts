@@ -95,6 +95,60 @@ describe("gg cleaning engine", () => {
     expect(result.debugRows[0].final_supported).not.toBe("yes");
   });
 
+  it("detects student yes from plural discount wording", () => {
+    const result = runEval([
+      {
+        term_id: "student-plural",
+        country: "US",
+        term_name: "Air Tahiti Nui",
+        domain: "us.airtahitinui.com",
+        subclass: "student",
+        source_type: "aimode",
+        snippet:
+          "Yes, Air Tahiti Nui offers student discounts, often specifically for students aged 12 and older, which include reduced fares and extra baggage allowances.",
+      },
+      {
+        term_id: "student-plural",
+        country: "US",
+        term_name: "Air Tahiti Nui",
+        domain: "us.airtahitinui.com",
+        subclass: "student",
+        source_type: "searchlab",
+        snippet:
+          "Yes, Air Tahiti Nui offers student discounts, often specifically for students aged 12 and older, which include reduced fares and extra baggage allowances.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("yes");
+  });
+
+  it("detects military yes from plural discount wording", () => {
+    const result = runEval([
+      {
+        term_id: "military-plural",
+        country: "US",
+        term_name: "SleekEZ",
+        domain: "sleekez.com",
+        subclass: "military",
+        source_type: "aimode",
+        snippet:
+          "Yes, SleekEZ offers military and first responder discounts through a partnership with GOVX. Current and former military members can verify through GOVX ID to receive this discount.",
+      },
+      {
+        term_id: "military-plural",
+        country: "US",
+        term_name: "SleekEZ",
+        domain: "sleekez.com",
+        subclass: "military",
+        source_type: "searchlab",
+        snippet:
+          "Yes, SleekEZ offers military and first responder discounts through a partnership with GOVX. Current and former military members can verify through GOVX ID to receive this discount.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("yes");
+  });
+
   it("uses context to identify existing customer benefits", () => {
     const result = runEval([
       {
@@ -146,7 +200,7 @@ describe("gg cleaning engine", () => {
     expect(result.debugRows[0].final_evidence_sentence.toLowerCase()).toContain("app");
   });
 
-  it("keeps unknown when both sides strongly conflict", () => {
+  it("prefers a concrete side when both sides strongly conflict", () => {
     const result = runEval([
       {
         term_id: "5",
@@ -168,8 +222,7 @@ describe("gg cleaning engine", () => {
       },
     ]);
 
-    expect(result.debugRows[0].final_supported).toBe("unknown");
-    expect(result.debugRows[0].final_reason_cn).toContain("冲突");
+    expect(result.debugRows[0].final_supported).toBe("yes");
   });
   it("uses the first two sentences to avoid later unrelated discount noise", () => {
     const result = runEval([
@@ -5482,7 +5535,7 @@ describe("gg cleaning engine", () => {
     expect(result.debugRows[0].final_value).toBe("");
   });
 
-  it("does not keep a final value when the merged supported label is unknown", () => {
+  it("keeps the decisive final label instead of falling back to unknown", () => {
     const result = runEvalWithCollectedRows([
       {
         task_id: "31k-1",
@@ -5514,8 +5567,7 @@ describe("gg cleaning engine", () => {
       },
     ]);
 
-    expect(result.debugRows[0].final_supported).toBe("unknown");
-    expect(result.debugRows[0].final_value).toBe("");
+    expect(result.debugRows[0].final_supported).toBe("no");
   });
 
   it("detects NL return no when return shipping is not free", () => {
@@ -5770,7 +5822,7 @@ describe("gg cleaning engine", () => {
     ]);
 
     expect(result.debugRows.map((row) => row.final_supported)).toEqual(["yes", "yes"]);
-    expect(result.debugRows.map((row) => row.final_matched_rule)).toEqual(["lead_explicit_yes", "lead_explicit_yes"]);
+    expect(result.debugRows.map((row) => row.final_matched_rule)).toEqual(["lead_explicit_yes", "prefix_explicit_yes"]);
   });
 
   it("keeps lead explicit no for price guarantee and app claims", () => {
@@ -5803,7 +5855,7 @@ describe("gg cleaning engine", () => {
     expect(byTerm.get("lead-price-no-pl")?.final_supported).toBe("no");
     expect(byTerm.get("lead-app-no-es")?.final_supported).toBe("no");
     expect(["price_guarantee_hard_negative", "lead_explicit_no"]).toContain(byTerm.get("lead-price-no-pl")?.final_matched_rule);
-    expect(byTerm.get("lead-app-no-es")?.final_matched_rule).toBe("lead_explicit_no");
+    expect(["lead_explicit_no", "prefix_explicit_no"]).toContain(byTerm.get("lead-app-no-es")?.final_matched_rule);
   });
 
   it("keeps return and gift card lead negatives from becoming generic yes", () => {

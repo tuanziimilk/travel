@@ -97,8 +97,6 @@ type SideAccumulator = {
   bestRow: InputRow | null;
   firstValue: string;
   productUrlSet: Set<string>;
-  yesRanks: Set<number>;
-  noRanks: Set<number>;
 };
 
 type GroupAccumulator = {
@@ -411,16 +409,22 @@ const GENERIC_AMBIGUOUS_PATTERNS = [
 ];
 
 const GENERIC_BENEFIT_PATTERNS = [
-  /\bdiscount\b/i,
-  /\boffer\b/i,
-  /\bbenefit\b/i,
-  /\bprogram\b/i,
+  /\bdiscounts?\b/i,
+  /\boffers?\b/i,
+  /\bbenefits?\b/i,
+  /\bprograms?\b/i,
+  /\bpromotions?\b/i,
   /\bcoupon\b/i,
   /\bcode\b/i,
   /\bvoucher\b/i,
   /\breward\b/i,
   /\bpoints?\b/i,
   /\bcashback\b/i,
+  /\bcomplimentary\b/i,
+  /\bfree admission\b/i,
+  /\breduced(?:-|\s)?rates?\b/i,
+  /\bspecial pricing\b/i,
+  /\bwaived?\b.{0,12}\bfees?\b/i,
   /\brabatt\b/i,
   /\bangebot\b/i,
   /\brabat\b/i,
@@ -750,10 +754,12 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
     ],
   },
   military: {
-    explicitTerms: [/\bmilitary\b/i, /\bveteran(?:s)?\b/i, /\barmed services\b/i, /\bmilit[aä]r\b/i, /\bbundeswehr\b/i, /\bstreitkr[aä]fte\b/i, /\bsoldat\w*\b/i, /\bżołnierz\w*\b/i, /\bwojsk\w*\b/i, /\b군인\b/i, /\b국군\b/i, /退伍军人/, /现役军人/, /军人/, /军事/],
+    explicitTerms: [/\bmilitary\b/i, /\bveteran(?:s)?\b/i, /\barmed services\b/i, /\barmed forces\b/i, /\bactive[- ]duty\b/i, /\bservice members?\b/i, /\bmilitary personnel\b/i, /\bmilit[aä]r\b/i, /\bbundeswehr\b/i, /\bstreitkr[aä]fte\b/i, /\bsoldat\w*\b/i, /\bżołnierz\w*\b/i, /\bwojsk\w*\b/i, /\b군인\b/i, /\b국군\b/i, /退伍军人/, /现役军人/, /军人/, /军事/],
     positive: [
-      /\b(?:military|veteran(?:s)?|armed services|milit[aä]r|żołnierz\w*|wojsk\w*|군인|국군)\b.{0,45}\b(?:discount|offer|benefit|program|code|rabat|zniżk|할인|혜택)\b/i,
-      /\b(?:discount|offer|benefit|program|code|rabat|zniżk|할인|혜택)\b.{0,45}\b(?:military|veteran(?:s)?|armed services|żołnierz\w*|wojsk\w*|군인)\b/i,
+      /\b(?:military|veteran(?:s)?|armed services|armed forces|active[- ]duty|service members?|military personnel|milit[aä]r|żołnierz\w*|wojsk\w*|군인|국군)\b.{0,45}\b(?:discounts?|offers?|benefits?|programs?|codes?|tickets?|admission|memberships?|pricing|rates?|rebates?|rabat\w*|zniżk\w*|할인|혜택)\b/i,
+      /\b(?:discounts?|offers?|benefits?|programs?|codes?|tickets?|admission|memberships?|pricing|rates?|rebates?|rabat\w*|zniżk\w*|할인|혜택)\b.{0,45}\b(?:military|veteran(?:s)?|armed services|armed forces|active[- ]duty|service members?|military personnel|żołnierz\w*|wojsk\w*|군인|국군)\b/i,
+      /\b(?:free|complimentary|discounted)\b.{0,35}\b(?:admission|ticket|tickets|membership|memberships|registration|registrations)\b.{0,45}\b(?:for )?(?:active[- ]duty|service members?|military personnel|military|veteran(?:s)?)\b/i,
+      /\b(?:for )?(?:active[- ]duty|service members?|military personnel|military|veteran(?:s)?)\b.{0,45}\b(?:free|complimentary|discounted)\b.{0,35}\b(?:admission|ticket|tickets|membership|memberships|registration|registrations)\b/i,
       /\b(?:militaires?|anciens combattants?|forces arm[ée]es)\b.{0,40}\b(?:r[ée]duction|offre|avantage|tarif|code promo)\b/i,
       /\b(?:r[ée]duction|offre|avantage|tarif|code promo)\b.{0,40}\b(?:pour )?(?:les )?(?:militaires?|anciens combattants?|forces arm[ée]es)\b/i,
       /\bsłużb mundurowych\b.{0,35}\b(?:zniżk|rabat)\b/i,
@@ -1337,10 +1343,13 @@ const FACT_RULES: Record<string, FactRuleConfig> = {
   },
   student: {
     positive: [
-      /\b(?:student|studenten|studentenkorting|estudiante|uczni\w*|학생)\b.{0,35}\b(?:discount|offer|rabat|zniżk|korting|voordeel|할인)\b/i,
+      /\b(?:student|students?|studenten|studentenkorting|estudiante|estudiantes|uczni\w*|학생)\b.{0,35}\b(?:discounts?|offers?|fares?|pricing|price|rates?|rabat\w*|zniżk\w*|korting|voordeel|할인)\b/i,
+      /\b(?:discounts?|offers?|fares?|pricing|price|rates?|rabat\w*|zniżk\w*|korting|voordeel|할인)\b.{0,35}\b(?:for )?(?:students?|studenten|estudiantes|uczni\w*|학생)\b/i,
       /\b(?:korting|voordeel)\b.{0,35}\b(?:voor )?studenten\b/i,
       /\b(?:r[ée]duction|offre|tarif|remise)\b.{0,35}\b[ée]tudiant\w*\b/i,
       /\b[ée]tudiant\w*\b.{0,35}\b(?:r[ée]duction|offre|tarif|remise)\b/i,
+      /\bspecial\b.{0,20}\bstudent\b.{0,20}\b(?:fares?|pricing|rates?)\b/i,
+      /\bstudent\b.{0,20}\b(?:fares?|pricing|rates?)\b/i,
       /\b(?:unidays|student beans)\b.{0,45}\b(?:r[ée]duction|code|offre)\b/i,
       /\b(?:r[ée]duction|code|offre)\b.{0,45}\b(?:unidays|student beans)\b/i,
       /\b(?:unidays|student beans)\b.{0,45}\b(?:12\s*%|10\s*%)\b/i,
@@ -1661,15 +1670,6 @@ const CROSS_ENTITY_SENSITIVE_FACT_TYPES = new Set([
   "military",
   "price guarantee",
   "referral",
-]);
-
-const CROSS_ENTITY_UNKNOWN_FACT_TYPES = new Set([
-  "existing customer",
-  "price guarantee",
-  "referral",
-  "first responder",
-  "military",
-  "employee",
 ]);
 
 const TEACHER_PLATFORM_AMBIGUOUS_PATTERNS = [
@@ -2159,6 +2159,15 @@ const LEAD_EXPLICIT_NO_PATTERNS: Partial<Record<string, RegExp[]>> = {
 };
 
 const LEAD_EXPLICIT_YES_PATTERNS: Partial<Record<string, RegExp[]>> = {
+  military: [
+    /\b(?:yes|oui|ja|tak)\b.{0,80}\b(?:military|veteran(?:s)?|armed services|armed forces|active[- ]duty|service members?|military personnel)\b.{0,45}\b(?:discounts?|offers?|benefits?|programs?|codes?|tickets?|admission|memberships?|pricing|rates?|rebates?)\b/i,
+    /\b(?:military|veteran(?:s)?|armed services|armed forces|active[- ]duty|service members?|military personnel)\b.{0,45}\b(?:discounts?|offers?|benefits?|programs?|codes?|tickets?|admission|memberships?|pricing|rates?|rebates?)\b/i,
+    /\b(?:yes|oui|ja|tak)\b.{0,80}\b(?:free|complimentary|discounted)\b.{0,35}\b(?:admission|ticket|tickets|membership|memberships|registration|registrations)\b.{0,45}\b(?:for )?(?:active[- ]duty|service members?|military personnel|military|veteran(?:s)?)\b/i,
+  ],
+  student: [
+    /\b(?:yes|oui|ja|tak)\b.{0,80}\b(?:student|students?|studenten|[ée]tudiant\w*)\b.{0,35}\b(?:discounts?|offers?|fares?|pricing|rates?)\b/i,
+    /\b(?:student|students?|studenten|[ée]tudiant\w*)\b.{0,35}\b(?:discounts?|offers?|fares?|pricing|rates?)\b/i,
+  ],
   "existing customer": EXISTING_CUSTOMER_HARD_POSITIVE_PATTERNS,
   family: [
     /\bkarta du[żz]ej rodziny\b.{0,60}\b(?:zni[żz]k\w*|rabat\w*|discount)\b/i,
@@ -3201,6 +3210,67 @@ function explainExistence(factType: string, snippet: string): SentenceEvidence {
     };
   }
 
+  if (
+    NEGATIVE_PREFIX.test(text) &&
+    !AFFIRMATIVE_PREFIX.test(text) &&
+    (hasExplicitFactTerm(text, factType) || hasPattern(text, GENERIC_NEGATIVE_PATTERNS))
+  ) {
+    return {
+      existence: "no",
+      reasonCn: "开头已给出明确否定结论",
+      matchedRule: "prefix_explicit_no",
+      evidenceSentence: getLeadSentences(text, 2).join(" "),
+      confidenceBucket: "strong",
+      score: 8,
+    };
+  }
+
+  if (
+    (factType === "student" || factType === "military") &&
+    AFFIRMATIVE_PREFIX.test(text) &&
+    !NEGATIVE_PREFIX.test(text) &&
+    hasPattern(text, GENERIC_BENEFIT_PATTERNS) &&
+    !hasPattern(text, GENERIC_NEGATIVE_PATTERNS) &&
+    !hasPattern(text, LEAD_NEGATIVE_CUE_PATTERNS)
+  ) {
+    return {
+      existence: "yes",
+      reasonCn: "开头已给出明确肯定结论",
+      matchedRule: "prefix_explicit_yes",
+      evidenceSentence: getLeadSentences(text, 2).join(" "),
+      confidenceBucket: "strong",
+      score: 8,
+    };
+  }
+
+  if (
+    AFFIRMATIVE_PREFIX.test(text) &&
+    !NEGATIVE_PREFIX.test(text) &&
+    (
+      hasExplicitFactTerm(text, factType) ||
+      ((factType === "student" || factType === "military") && hasPattern(text, GENERIC_BENEFIT_PATTERNS))
+    ) &&
+    hasPattern(text, GENERIC_BENEFIT_PATTERNS) &&
+    !hasPattern(text, GENERIC_NEGATIVE_PATTERNS) &&
+    !hasPattern(text, LEAD_NEGATIVE_CUE_PATTERNS) &&
+    (
+      factType === "student" ||
+      factType === "military" ||
+      !hasPattern(text, GENERIC_AMBIGUOUS_PATTERNS)
+    ) &&
+    !hasPattern(text, VALUE_FACT_SPECIFIC_SKIP_PATTERNS[factType] || []) &&
+    !(factType === "child" && hasPattern(text, CHILD_NON_DISCOUNT_CONTEXT_PATTERNS))
+  ) {
+    return {
+      existence: "yes",
+      reasonCn: "开头已给出明确肯定结论",
+      matchedRule: "prefix_explicit_yes",
+      evidenceSentence: getLeadSentences(text, 2).join(" "),
+      confidenceBucket: "strong",
+      score: 8,
+    };
+  }
+
   if (factType === "app" && hasPattern(text, APP_CROSS_ENTITY_NEGATIVE_PATTERNS)) {
     return {
       existence: "no",
@@ -3491,9 +3561,6 @@ function explainExistence(factType: string, snippet: string): SentenceEvidence {
   }
 
   const scored = sentences.map((sentence, index) => scoreSentence(sentence, factType, index));
-  const hasCrossEntityContrastText =
-    CROSS_ENTITY_UNKNOWN_FACT_TYPES.has(factType) &&
-    hasPattern(text, CROSS_ENTITY_CONTRAST_PATTERNS);
   const leadScored = scored.slice(0, 2);
   const leadBestYes = leadScored
     .filter((item) => item.existence === "yes")
@@ -3531,27 +3598,10 @@ function explainExistence(factType: string, snippet: string): SentenceEvidence {
   }
 
   if (bestNo && (!bestYes || bestNo.score >= bestYes.score + 2)) return bestNo;
-  if (hasCrossEntityContrastText && bestYes && !bestNo) {
-    return {
-      existence: "unknown",
-      reasonCn: "全文存在跨主体污染，无法确认 yes 是否属于当前商家",
-      matchedRule: "cross_entity_unknown",
-      evidenceSentence: bestYes.evidenceSentence || getLeadSentences(text, 2).join(" "),
-      confidenceBucket: "none",
-      score: bestYes.score,
-    };
-  }
   if (bestYes && (!bestNo || bestYes.score > bestNo.score)) return bestYes;
 
   if (bestYes && bestNo) {
-    return {
-      existence: "unknown",
-      reasonCn: "存在冲突证据",
-      matchedRule: "sentence_conflict",
-      evidenceSentence: `${bestYes.evidenceSentence} || ${bestNo.evidenceSentence}`,
-      confidenceBucket: "none",
-      score: Math.max(bestYes.score, bestNo.score),
-    };
+    return bestNo.score >= bestYes.score ? bestNo : bestYes;
   }
 
   return {
@@ -4290,9 +4340,9 @@ function mergeExistence(left: SideResult, right: SideResult) {
   if (left.supported !== "unknown" && right.supported !== "unknown" && left.supported !== right.supported) {
     const leftRank = confidenceRank(left.confidenceBucket);
     const rightRank = confidenceRank(right.confidenceBucket);
-    if (leftRank >= rightRank + 2) return { existence: left.supported, reasonCn: "强证据覆盖弱冲突" };
-    if (rightRank >= leftRank + 2) return { existence: right.supported, reasonCn: "强证据覆盖弱冲突" };
-    return { existence: "unknown" as const, reasonCn: "双源冲突" };
+    if (leftRank > rightRank) return { existence: left.supported, reasonCn: "强证据覆盖弱冲突" };
+    if (rightRank > leftRank) return { existence: right.supported, reasonCn: "强证据覆盖弱冲突" };
+    return { existence: left.supported, reasonCn: "同级冲突时优先保留首个明确结论" };
   }
 
   return { existence: "unknown" as const, reasonCn: "没有足够明确证据" };
@@ -4323,8 +4373,6 @@ function createSideAccumulator(): SideAccumulator {
     bestRow: null,
     firstValue: "",
     productUrlSet: new Set<string>(),
-    yesRanks: new Set<number>(),
-    noRanks: new Set<number>(),
   };
 }
 
@@ -4339,10 +4387,6 @@ function updateSideAccumulator(acc: SideAccumulator, row: InputRow) {
   const normalizedValue = normalizeValue(row.value);
   if (!acc.firstValue && normalizedValue && row.existence === "yes") acc.firstValue = normalizedValue;
   for (const url of row.productUrls) acc.productUrlSet.add(url);
-
-  const rank = confidenceRank(row.confidenceBucket);
-  if (row.existence === "yes") acc.yesRanks.add(rank);
-  if (row.existence === "no") acc.noRanks.add(rank);
 
   if (!acc.bestRow || compareInputRowPriority(row, acc.bestRow) > 0) {
     acc.bestRow = row;
@@ -4367,11 +4411,8 @@ function reduceSideAccumulator(acc: SideAccumulator, _domainHost: string, factTy
   }
 
   const pickedRow = acc.bestRow;
-  const rank = confidenceRank(pickedRow.confidenceBucket);
-  const hasOppositeAtSameRank =
-    pickedRow.existence === "yes" ? acc.noRanks.has(rank) : pickedRow.existence === "no" ? acc.yesRanks.has(rank) : false;
-  const supported = hasOppositeAtSameRank ? "unknown" : pickedRow.existence;
-  const reasonCn = supported === "unknown" ? "source-level conflict" : pickedRow.existenceReasonCn;
+  const supported = pickedRow.existence;
+  const reasonCn = pickedRow.existenceReasonCn;
   const pickedUrl = pickBestUrl(Array.from(acc.productUrlSet), pickedRow.domainHost, factType, country, pickedRow.domainPath);
 
   return {
@@ -4383,9 +4424,9 @@ function reduceSideAccumulator(acc: SideAccumulator, _domainHost: string, factTy
     domainMatchType: pickedUrl.domainMatchType,
     urlSelectedFromProductUrls: pickedUrl.urlSelectedFromProductUrls,
     snippet: pickedRow.snippet,
-    matchedRule: supported === "unknown" ? "side_conflict" : pickedRow.matchedRule,
+    matchedRule: pickedRow.matchedRule,
     evidenceSentence: pickedRow.evidenceSentence || pickedRow.snippet,
-    confidenceBucket: supported === "unknown" ? "none" : pickedRow.confidenceBucket,
+    confidenceBucket: pickedRow.confidenceBucket,
   };
 }
 
