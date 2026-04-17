@@ -5,6 +5,8 @@ node_modules
 # 构建产物（镜像内重新构建）
 apps/api/dist
 apps/web/dist
+apps/api/.runtime
+.runtime
 
 # 环境变量（通过 docker-compose 注入，不打包进镜像）
 .env
