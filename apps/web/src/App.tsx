@@ -4,6 +4,7 @@ import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import {
   categoryCalibrationDefaultAiModel,
+  aiModelOptions,
   translationDefaultAiModel,
   type AiModel,
   type AiProvider,
