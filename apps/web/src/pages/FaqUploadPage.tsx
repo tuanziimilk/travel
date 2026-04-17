@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { qualityBatchUploadMaxFileBytes, qualityBatchUploadMaxRows, uploaderOptions } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
 import { formatChinaDateTime } from "../utils/time";
+import { createGlobalDownloadTask, useDownloadCenter } from "../components/DownloadCenter";
 
 const faqUploadDemoCsv = [
   "TermID,TermName,Domain,Country,subclass,Q_online,A_online,Q_ai,A_ai,Q_op,A_op",
@@ -50,7 +51,7 @@ function formatJobId(jobId?: string | null) {
 const uploadLimitMb = Math.round(qualityBatchUploadMaxFileBytes / 1024 / 1024);
 
 export function FaqUploadPage() {
-  const utils = trpc.useUtils();
+  const downloadCenter = useDownloadCenter();
   const [uploader, setUploader] = useState<(typeof uploaderOptions)[number]>("Ella");
   const [note, setNote] = useState("");
   const [outputMode, setOutputMode] = useState<"full" | "compact">("full");
@@ -80,10 +81,12 @@ export function FaqUploadPage() {
   const queueQuery = trpc.batch.ingest.queue.useQuery(
     { moduleId: "faq", page: queuePage, pageSize: queuePageSize },
     {
+      placeholderData: (previousData) => previousData,
+      refetchOnWindowFocus: false,
       refetchInterval: (query) => {
         const list = query.state.data?.rows ?? [];
         const hasRunning = list.some((item) => item.status === "pending" || item.status === "running");
-        return hasRunning ? 1500 : 4000;
+        return hasRunning ? 4000 : 12000;
       },
     },
   );
@@ -145,17 +148,11 @@ export function FaqUploadPage() {
 
   async function downloadBatchXlsx(batchIdValue: string) {
     if (!batchIdValue) return;
-    const response = await utils.client.batch.ingest.result.query({ batchId: batchIdValue, format: "xlsx" });
-    const xlsxBase64 = "xlsxBase64" in response ? response.xlsxBase64 || "" : "";
-    const binary = atob(xlsxBase64);
-    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `faq-batch-${batchIdValue}.xlsx`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    await downloadCenter.createDownloadTask({
+      toolType: "faq-quality",
+      sourceLabel: "FAQ 评分结果",
+      create: () => createGlobalDownloadTask({ kind: "quality-batch", jobId: batchIdValue }),
+    });
   }
 
   function downloadTemplate() {
@@ -325,6 +322,11 @@ export function FaqUploadPage() {
 
       <div className="card faq-card" style={{ marginTop: 16 }}>
         <h3>FAQ 历史任务队列</h3>
+        {queueQuery.error ? (
+          <p className="error-text">
+            {queueQuery.data ? "队列刷新失败，正在重试。当前先展示上一次成功结果。" : `队列加载失败：${queueQuery.error.message}。系统会自动重试，你也可以手动刷新。`}
+          </p>
+        ) : null}
         <table className="history-table queue-table faq-queue-table faq-upload-queue-table">
             <thead>
               <tr>
@@ -378,9 +380,14 @@ export function FaqUploadPage() {
                   </td>
                 </tr>
               ))}
-              {(queueQuery.data?.rows?.length ?? 0) === 0 && (
+              {(queueQuery.data?.rows?.length ?? 0) === 0 && !queueQuery.error && (
                 <tr>
                   <td colSpan={11}>暂无任务</td>
+                </tr>
+              )}
+              {(queueQuery.data?.rows?.length ?? 0) === 0 && queueQuery.error && (
+                <tr>
+                  <td colSpan={11}>队列暂时加载失败，正在重试，不代表历史任务已消失。</td>
                 </tr>
               )}
             </tbody>

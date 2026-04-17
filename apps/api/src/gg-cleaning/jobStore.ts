@@ -1,20 +1,90 @@
 import { desc, eq, gte } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
+import path from "node:path";
 import * as XLSX from "xlsx";
 import { db } from "../db/client";
 import { ggCleaningJobs } from "../db/schema";
 import { makeId } from "../utils/id";
+import { apiRuntimePath } from "../utils/runtimePaths";
 import { formatChinaIsoOffset } from "../utils/time";
 
 const ERROR_REASON_MAX_LENGTH = 512;
+const queueCountCacheTtlMs = 15 * 1000;
 let ensureGgCleaningJobsTablePromise: Promise<void> | null = null;
+const ggQueueCountCache = new Map<string, { expiresAt: number; value: number }>();
+
+async function resolveReadableResultPath(filePath: string | null | undefined) {
+  const candidates = [String(filePath || "")].filter(Boolean);
+  const legacyPrefix = "/app/.runtime/";
+  const currentRuntimePrefix = apiRuntimePath().replace(/\\/g, "/");
+  if (filePath?.startsWith(legacyPrefix)) {
+    candidates.push(path.join(currentRuntimePrefix, filePath.slice(legacyPrefix.length)));
+  }
+  for (const candidate of candidates) {
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+      // Try the next historical runtime location.
+    }
+  }
+  return candidates[0] || "";
+}
 
 function compactErrorMessage(message: string | null | undefined) {
   const normalized = String(message || "").replace(/\s+/g, " ").trim();
   if (!normalized) return null;
   if (normalized.length <= ERROR_REASON_MAX_LENGTH) return normalized;
   return `${normalized.slice(0, ERROR_REASON_MAX_LENGTH - 1).trimEnd()}…`;
+}
+
+function getCachedQueueCount(key: string) {
+  const cached = ggQueueCountCache.get(key);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    ggQueueCountCache.delete(key);
+    return null;
+  }
+  return cached.value;
+}
+
+function setCachedQueueCount(key: string, value: number) {
+  ggQueueCountCache.set(key, {
+    expiresAt: Date.now() + queueCountCacheTtlMs,
+    value,
+  });
+}
+
+function buildQueueSummary(summary: Record<string, unknown> | null | undefined) {
+  if (!summary) return {};
+  const inputMode = String(summary.inputMode || "").trim();
+  const totalRows = Number(summary.totalRows || 0);
+  const groupedRows = Number(summary.groupedRows || 0);
+  const successRows = Number(summary.successRows || 0);
+  const failedRows = Number(summary.failedRows || 0);
+  const chunkCount = Number(summary.chunkCount || 0);
+  const oversizedGroupCount = Number(summary.oversizedGroupCount || 0);
+  return {
+    inputMode,
+    totalRows,
+    groupedRows,
+    successRows,
+    failedRows,
+    chunkCount: chunkCount > 0 ? chunkCount : 0,
+    oversizedGroupCount: oversizedGroupCount > 0 ? oversizedGroupCount : 0,
+  };
+}
+
+function logQueuePerf(route: string, meta: { durationMs: number; rows: number; payloadBytes: number }) {
+  const heapUsedMb = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+  const payloadKb = Math.round(meta.payloadBytes / 1024);
+  const line = `[queue] route=${route} duration_ms=${meta.durationMs} rows=${meta.rows} payload_bytes=${meta.payloadBytes} heap_used_mb=${heapUsedMb}`;
+  if (meta.durationMs > 2000 || meta.payloadBytes > 256 * 1024) {
+    console.warn(`${line} warn=threshold_exceeded payload_kb=${payloadKb}`);
+    return;
+  }
+  console.log(line);
 }
 
 async function ensureGgCleaningJobsTable() {
@@ -220,13 +290,62 @@ export async function recoverInterruptedGgCleaningJobs() {
 
 export async function listGgCleaningJobs(page: number, pageSize: number) {
   await ensureGgCleaningJobsTable();
+  const startedAtMs = Date.now();
+  const safePage = Math.max(1, Number(page || 1));
+  const safePageSize = Math.max(1, Math.min(50, Number(pageSize || 10)));
+  const offset = (safePage - 1) * safePageSize;
   const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
-  const rows = await db.select().from(ggCleaningJobs).where(gte(ggCleaningJobs.createdAt, since)).orderBy(desc(ggCleaningJobs.createdAt));
-  const total = rows.length;
-  const start = (page - 1) * pageSize;
-  return {
-    total,
-    rows: rows.slice(start, start + pageSize).map((row) => ({
+  const countCacheKey = since.toISOString();
+  const cachedTotal = getCachedQueueCount(countCacheKey);
+  const [countRows, rows] = await Promise.all([
+    cachedTotal !== null
+      ? Promise.resolve([{ value: cachedTotal }])
+      : db
+          .select({
+            value: sql<number>`count(*)`,
+          })
+          .from(ggCleaningJobs)
+          .where(gte(ggCleaningJobs.createdAt, since)),
+    db
+      .select({
+        id: ggCleaningJobs.id,
+        uploader: ggCleaningJobs.uploader,
+        note: ggCleaningJobs.note,
+        status: ggCleaningJobs.status,
+        inputMode: ggCleaningJobs.inputMode,
+        inputFileName: ggCleaningJobs.inputFileName,
+        totalRows: ggCleaningJobs.totalRows,
+        groupedRows: ggCleaningJobs.groupedRows,
+        processedRows: ggCleaningJobs.processedRows,
+        successRows: ggCleaningJobs.successRows,
+        failedRows: ggCleaningJobs.failedRows,
+        summaryJson: ggCleaningJobs.summaryJson,
+        errorReason: ggCleaningJobs.errorReason,
+        resultFileName: ggCleaningJobs.resultFileName,
+        resultFilePath: ggCleaningJobs.resultFilePath,
+        startedAt: ggCleaningJobs.startedAt,
+        finishedAt: ggCleaningJobs.finishedAt,
+        createdAt: ggCleaningJobs.createdAt,
+      })
+      .from(ggCleaningJobs)
+      .where(gte(ggCleaningJobs.createdAt, since))
+      .orderBy(desc(ggCleaningJobs.createdAt))
+      .limit(safePageSize + 1)
+      .offset(offset),
+  ]);
+  const total = Number((countRows as Array<{ value: number }>)[0]?.value || 0);
+  setCachedQueueCount(countCacheKey, total);
+  const pageRows = rows.slice(0, safePageSize);
+  const mappedRows = pageRows.map((row) => ({
+      ...(function () {
+        const summary = (row.summaryJson as Record<string, unknown> | null) || {};
+        const summaryTotalRows = Number(summary.totalRows || 0);
+        const summaryGroupedRows = Number(summary.groupedRows || 0);
+        return {
+          resolvedTotalRows: summaryTotalRows > 0 ? summaryTotalRows : row.totalRows,
+          resolvedGroupedRows: summaryGroupedRows > 0 ? summaryGroupedRows : row.groupedRows,
+        };
+      })(),
       id: row.id,
       uploader: row.uploader,
       note: row.note,
@@ -241,17 +360,30 @@ export async function listGgCleaningJobs(page: number, pageSize: number) {
       errorReason: row.errorReason || "",
       resultFileName: row.resultFileName,
       resultFilePath: row.resultFilePath || "",
-      canDownload: Boolean(row.resultFilePath || row.resultFileBase64 || row.status === "done"),
-      summary: (row.summaryJson as Record<string, unknown> | null) || {},
+      canDownload: Boolean(row.resultFilePath || row.status === "done"),
+      summary: buildQueueSummary((row.summaryJson as Record<string, unknown> | null) || {}),
       createdAt: formatChinaIsoOffset(row.createdAt),
       startedAt: formatChinaIsoOffset(row.startedAt),
       finishedAt: formatChinaIsoOffset(row.finishedAt),
-    })),
+    }));
+  const payloadBytes = Buffer.byteLength(JSON.stringify(mappedRows), "utf8");
+  logQueuePerf("gg-cleaning.queue", {
+    durationMs: Date.now() - startedAtMs,
+    rows: mappedRows.length,
+    payloadBytes,
+  });
+  return {
+    total,
+    hasMore: rows.length > safePageSize,
+    rows: mappedRows,
   };
 }
 
 export async function getGgCleaningJobStatus(jobId: string) {
   const row = await getGgCleaningJobById(jobId);
+  const summary = (row.summaryJson as Record<string, unknown> | null) || {};
+  const summaryTotalRows = Number(summary.totalRows || 0);
+  const summaryGroupedRows = Number(summary.groupedRows || 0);
   return {
     id: row.id,
     uploader: row.uploader,
@@ -261,6 +393,8 @@ export async function getGgCleaningJobStatus(jobId: string) {
     inputFileName: row.inputFileName,
     totalRows: row.totalRows,
     groupedRows: row.groupedRows,
+    resolvedTotalRows: summaryTotalRows > 0 ? summaryTotalRows : row.totalRows,
+    resolvedGroupedRows: summaryGroupedRows > 0 ? summaryGroupedRows : row.groupedRows,
     processedRows: row.processedRows,
     successRows: row.successRows,
     failedRows: row.failedRows,
@@ -268,7 +402,7 @@ export async function getGgCleaningJobStatus(jobId: string) {
     resultFileName: row.resultFileName,
     resultFilePath: row.resultFilePath || "",
     canDownload: Boolean(row.resultFilePath || row.resultFileBase64 || row.status === "done"),
-    summary: (row.summaryJson as Record<string, unknown> | null) || {},
+    summary,
     createdAt: formatChinaIsoOffset(row.createdAt),
     startedAt: formatChinaIsoOffset(row.startedAt),
     finishedAt: formatChinaIsoOffset(row.finishedAt),
@@ -279,7 +413,7 @@ export async function getGgCleaningJobResult(jobId: string) {
   const row = await getGgCleaningJobById(jobId);
   let xlsxBase64 = row.resultFileBase64 || "";
   if (!xlsxBase64 && row.resultFilePath) {
-    const fileBuffer = await readFile(row.resultFilePath);
+    const fileBuffer = await readFile(await resolveReadableResultPath(row.resultFilePath));
     xlsxBase64 = fileBuffer.toString("base64");
   }
   return {
@@ -321,7 +455,7 @@ export async function getGgCleaningJobDownloadPayload(jobId: string, options?: {
   const preferredFileName = includeDebug ? `${fileNameBase}.xlsx` : `${fileNameBase}-merchant-only.xlsx`;
   let fileBuffer: Buffer | null = null;
   if (row.resultFilePath) {
-    fileBuffer = await readFile(row.resultFilePath);
+    fileBuffer = await readFile(await resolveReadableResultPath(row.resultFilePath));
   } else if (row.resultFileBase64) {
     fileBuffer = Buffer.from(row.resultFileBase64, "base64");
   }

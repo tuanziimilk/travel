@@ -10,6 +10,7 @@ import {
 } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
 import { formatChinaDateTime } from "../utils/time";
+import { createGlobalDownloadTask, useDownloadCenter } from "../components/DownloadCenter";
 
 type UploadRow = Record<string, unknown>;
 
@@ -120,19 +121,6 @@ async function uploadFile(file: File, onProgress?: (progressPercent: number, tex
     totalRows: rows.length,
     chunkCount,
   };
-}
-
-function downloadBase64File(fileName: string, base64: string) {
-  const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
-  const blob = new Blob([bytes], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = fileName;
-  anchor.click();
-  URL.revokeObjectURL(url);
 }
 
 function downloadWorkbook(fileName: string, rows: Array<Record<string, unknown>>, headers: string[]) {
@@ -296,6 +284,7 @@ export function CategoryCalibrationPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const utils = trpc.useUtils();
+  const downloadCenter = useDownloadCenter();
   const aiConfigQuery = trpc.runtime.categoryCalibrationAiConfig.get.useQuery();
 
   const previewMutation = trpc.categoryCalibration.preview.useMutation();
@@ -308,9 +297,11 @@ export function CategoryCalibrationPage() {
   const queueQuery = trpc.categoryCalibration.queue.useQuery(
     { page: queuePage, pageSize: queuePageSize },
     {
+      placeholderData: (previousData) => previousData,
+      refetchOnWindowFocus: false,
       refetchInterval: (query) => {
         const rows = query.state.data?.rows ?? [];
-        return rows.some((row) => row.status === "running") ? 1500 : 5000;
+        return rows.some((row) => row.status === "queued" || row.status === "running") ? 4000 : 12000;
       },
     },
   );
@@ -423,12 +414,15 @@ export function CategoryCalibrationPage() {
 
   async function downloadJobResult(jobId: string) {
     setError("");
-    const data = await utils.client.categoryCalibration.result.query({ jobId });
-    if (!data.xlsxBase64) {
-      setError(data.errorReason || "当前任务暂无可下载结果，请稍后刷新列表后重试。");
-      return;
+    try {
+      await downloadCenter.createDownloadTask({
+        toolType: "category-calibration",
+        sourceLabel: "Category 校准结果",
+        create: () => createGlobalDownloadTask({ kind: "category-calibration", jobId }),
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "下载结果失败，请稍后重试。");
     }
-    downloadBase64File(data.fileName, data.xlsxBase64);
   }
 
   function downloadDemoTemplate() {
@@ -571,6 +565,11 @@ export function CategoryCalibrationPage() {
           </button>
         </div>
 
+        {queueQuery.error ? (
+          <div className="translation-feedback error">
+            {queueQuery.data ? "队列刷新失败，正在重试。当前先展示上一次成功结果。" : `队列加载失败：${queueQuery.error.message}。系统会自动重试，你也可以手动刷新。`}
+          </div>
+        ) : null}
         {error ? <div className="translation-feedback error">{error}</div> : null}
         {notice ? <div className="translation-feedback success">{notice}</div> : null}
       </div>
@@ -678,9 +677,14 @@ export function CategoryCalibrationPage() {
                   </tr>
                 );
               })}
-              {queueRows.length === 0 ? (
+              {queueRows.length === 0 && !queueQuery.error ? (
                 <tr>
                   <td colSpan={9}>最近两周暂无 Category 校准任务。</td>
+                </tr>
+              ) : null}
+              {queueRows.length === 0 && queueQuery.error ? (
+                <tr>
+                  <td colSpan={9}>队列暂时加载失败，正在重试，不代表历史任务已消失。</td>
                 </tr>
               ) : null}
             </tbody>

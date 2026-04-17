@@ -2,6 +2,8 @@ import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ggCleaningUploadMaxFileBytes } from "@about-demo/trpc";
 import { makeId } from "../utils/id";
+import { apiRuntimePath } from "../utils/runtimePaths";
+import type { GgCleaningPreview } from "./engine";
 
 export type GgCleaningUploadRow = Record<string, unknown>;
 
@@ -29,6 +31,8 @@ type UploadMeta = {
   chunkCount: number;
   groupCount: number;
   oversizedGroupCount: number;
+  previewCache: GgCleaningPreview | null;
+  previewUpdatedAt: string | null;
   completed: boolean;
 };
 
@@ -36,7 +40,7 @@ type StoredChunkFile = {
   rows: GgCleaningUploadRow[];
 };
 
-const GG_UPLOAD_DIR = path.resolve(process.cwd(), ".runtime", "gg-cleaning-uploads");
+const GG_UPLOAD_DIR = apiRuntimePath("gg-cleaning-uploads");
 
 function uploadDirOf(uploadId: string) {
   return path.join(GG_UPLOAD_DIR, uploadId);
@@ -92,6 +96,8 @@ export async function initGgCleaningUpload(fileName: string, fileSize: number) {
     chunkCount: 0,
     groupCount: 0,
     oversizedGroupCount: 0,
+    previewCache: null,
+    previewUpdatedAt: null,
     completed: false,
   };
 
@@ -218,6 +224,19 @@ export async function getCompletedGgCleaningUpload(uploadId: string) {
   const meta = await readMeta(uploadId);
   if (!meta.completed) throw new Error("Upload is not completed yet.");
   return meta;
+}
+
+export async function getGgCleaningUploadPreviewCache(uploadId: string) {
+  const meta = await getCompletedGgCleaningUpload(uploadId);
+  return meta.previewCache || null;
+}
+
+export async function saveGgCleaningUploadPreviewCache(uploadId: string, preview: GgCleaningPreview) {
+  const meta = await readMeta(uploadId);
+  meta.previewCache = preview;
+  meta.previewUpdatedAt = new Date().toISOString();
+  await writeMeta(meta);
+  return preview;
 }
 
 export async function* iterateGgCleaningUploadChunks(uploadId: string): AsyncGenerator<{ chunkIndex: number; rows: GgCleaningUploadRow[] }> {

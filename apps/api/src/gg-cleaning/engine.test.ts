@@ -1,8 +1,11 @@
 import iconv from "iconv-lite";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import * as XLSX from "xlsx";
 import { describe, expect, it } from "vitest";
 import { GG_COLLECTED_SOURCE_COLUMN, GG_COLLECTED_STATUS_COLUMN } from "./collectedSchema";
-import { executeGgCleaningChunkRows, executeGgCleaningForEval, previewGgCleaningChunkRows, previewGgCleaningFile } from "./engine";
+import { executeGgCleaningChunkRows, executeGgCleaningForEval, previewGgCleaningChunkRows, previewGgCleaningFile, previewGgCleaningFileByPath } from "./engine";
 
 function toCollectedRows(rows: Array<Record<string, unknown>>) {
   return rows.map((row) => ({
@@ -1655,7 +1658,7 @@ describe("gg cleaning engine", () => {
       },
     ]);
 
-    expect(result.debugRows[0].fact_type).toBe("price guarantee");
+    expect(result.debugRows[0].fact_type).toBe("price guanrantee");
     expect(result.debugRows[0].final_supported).toBe("no");
   });
 
@@ -3433,6 +3436,87 @@ describe("gg cleaning engine", () => {
     expect(result.debugRows[0].final_supported).toBe("no");
   });
 
+  it("keeps NL shipping no when Ja is followed by not-applicable digital-only clarification", () => {
+    const result = runEval([
+      {
+        term_id: "nl-ja-digital-shipping-no",
+        country: "NL",
+        term_name: "FlixBus",
+        domain: "flixbus.com",
+        subclass: "shipping",
+        source_type: "searchlab",
+        snippet: "Ja, FlixBus biedt gratis verzending in de zin dat er geen verzendkosten zijn voor tickets. U ontvangt uw ticket digitaal en er is geen fysieke verzending nodig.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps NL shipping unknown when Ja is limited to pickup-only delivery", () => {
+    const result = runEval([
+      {
+        term_id: "nl-ja-pickup-shipping-unknown",
+        country: "NL",
+        term_name: "Directplant",
+        domain: "directplant.nl",
+        subclass: "shipping",
+        source_type: "searchlab",
+        snippet: "Ja, Directplant.nl biedt gratis levering, maar alleen als je kiest voor een afhaalpunt. Voor thuisbezorging gelden bezorgkosten.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("unknown");
+  });
+
+  it("keeps NL shipping unknown when Ja depends on the individual seller", () => {
+    const result = runEval([
+      {
+        term_id: "nl-ja-seller-shipping-unknown",
+        country: "NL",
+        term_name: "eBay Nederland",
+        domain: "ebay.nl",
+        subclass: "shipping",
+        source_type: "searchlab",
+        snippet: "Ja, eBay.nl biedt gratis verzending aan, maar dit hangt af van de individuele verkoper en de aanbieding.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("unknown");
+  });
+
+  it("keeps NL newsletter no when a leading negative cue is not followed by a real merchant-level benefit", () => {
+    const result = runEval([
+      {
+        term_id: "nl-leading-negative-newsletter-no",
+        country: "NL",
+        term_name: "Directplant",
+        domain: "directplant.nl",
+        subclass: "newsletter/first order/sign up/",
+        source_type: "searchlab",
+        snippet: "Nee, Directplant.nl geeft geen vaste korting voor nieuwsbriefinschrijving. De nieuwsbrief wordt vooral gebruikt voor tuintips en algemene acties.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("allows later explicit merchant benefit to override an earlier NL negative cue", () => {
+    const result = runEval([
+      {
+        term_id: "nl-leading-negative-then-yes",
+        country: "NL",
+        term_name: "vidaXL",
+        domain: "vidaxl.nl",
+        subclass: "newsletter/first order/sign up/",
+        source_type: "searchlab",
+        snippet: "Nee, die oude actie is niet meer de juiste beschrijving. Schrijf je in voor de vidaXL nieuwsbrief en ontvang 5 EUR korting op je eerste bestelling.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("yes");
+    expect(result.debugRows[0].final_value).toBe("5 EUR");
+  });
+
   it("keeps NL student no when school-themed promo codes are only comparable to student discounts", () => {
     const result = runEval([
       {
@@ -3801,7 +3885,7 @@ describe("gg cleaning engine", () => {
         subclass: "shipping",
         bu: "hd",
         [GG_COLLECTED_STATUS_COLUMN]: "抓取完成",
-        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
         google_url: "https://www.google.com/search?q=Does+4wheelparts.com+offer+free+shipping",
         content: [
           "Yes, 4wheelparts.com offers free standard ground shipping on many items to the contiguous 48 states.",
@@ -3843,7 +3927,7 @@ describe("gg cleaning engine", () => {
     expect(result.debugRows[0].final_url).not.toContain("groupon.com");
   });
 
-  it("skips rows when content is empty or invalid JSON arrays in csv-style uploads", () => {
+  it("skips empty content rows but keeps plain text content in csv-style uploads", () => {
     const csvText = [
       `task_id,query,country,language,domain,term_id,term_name,subclass,bu,${GG_COLLECTED_STATUS_COLUMN},${GG_COLLECTED_SOURCE_COLUMN},google_url,content,product_urls,updated_time`,
       '1,"Does shopa.com offer free shipping?",US,en,shopa.com,1,Shop A,shipping,hd,抓取完成,ai_mode,https://www.google.com/search?q=shopa+shipping,"["""" ]","[""https://shopa.com/shipping""]",2026-04-08 05:38:49',
@@ -3855,11 +3939,11 @@ describe("gg cleaning engine", () => {
     const preview = previewGgCleaningFile({ fileName: "fixture.csv", fileBase64: previewBase64 }, { skipFileSizeLimit: true });
     const result = executeGgCleaningForEval({ fileName: "fixture.csv", fileBase64: previewBase64 }, { skipFileSizeLimit: true });
 
-    expect(preview.totalRows).toBe(1);
-    expect(preview.groupedRows).toBe(1);
-    expect(result.totalRows).toBe(1);
-    expect(result.debugRows).toHaveLength(1);
-    expect(result.debugRows[0].term_id).toBe("3");
+    expect(preview.totalRows).toBe(2);
+    expect(preview.groupedRows).toBe(2);
+    expect(result.totalRows).toBe(2);
+    expect(result.debugRows).toHaveLength(2);
+    expect(result.debugRows.map((row) => row.term_id)).toEqual(["2", "3"]);
   });
 
   it("joins multiple content items into one snippet for judgment", () => {
@@ -3921,7 +4005,7 @@ describe("gg cleaning engine", () => {
         subclass: "app",
         bu: "hd",
         [GG_COLLECTED_STATUS_COLUMN]: "done",
-        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
         content: [
           "Download the app to get 15% off your first order.",
         ],
@@ -3963,7 +4047,7 @@ describe("gg cleaning engine", () => {
         subclass: "referral",
         bu: "hd",
         [GG_COLLECTED_STATUS_COLUMN]: "done",
-        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
         content: [
           "The referral program gives existing customers a $10 credit for each successful referral.",
         ],
@@ -4256,7 +4340,7 @@ describe("gg cleaning engine", () => {
         term_name: "Example",
         subclass: "shipping",
         [GG_COLLECTED_STATUS_COLUMN]: "抓取完成",
-        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
         content: '["Example offers free shipping on orders over $50.","Applies to domestic standard shipping."]',
         product_urls: '["https://www.example.com/shipping","https://www.google.com/search?q=example+shipping"]',
       },
@@ -4299,6 +4383,94 @@ describe("gg cleaning engine", () => {
     expect(preview.groupedRows).toBe(1);
   });
 
+  it("uses buffered preview fallback for small GB18030 CSV files by path", async () => {
+    const csv = [
+      `task_id,query,country,language,domain,term_id,term_name,subclass,bu,状态,${GG_COLLECTED_SOURCE_COLUMN},google_url,content,product_urls,updated_time`,
+      '1,"Does shopa.com offer free shipping?",US,en,shopa.com,1001,Shop A,shipping,hd,抓取完成,search_lab,,"[""Shop A offers free shipping on orders over $50.""]","[""https://shopa.com/shipping""]",2026-04-16 15:00:00',
+    ].join("\r\n");
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "gg-preview-"));
+    const filePath = path.join(tempDir, "fixture-gb18030.csv");
+    await writeFile(filePath, iconv.encode(csv, "gb18030"));
+
+    const preview = await previewGgCleaningFileByPath({
+      fileName: "fixture-gb18030.csv",
+      filePath,
+    });
+
+    expect(preview.totalRows).toBe(1);
+    expect(preview.groupedRows).toBe(1);
+  });
+
+  it("accepts plain text content cells in collected-table csv rows", () => {
+    const csv = [
+      `task_id,query,country,language,domain,term_id,term_name,subclass,bu,状态,${GG_COLLECTED_SOURCE_COLUMN},google_url,content,product_urls,updated_time`,
+      '1,"Does shopa.com offer free shipping?",US,en,shopa.com,1001,Shop A,shipping,hd,抓取完成,search_lab,https://www.google.com/search?q=shopa+free+shipping,"Shop A offers free shipping on orders over $50.","https://shopa.com/shipping",2026-04-16 15:00:00',
+    ].join("\n");
+    const fileBase64 = iconv.encode(csv, "gb18030").toString("base64");
+
+    const preview = previewGgCleaningFile(
+      { fileName: "fixture-plain-text.csv", fileBase64 },
+      { skipFileSizeLimit: true },
+    );
+
+    expect(preview.totalRows).toBe(1);
+    expect(preview.groupedRows).toBe(1);
+  });
+
+  it("uses fast preview metadata for xlsx uploads by path", async () => {
+    const workbook = XLSX.utils.book_new();
+    const rows = [
+      {
+        task_id: "1",
+        query: "Does shopa.com offer free shipping?",
+        country: "US",
+        language: "en",
+        domain: "shopa.com",
+        term_id: "1001",
+        term_name: "Shop A",
+        subclass: "shipping",
+        bu: "hd",
+        状态: "抓取完成",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        google_url: "",
+        content: "Shop A offers free shipping on orders over $50.",
+        product_urls: "https://shopa.com/shipping",
+        updated_time: "2026-04-16 15:00:00",
+      },
+      {
+        task_id: "2",
+        query: "Does shopa.com offer loyalty program?",
+        country: "US",
+        language: "en",
+        domain: "shopa.com",
+        term_id: "1001",
+        term_name: "Shop A",
+        subclass: "loyalty program",
+        bu: "hd",
+        状态: "抓取完成",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        google_url: "",
+        content: "Shop A has a rewards program for members.",
+        product_urls: "https://shopa.com/rewards",
+        updated_time: "2026-04-16 15:00:01",
+      },
+    ];
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "gg-xlsx-preview-"));
+    const filePath = path.join(tempDir, "fixture-large.xlsx");
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), "Sheet1");
+    await writeFile(filePath, XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }));
+
+    const preview = await previewGgCleaningFileByPath({
+      fileName: "fixture-large.xlsx",
+      filePath,
+    });
+
+    expect(preview.totalRows).toBe(2);
+    expect(preview.groupedRows).toBe(2);
+    expect(preview.groupedRowsEstimated).toBe(true);
+    expect(preview.previewStrategy).toBe("fast");
+  });
+
   it("supports collected-table rows in JSONL uploads", () => {
     const rows = [
       {
@@ -4325,7 +4497,7 @@ describe("gg cleaning engine", () => {
         term_name: "Lakeland",
         subclass: "app",
         [GG_COLLECTED_STATUS_COLUMN]: "抓取完成",
-        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
         content: ["The official mobile app includes app-only benefits and digital vouchers."],
         product_urls: ["https://www.lakeland.co.uk/mobile-app"],
       },
@@ -4407,6 +4579,65 @@ describe("gg cleaning engine", () => {
 
     expect(result.debugRows[0].final_url).toContain("premiumbags.com");
     expect(result.debugRows[0].final_url).not.toContain("couponfollow.com");
+  });
+
+  it("keeps base fields unchanged and only cleans URLs from product_urls", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "24a",
+        query: "Does hilton.com/en/brands/home2-suites offer app discounts?",
+        country: "US",
+        language: "en",
+        domain: "hilton.com/en/brands/home2-suites",
+        term_id: "1688",
+        term_name: "Home2 Suites by Hilton",
+        subclass: "app",
+        [GG_COLLECTED_STATUS_COLUMN]: "done",
+        [GG_COLLECTED_SOURCE_COLUMN]: "ai_mode",
+        google_url: "https://www.google.com/search?q=home2+suites+app",
+        content: ["Download the Hilton Honors app to access digital offers for Home2 Suites stays."],
+        product_urls: [
+          "https://www.hilton.com/en/brands/home2-suites/",
+          "https://www.hilton.com/en/hilton-honors/mobile-app/",
+        ],
+      },
+    ]);
+
+    expect(result.debugRows[0].term_id).toBe("1688");
+    expect(result.debugRows[0].country).toBe("US");
+    expect(result.debugRows[0].domain).toBe("hilton.com/en/brands/home2-suites");
+    expect(result.debugRows[0].term_name).toBe("Home2 Suites by Hilton");
+    expect(result.debugRows[0].fact_type).toBe("app");
+    expect(result.debugRows[0].input_domain).toBe("hilton.com/en/brands/home2-suites");
+    expect(result.debugRows[0].url_selected_from_product_urls).toBe("1");
+    expect(result.debugRows[0].final_url).not.toContain("google.com");
+  });
+
+  it("does not rewrite uploaded domain when final_url comes from a brand path under the same host", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "24b",
+        query: "Does marriott.com/brands/residence-inn offer app discounts?",
+        country: "US",
+        language: "en",
+        domain: "marriott.com/brands/residence-inn",
+        term_id: "1689",
+        term_name: "Residence Inn",
+        subclass: "app",
+        [GG_COLLECTED_STATUS_COLUMN]: "done",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: ["Residence Inn promotes digital offers through the official app page."],
+        product_urls: [
+          "https://www.marriott.com/brands/residence-inn/app.mi",
+          "https://www.marriott.com/help/loyalty.mi",
+        ],
+      },
+    ]);
+
+    expect(result.debugRows[0].domain).toBe("marriott.com/brands/residence-inn");
+    expect(result.debugRows[0].final_url).toBe("https://www.marriott.com/brands/residence-inn/app.mi");
+    expect(result.debugRows[0].final_url_host).toBe("www.marriott.com");
+    expect(result.debugRows[0].domain_match_type).toBe("brand_path");
   });
 
   it("returns empty final_url when only off-domain coupon candidates exist for a targeted subclass", () => {
@@ -5093,5 +5324,398 @@ describe("gg cleaning engine", () => {
     expect(result.debugRows).toHaveLength(2);
     expect(result.debugRows.find((row) => row.term_id === "301")?.final_supported).toBe("yes");
     expect(result.debugRows.find((row) => row.term_id === "302")?.final_supported).toBe("yes");
+  });
+
+  it("uses lead explicit yes for PL existing customer loyalty evidence", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "lead-existing-customer-pl",
+        country: "PL",
+        domain: "cmielow-sklep.pl",
+        term_id: "lead-existing-customer-pl",
+        term_name: "Cmielow",
+        subclass: "existing customer",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: [
+          "Tak, Fabryka Porcelany AS Cmielow oferuje program lojalnosciowy Klub Kolekcjonera dla stalych klientow. Czlonkowie otrzymuja specjalne rabaty i wczesniejszy dostep do promocji.",
+        ],
+        product_urls: [],
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("yes");
+    expect(["lead_explicit_yes", "existing_customer_strong_positive"]).toContain(result.debugRows[0].final_matched_rule);
+  });
+
+  it("uses lead explicit yes for family card and large-family discounts", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "lead-family-pl",
+        country: "PL",
+        domain: "cmielow-sklep.pl",
+        term_id: "lead-family-pl",
+        term_name: "Cmielow",
+        subclass: "family",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: ["Tak, sklep oferuje znizke 5% dla posiadaczy Karty Duzej Rodziny. Rabat dotyczy rodzin spelniajacych warunki programu."],
+        product_urls: [],
+      },
+      {
+        task_id: "lead-family-es",
+        country: "ES",
+        domain: "sunviewpark.com",
+        term_id: "lead-family-es",
+        term_name: "Sunview Park",
+        subclass: "family",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: ["Si, Sunview Park ha ofrecido descuentos para familias numerosas. La promocion reduce el precio de entrada para grupos familiares."],
+        product_urls: [],
+      },
+    ]);
+
+    expect(result.debugRows.map((row) => row.final_supported)).toEqual(["yes", "yes"]);
+    expect(result.debugRows.map((row) => row.final_matched_rule)).toEqual(["lead_explicit_yes", "lead_explicit_yes"]);
+  });
+
+  it("keeps lead explicit no for price guarantee and app claims", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "lead-price-no-pl",
+        country: "PL",
+        domain: "mamove.pl",
+        term_id: "lead-price-no-pl",
+        term_name: "Mamove",
+        subclass: "price guarantee",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: ["Sklep nie oferuje formalnej gwarancji najlepszej ceny. Ceny sa konkurencyjne, ale nie jest to price match ani best price guarantee."],
+        product_urls: [],
+      },
+      {
+        task_id: "lead-app-no-es",
+        country: "ES",
+        domain: "armeriasabater.com",
+        term_id: "lead-app-no-es",
+        term_name: "Armeria Sabater",
+        subclass: "app",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: ["No cuenta con una aplicacion movil propia para realizar compras, ni ofrece descuentos especificos por uso de app. La tienda opera desde la web."],
+        product_urls: [],
+      },
+    ]);
+
+    const byTerm = new Map(result.debugRows.map((row) => [row.term_id, row]));
+    expect(byTerm.get("lead-price-no-pl")?.final_supported).toBe("no");
+    expect(byTerm.get("lead-app-no-es")?.final_supported).toBe("no");
+    expect(["price_guarantee_hard_negative", "lead_explicit_no"]).toContain(byTerm.get("lead-price-no-pl")?.final_matched_rule);
+    expect(byTerm.get("lead-app-no-es")?.final_matched_rule).toBe("lead_explicit_no");
+  });
+
+  it("keeps return and gift card lead negatives from becoming generic yes", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "lead-return-no-es",
+        country: "ES",
+        domain: "sspelectronic.com",
+        term_id: "lead-return-no-es",
+        term_name: "SSP Electronic",
+        subclass: "return",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: ["La tienda permite devoluciones, pero no especifica que las devoluciones sean gratuitas. El cliente debe revisar las condiciones antes de comprar."],
+        product_urls: [],
+      },
+      {
+        task_id: "lead-gift-card-no-es",
+        country: "ES",
+        domain: "rockyhorrorbaby.com",
+        term_id: "lead-gift-card-no-es",
+        term_name: "Rocky Horror Baby",
+        subclass: "gift card",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: ["Ofrece cajitas de regalo y tarjeta personalizada, aunque no especifica la venta de tarjetas regalo prepagadas tradicionales. Gift wrapping no equivale a gift card."],
+        product_urls: [],
+      },
+    ]);
+
+    expect(result.debugRows.map((row) => row.final_supported)).toEqual(["no", "no"]);
+  });
+
+  it("does not treat affiliate or sponsor programs as consumer referral yes", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "lead-referral-affiliate-no",
+        country: "ES",
+        domain: "proelitebaits.com",
+        term_id: "lead-referral-affiliate-no",
+        term_name: "Pro Elite Baits",
+        subclass: "referral",
+        [GG_COLLECTED_SOURCE_COLUMN]: "search_lab",
+        content: ["Pro Elite Baits tiene un programa de patrocinio y afiliados para creadores, pero no especifica un programa de descuento por referir amigos para consumidores. No es un refer-a-friend publico."],
+        product_urls: [],
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+    expect(["referral_hard_negative", "lead_explicit_no", "referral_non_consumer"]).toContain(result.debugRows[0].final_matched_rule);
+  });
+
+  it("keeps PL negative phrasing from being widened into screening yes", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "lead-family-pl-unconfirmed",
+        country: "PL",
+        domain: "jockershop.pl",
+        term_id: "lead-family-pl-unconfirmed",
+        term_name: "Jocker Shop",
+        subclass: "family",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Na podstawie dostępnych wyników wyszukiwania nie można potwierdzić, aby sklep jockershop.pl oferował specjalną zniżkę rodzinną."],
+        product_urls: [],
+      },
+      {
+        task_id: "lead-price-pl-slogan-no",
+        country: "PL",
+        domain: "lekizczech.pl",
+        term_id: "lead-price-pl-slogan-no",
+        term_name: "Leki z Czech",
+        subclass: "price guarantee",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Na podstawie dostępnych informacji, strona lekizczech.pl nie promuje się hasłem gwarancja najlepszej ceny."],
+        product_urls: [],
+      },
+    ]);
+
+    const byTerm = new Map(result.debugRows.map((row) => [row.term_id, row]));
+    expect(byTerm.get("lead-family-pl-unconfirmed")?.final_supported).toBe("no");
+    expect(byTerm.get("lead-price-pl-slogan-no")?.final_supported).toBe("no");
+  });
+
+  it("detects multilingual explicit yes and no for remaining high-unknown facts", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "multi-existing-pl-yes",
+        country: "PL",
+        domain: "sklep.carepump.pl",
+        term_id: "multi-existing-pl-yes",
+        term_name: "Carepump",
+        subclass: "existing customer",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Tak, sklep oferuje punkty lojalnosciowe dla stalych klientow. Punkty mozna wymieniac na rabaty przy kolejnych zakupach."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-existing-pl-no",
+        country: "PL",
+        domain: "lekizczech.pl",
+        term_id: "multi-existing-pl-no",
+        term_name: "Leki z Czech",
+        subclass: "existing customer",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Lekizczech.pl nie promuje aktywnie znizek dla stalych klientow w ogolnodostepnych zrodlach. Strona pokazuje tylko ogolne informacje o usludze."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-existing-es-no",
+        country: "ES",
+        domain: "sspelectronic.com",
+        term_id: "multi-existing-es-no",
+        term_name: "SSP Electronic",
+        subclass: "existing customer",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["No menciona explicitamente programas de descuentos automaticos o fidelizacion para clientes existentes. La tienda solo muestra precios competitivos."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-price-es-no",
+        country: "ES",
+        domain: "farmaciaescriva.com",
+        term_id: "multi-price-es-no",
+        term_name: "Farmacia Escriva",
+        subclass: "price guarantee",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["No hay constancia de una garantia del mejor precio ni politica de igualacion de precios. La farmacia tiene ofertas y promociones propias."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-price-pl-yes",
+        country: "PL",
+        domain: "sklep.edifier-polska.pl",
+        term_id: "multi-price-pl-yes",
+        term_name: "Edifier Polska",
+        subclass: "price guarantee",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Tak, sklep oferuje Gwarancje ceny. Jest to oficjalny program sklepu dla klientow kupujacych produkty marki."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-aaa-es-no",
+        country: "ES",
+        domain: "kadusi.com",
+        term_id: "multi-aaa-es-no",
+        term_name: "Kadusi",
+        subclass: "aaa",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Kadusi.com no ofrece un descuento especifico de la asociacion AAA. Sus promociones son propias del sitio."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-blc-pl-no",
+        country: "PL",
+        domain: "zoo-aquos.pl",
+        term_id: "multi-blc-pl-no",
+        term_name: "Zoo Aquos",
+        subclass: "blue light card",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Sklep zoo-aquos.pl nie akceptuje karty Blue Light Card. Regulamin wspomina tylko o platnosciach online."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-blc-en-yes",
+        country: "UK",
+        domain: "nespresso.com",
+        term_id: "multi-blc-en-yes",
+        term_name: "Nespresso",
+        subclass: "blue light card",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Yes, Nespresso accepts Blue Light Card and offers discounts for emergency service workers. Customers should verify the current code in the Blue Light Card app."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-aaa-cn-no",
+        country: "US",
+        domain: "example-cn.com",
+        term_id: "multi-aaa-cn-no",
+        term_name: "Example CN",
+        subclass: "aaa",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["该网站没有提供 AAA 会员折扣或相关优惠。页面只展示普通促销活动。"],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-blc-ko-no",
+        country: "KR",
+        domain: "example-kr.com",
+        term_id: "multi-blc-ko-no",
+        term_name: "Example KR",
+        subclass: "blue light card",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Blue Light Card 할인 혜택은 확인되지 않았습니다. 일반 쿠폰만 제공됩니다."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-existing-fr-no",
+        country: "FR",
+        domain: "example-fr.com",
+        term_id: "multi-existing-fr-no",
+        term_name: "Example FR",
+        subclass: "existing customer",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Le site ne mentionne pas de programme de fidelite ni de reduction pour clients existants. Les offres sont seulement saisonnieres."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-existing-de-no",
+        country: "DE",
+        domain: "example-de.com",
+        term_id: "multi-existing-de-no",
+        term_name: "Example DE",
+        subclass: "existing customer",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Der Shop bietet kein Treueprogramm und keinen Bestandskundenrabatt. Es gibt nur allgemeine Aktionen."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-existing-nl-no",
+        country: "NL",
+        domain: "example-nl.com",
+        term_id: "multi-existing-nl-no",
+        term_name: "Example NL",
+        subclass: "existing customer",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["De winkel heeft geen loyaliteitsprogramma of korting voor bestaande klanten. Er zijn alleen tijdelijke acties."],
+        product_urls: [],
+      },
+    ]);
+
+    const byTerm = new Map(result.debugRows.map((row) => [row.term_id, row.final_supported]));
+    expect(byTerm.get("multi-existing-pl-yes")).toBe("yes");
+    expect(byTerm.get("multi-existing-pl-no")).toBe("no");
+    expect(byTerm.get("multi-existing-es-no")).toBe("no");
+    expect(byTerm.get("multi-price-es-no")).toBe("no");
+    expect(byTerm.get("multi-price-pl-yes")).toBe("yes");
+    expect(byTerm.get("multi-aaa-es-no")).toBe("no");
+    expect(byTerm.get("multi-blc-pl-no")).toBe("no");
+    expect(byTerm.get("multi-blc-en-yes")).toBe("yes");
+    expect(byTerm.get("multi-aaa-cn-no")).toBe("no");
+    expect(byTerm.get("multi-blc-ko-no")).toBe("no");
+    expect(byTerm.get("multi-existing-fr-no")).toBe("no");
+    expect(byTerm.get("multi-existing-de-no")).toBe("no");
+    expect(byTerm.get("multi-existing-nl-no")).toBe("no");
+  });
+
+  it("detects multilingual explicit gift card yes and no", () => {
+    const result = runEvalWithCollectedRows([
+      {
+        task_id: "multi-gift-pl-yes",
+        country: "PL",
+        domain: "kavkababy.com",
+        term_id: "multi-gift-pl-yes",
+        term_name: "Kavka Baby",
+        subclass: "gift card",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Tak, sklep kavkababy.com oferuje bony podarunkowe. Sa dostepne w formie papierowej lub elektronicznej."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-gift-pl-no",
+        country: "PL",
+        domain: "mamove.pl",
+        term_id: "multi-gift-pl-no",
+        term_name: "Mamove",
+        subclass: "gift card",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Sklep nie wyroznia w swojej standardowej ofercie kart podarunkowych. Dostepne sa tylko zwykle metody platnosci."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-gift-es-yes",
+        country: "ES",
+        domain: "casaortega.com",
+        term_id: "multi-gift-es-yes",
+        term_name: "Casa Ortega",
+        subclass: "gift card",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Si, casaortega.com ofrece tarjetas de regalo. El destinatario puede elegir productos de la tienda gourmet."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-gift-es-no",
+        country: "ES",
+        domain: "dermaforyou.com",
+        term_id: "multi-gift-es-no",
+        term_name: "DermaForYou",
+        subclass: "gift card",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["DermaForYou no menciona explicitamente la oferta de tarjetas de regalo. Sus metodos de pago se limitan a tarjeta y PayPal."],
+        product_urls: [],
+      },
+      {
+        task_id: "multi-price-hotel-yes",
+        country: "ES",
+        domain: "eldorado-lloret.com",
+        term_id: "multi-price-hotel-yes",
+        term_name: "Eldorado Lloret",
+        subclass: "price guarantee",
+        [GG_COLLECTED_SOURCE_COLUMN]: "searchlab",
+        content: ["Si, Apartamentos Eldorado ofrece garantia del mejor precio al reservar directamente a traves de su pagina web oficial."],
+        product_urls: [],
+      },
+    ]);
+
+    const byTerm = new Map(result.debugRows.map((row) => [row.term_id, row.final_supported]));
+    expect(byTerm.get("multi-gift-pl-yes")).toBe("yes");
+    expect(byTerm.get("multi-gift-pl-no")).toBe("no");
+    expect(byTerm.get("multi-gift-es-yes")).toBe("yes");
+    expect(byTerm.get("multi-gift-es-no")).toBe("no");
+    expect(byTerm.get("multi-price-hotel-yes")).toBe("yes");
   });
 });

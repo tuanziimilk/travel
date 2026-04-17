@@ -1,0 +1,9 @@
+-- FAQ generation cleanup entrypoint
+-- Use the dedicated scripts for execution when possible:
+-- 1) docs/faq-generation-failed-cleanup.sql
+-- 2) docs/faq-generation-done-safe-cleanup.sql
+--
+-- Recommended operational order:
+-- 1) repair FAQ history artifacts and generate the safe done whitelist
+-- 2) run the failed-job cleanup
+-- 3) run the done-job cleanup only with the validated whitelist

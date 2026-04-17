@@ -36,7 +36,16 @@ COPY --from=builder /app/skills ./skills
 
 EXPOSE 3001
 
-CMD ["node", "--max-old-space-size=896", "dist/server.js"]
+CMD ["node", "dist/server.js"]
+
+
+# ============================================================
+# Stage 2b: worker
+# Production image for background queues only
+# ============================================================
+FROM api AS worker
+
+CMD ["node", "dist/worker.js"]
 
 
 # ============================================================

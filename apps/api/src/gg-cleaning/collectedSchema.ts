@@ -44,10 +44,10 @@ export function parseCollectedStringArrayCell(value: unknown) {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
+    if (!Array.isArray(parsed)) return [raw];
     return parsed.map((item) => normalizeCollectedText(item)).filter(Boolean);
   } catch {
-    return [];
+    return [raw];
   }
 }
 

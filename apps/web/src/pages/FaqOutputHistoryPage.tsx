@@ -1,6 +1,7 @@
 import * as Select from "@radix-ui/react-select";
 import { useEffect, useMemo, useState } from "react";
 import { countryOptions, uploaderOptions } from "@about-demo/trpc";
+import { createFaqHistoryExportTask, useDownloadCenter } from "../components/DownloadCenter";
 import { PopDatePicker } from "../components/PopDatePicker";
 import { trpc } from "../lib/trpc";
 import { formatChinaDateTime } from "../utils/time";
@@ -106,17 +107,6 @@ const emptyFilters: HistoryFilters = {
 
 function formatDateTime(value?: string | Date | null) {
   return formatChinaDateTime(value);
-}
-
-function downloadBase64File(fileName: string, base64: string, mimeType = "application/octet-stream") {
-  const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
-  const blob = new Blob([bytes], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = fileName;
-  anchor.click();
-  URL.revokeObjectURL(url);
 }
 
 function buildShareData(items: Array<{ label: string; value: number }>, maxItems = 5): ShareDatum[] {
@@ -288,7 +278,7 @@ export function FaqOutputHistoryPage() {
   const [detailRow, setDetailRow] = useState<HistoryRow | null>(null);
   const [activeTab, setActiveTab] = useState<"analytics" | "list">("analytics");
   const [lastRowsTotal, setLastRowsTotal] = useState(0);
-  const utils = trpc.useUtils();
+  const downloadCenter = useDownloadCenter();
 
   const filterInput = useMemo(
     () => ({
@@ -399,11 +389,16 @@ export function FaqOutputHistoryPage() {
   async function exportHistory(format: "xlsx" | "csv") {
     setExporting(true);
     try {
-      const data = await utils.client.generation.historyExport.query({
-        ...filterInput,
-        format,
+      await downloadCenter.createDownloadTask({
+        toolType: "faq-history",
+        sourceLabel: `FAQ 历史导出 ${format.toUpperCase()}`,
+        create: () =>
+          createFaqHistoryExportTask({
+            ...filterInput,
+            format,
+          }),
+        autoDownload: true,
       });
-      downloadBase64File(data.fileName, data.contentBase64, data.mimeType);
     } finally {
       setExporting(false);
     }
@@ -547,6 +542,7 @@ export function FaqOutputHistoryPage() {
               导出 CSV
             </button>
           </div>
+
         </section>
       </div>
 

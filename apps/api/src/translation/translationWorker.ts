@@ -9,7 +9,7 @@ import {
   type TranslationTargetLanguage,
   type Uploader,
 } from "@about-demo/trpc";
-import { env } from "../env";
+import { env, getAiRuntimeRequestConfig } from "../env";
 import { translationProvider, type TranslationCellInput, type TranslationCellOutput } from "./translationService";
 import {
   completeTranslationJob,
@@ -266,7 +266,7 @@ function emptyRealtimeRuntime() {
     completionTokens: 0,
     totalTokens: 0,
     estimatedCostUsd: 0,
-    aiModel: env.translationAiModel,
+    aiModel: getAiRuntimeRequestConfig("translation-batch").aiModel,
   };
 }
 
@@ -333,7 +333,7 @@ async function translateChunkWithFallback(
         completionTokens: left.runtime.completionTokens + right.runtime.completionTokens,
         totalTokens: left.runtime.totalTokens + right.runtime.totalTokens,
         estimatedCostUsd: Math.round((left.runtime.estimatedCostUsd + right.runtime.estimatedCostUsd) * 1_000_000) / 1_000_000,
-        aiModel: left.runtime.aiModel || right.runtime.aiModel || env.translationAiModel,
+        aiModel: left.runtime.aiModel || right.runtime.aiModel || getAiRuntimeRequestConfig("translation-batch").aiModel,
       },
       errors: [...left.errors, ...right.errors],
     };
@@ -394,10 +394,13 @@ function buildPreparedJob(
     }
   });
 
+  const translationProviderName = getAiRuntimeRequestConfig("translation-batch").provider;
   const executionMode: "realtime" | "batch" =
-    cells.length <= translationRealtimeCellThreshold && predictedInputTokens <= translationRealtimeTokenThreshold
+    translationProviderName === "gemini"
       ? "realtime"
-      : "batch";
+      : cells.length <= translationRealtimeCellThreshold && predictedInputTokens <= translationRealtimeTokenThreshold
+        ? "realtime"
+        : "batch";
 
   return {
     rows,
@@ -497,6 +500,7 @@ const translationJobInputs = new Map<string, QueuedTranslationJobInput>();
 let translationSchedulerBootstrapped = false;
 let translationSchedulerRun = Promise.resolve();
 let translationPollTimer: NodeJS.Timeout | null = null;
+let translationWorkerStarted = false;
 
 function scheduleTranslationPoll() {
   if (translationPollTimer) return;
@@ -507,6 +511,7 @@ function scheduleTranslationPoll() {
 }
 
 function triggerTranslationScheduler() {
+  if (!env.runWorkers) return Promise.resolve();
   translationSchedulerRun = translationSchedulerRun
     .then(() => processTranslationQueue())
     .catch((error) => {
@@ -568,7 +573,7 @@ async function runQueuedTranslationJob(jobId: string, input: QueuedTranslationJo
     await updateTranslationJobPhase({
       jobId,
       status: "preparing",
-      aiModel: env.translationAiModel,
+      aiModel: getAiRuntimeRequestConfig("translation-batch").aiModel,
       errorReason: null,
     });
     const prepared = buildPreparedJob(
@@ -593,7 +598,7 @@ async function runQueuedTranslationJob(jobId: string, input: QueuedTranslationJo
       totalTokensSum: 0,
       estimatedCostUsdSum: 0,
       languageSummary: summarizeLanguages(new Map(), 0, prepared.cells.length),
-      aiModel: env.translationAiModel,
+      aiModel: getAiRuntimeRequestConfig("translation-batch").aiModel,
     });
 
     if (prepared.executionMode === "batch") {
@@ -672,7 +677,7 @@ async function executeRealtimeTranslation(jobId: string, prepared: PreparedJob) 
       totalTokensSum,
       estimatedCostUsdSum: Math.round(estimatedCostUsdSum * 1_000_000) / 1_000_000,
       languageSummary: summarizeLanguages(languageCounts, interim.mixedRows, prepared.cells.length),
-      aiModel: env.translationAiModel,
+      aiModel: getAiRuntimeRequestConfig("translation-batch").aiModel,
     });
   };
 
@@ -712,7 +717,7 @@ async function executeRealtimeTranslation(jobId: string, prepared: PreparedJob) 
     totalTokensSum,
     estimatedCostUsdSum: Math.round(estimatedCostUsdSum * 1_000_000) / 1_000_000,
     languageSummary: summarizeLanguages(languageCounts, finalState.mixedRows, prepared.cells.length),
-    aiModel: env.translationAiModel,
+    aiModel: getAiRuntimeRequestConfig("translation-batch").aiModel,
     resultFileName: `translation-${Date.now()}.xlsx`,
     resultFileBase64: buildResultWorkbook(prepared.rows, prepared.resultColumns),
     rowResults: finalState.rowResults,
@@ -734,7 +739,7 @@ async function submitBatchTranslation(jobId: string, prepared: PreparedJob) {
     status: "submitted",
     providerBatchId: submitted.providerBatchId,
     inputFileId: submitted.inputFileId,
-    aiModel: env.translationAiModel,
+    aiModel: getAiRuntimeRequestConfig("translation-batch").aiModel,
     errorReason: null,
   });
   scheduleTranslationPoll();
@@ -751,7 +756,7 @@ async function pollBatchTranslationJob(jobId: string, providerBatchId: string) {
         inputFileId: status.inputFileId || null,
         outputFileId: status.outputFileId || null,
         errorFileId: status.errorFileId || null,
-        aiModel: env.translationAiModel,
+        aiModel: getAiRuntimeRequestConfig("translation-batch").aiModel,
       });
       scheduleTranslationPoll();
       return;
@@ -838,7 +843,7 @@ async function pollBatchTranslationJob(jobId: string, providerBatchId: string) {
       totalTokensSum,
       estimatedCostUsdSum: Math.round(estimatedCostUsdSum * 1_000_000) / 1_000_000,
       languageSummary: summarizeLanguages(languageCounts, finalState.mixedRows, prepared.cells.length),
-      aiModel: env.translationAiModel,
+      aiModel: getAiRuntimeRequestConfig("translation-batch").aiModel,
       resultFileName: `translation-${Date.now()}.xlsx`,
       resultFileBase64: buildResultWorkbook(prepared.rows, prepared.resultColumns),
       rowResults: finalState.rowResults,
@@ -919,7 +924,7 @@ export async function startBatchTranslation(input: QueuedTranslationJobInput) {
   const { jobId } = await createTranslationJob({
     uploader: input.uploader,
     note: input.note || "",
-    provider: "openai",
+    provider: getAiRuntimeRequestConfig("translation-batch").provider,
     executionMode: prepared.executionMode,
     targetLanguage: prepared.targetLanguage,
     inputFileName: input.fileName,
@@ -972,4 +977,13 @@ export async function retryBatchTranslation(jobId: string) {
   return { jobId };
 }
 
-void triggerTranslationScheduler();
+export function startTranslationWorker() {
+  if (!env.runWorkers || translationWorkerStarted) return;
+  translationWorkerStarted = true;
+  void triggerTranslationScheduler();
+  setInterval(() => {
+    void triggerTranslationScheduler();
+  }, 5000);
+}
+
+startTranslationWorker();

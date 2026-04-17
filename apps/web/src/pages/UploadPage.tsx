@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { qualityBatchUploadMaxFileBytes, qualityBatchUploadMaxRows, uploaderOptions } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
 import { CHINA_TIME_ZONE, formatChinaDateTime } from "../utils/time";
+import { createGlobalDownloadTask, useDownloadCenter } from "../components/DownloadCenter";
 
 const uploadDemoCsv = [
   "TermID,TermName,Domain,Country,About_online,About_ai,About_op",
@@ -142,16 +143,10 @@ function getQueueAlertSummary(item: {
   return buildQueueAlertSummary(item);
 }
 
-function buildQueueStrategyLabel(item: { outputMode?: string | null; isFailedOnlyRetry?: boolean | null }) {
-  const mode = item.outputMode === "compact" ? "C" : "F";
-  const retry = item.isFailedOnlyRetry ? "补跑" : "整批";
-  return `${mode} / ${retry}`;
-}
-
 const uploadLimitMb = Math.round(qualityBatchUploadMaxFileBytes / 1024 / 1024);
 
 export function UploadPage() {
-  const utils = trpc.useUtils();
+  const downloadCenter = useDownloadCenter();
   const [uploader, setUploader] = useState<(typeof uploaderOptions)[number]>("Ella");
   const [note, setNote] = useState("");
   const [outputMode, setOutputMode] = useState<"full" | "compact">("compact");
@@ -183,10 +178,12 @@ export function UploadPage() {
   const queueQuery = trpc.batch.ingest.queue.useQuery(
     { moduleId: "about", page: queuePage, pageSize: queuePageSize },
     {
+      placeholderData: (previousData) => previousData,
+      refetchOnWindowFocus: false,
       refetchInterval: (query) => {
         const list = query.state.data?.rows ?? [];
         const hasRunning = list.some((item) => item.status === "pending" || item.status === "running");
-        return hasRunning ? 1500 : 4000;
+        return hasRunning ? 4000 : 12000;
       },
     },
   );
@@ -268,19 +265,11 @@ export function UploadPage() {
 
   async function downloadBatchXlsx(batchIdValue: string) {
     if (!batchIdValue) return;
-    const response = await utils.client.batch.ingest.result.query({ batchId: batchIdValue, format: "xlsx" });
-    const xlsxBase64 = "xlsxBase64" in response ? response.xlsxBase64 || "" : "";
-    const binary = atob(xlsxBase64);
-    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    const blob = new Blob([bytes], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    await downloadCenter.createDownloadTask({
+      toolType: "about-quality",
+      sourceLabel: "About 评分结果",
+      create: () => createGlobalDownloadTask({ kind: "quality-batch", jobId: batchIdValue }),
     });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `about-batch-${batchIdValue}.xlsx`;
-    anchor.click();
-    URL.revokeObjectURL(url);
   }
 
   function downloadDemoTemplate() {
@@ -321,6 +310,11 @@ export function UploadPage() {
   return (
     <div className="card">
       <h2>批量上传评分</h2>
+      {queueQuery.error ? (
+        <p className="error-text">
+          {queueQuery.data ? "队列刷新失败，正在重试。当前先展示上一次成功结果。" : `队列加载失败：${queueQuery.error.message}。系统会自动重试，你也可以手动刷新。`}
+        </p>
+      ) : null}
       <p className="muted">上传 CSV 或 XLSX，异步执行评分并追踪队列进度，完成后可直接下载结果。</p>
 
       <div className="grid">
@@ -478,7 +472,7 @@ export function UploadPage() {
                 <th>进度</th>
                 <th>耗时</th>
                 <th>费用</th>
-                <th>策略</th>
+                <th>上传人</th>
                 <th>异常标记</th>
                 <th>开始时间</th>
                 <th>操作</th>
@@ -507,8 +501,8 @@ export function UploadPage() {
                     </td>
                     <td title={formatDuration(item.elapsedMs)}>{formatDuration(item.elapsedMs)}</td>
                     <td title={formatUsd(item.estimatedCostUsdSum)}>{formatUsd(item.estimatedCostUsdSum)}</td>
-                    <td>
-                      <span className="about-queue-strategy-chip">{buildQueueStrategyLabel(item)}</span>
+                    <td title={item.uploader || "-"}>
+                      <span className="about-queue-uploader-chip">{item.uploader || "-"}</span>
                     </td>
                     <td>
                       <span className={alertSummary === "-" ? "muted" : "about-queue-alert-chip"}>
@@ -541,9 +535,14 @@ export function UploadPage() {
                   </tr>
                 );
               })}
-              {queueRows.length === 0 && (
+              {queueRows.length === 0 && !queueQuery.error && (
                 <tr>
                   <td colSpan={9}>暂无任务</td>
+                </tr>
+              )}
+              {queueRows.length === 0 && queueQuery.error && (
+                <tr>
+                  <td colSpan={9}>队列暂时加载失败，正在重试，不代表历史任务已消失。</td>
                 </tr>
               )}
             </tbody>

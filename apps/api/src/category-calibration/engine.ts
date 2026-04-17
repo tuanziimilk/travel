@@ -1062,6 +1062,7 @@ async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictiona
         ),
       }),
       requestTimeoutMs: env.aiRequestTimeoutMsBatch,
+      toolKey: "category-calibration",
       aiModel,
       maxRetries: strictMode ? 3 : undefined,
     });
@@ -1123,6 +1124,7 @@ async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictiona
         ),
       }),
       requestTimeoutMs: env.aiRequestTimeoutMsBatch,
+      toolKey: "category-calibration",
       aiModel,
       maxRetries: 3,
     });
@@ -1213,6 +1215,7 @@ async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictiona
         ),
       }),
       requestTimeoutMs: env.aiRequestTimeoutMsBatch,
+      toolKey: "category-calibration",
       aiModel,
       maxRetries: 2,
     });
@@ -1300,6 +1303,7 @@ async function classifyRow(row: NormalizedInputRow, dictionary: CategoryDictiona
         user: JSON.stringify({ previousOutput: candidate, errors }, null, 2),
       }),
       requestTimeoutMs: env.aiRequestTimeoutMsBatch,
+      toolKey: "category-calibration",
       aiModel,
       maxRetries: 1,
     });
@@ -1465,6 +1469,7 @@ async function classifyRowV2(row: NormalizedInputRow, dictionary: CategoryDictio
         ),
       }),
       requestTimeoutMs: env.aiRequestTimeoutMsBatch,
+      toolKey: "category-calibration",
       aiModel,
       maxRetries: strictMode ? 2 : 1,
       useConfiguredTemperature: true,
@@ -1499,6 +1504,7 @@ async function classifyRowV2(row: NormalizedInputRow, dictionary: CategoryDictio
         user: JSON.stringify({ previousOutput: candidate, errors }, null, 2),
       }),
       requestTimeoutMs: env.aiRequestTimeoutMsBatch,
+      toolKey: "category-calibration",
       aiModel,
       maxRetries: 2,
       useConfiguredTemperature: true,
@@ -1591,6 +1597,7 @@ async function classifyRowV2(row: NormalizedInputRow, dictionary: CategoryDictio
         user: JSON.stringify({ previousOutput: candidate, errors }, null, 2),
       }),
       requestTimeoutMs: env.aiRequestTimeoutMsBatch,
+      toolKey: "category-calibration",
       aiModel,
       maxRetries: 1,
       useConfiguredTemperature: true,

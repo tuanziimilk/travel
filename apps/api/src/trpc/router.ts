@@ -23,6 +23,7 @@ import {
   generationStatusInputSchema,
   generationRunInputSchema,
   ggCleaningPreviewInputSchema,
+  ggCleaningPreviewTaskStatusInputSchema,
   ggCleaningQueueInputSchema,
   ggCleaningResultInputSchema,
   ggCleaningRunInputSchema,
@@ -30,6 +31,7 @@ import {
   manualScoreInputSchema,
   manualFaqScoreInputSchema,
   runtimeAiConfigSetInputSchema,
+  runtimeAiConfigGetInputSchema,
   skillHistoryDetailInputSchema,
   skillHistoryListInputSchema,
   skillRouteDocumentInputSchema,
@@ -68,9 +70,7 @@ import {
 import {
   env,
   getAiRuntimeConfig,
-  getCategoryCalibrationAiRuntimeConfig,
-  setAiRuntimeModel,
-  setCategoryCalibrationAiRuntimeModel,
+  setAiRuntimeConfig,
 } from "../env";
 import {
   getCategoryCalibrationJobResult,
@@ -80,7 +80,7 @@ import {
 import { previewCategoryCalibration, startCategoryCalibrationJob } from "../category-calibration/worker";
 import { retryFaqOutputGeneration, startFaqOutputGeneration } from "../generation/faqOutputGenerator";
 import { getGgCleaningJobResult, getGgCleaningJobStatus, listGgCleaningJobs } from "../gg-cleaning/jobStore";
-import { previewGgCleaning, startGgCleaningJob } from "../gg-cleaning/worker";
+import { getGgCleaningPreviewTaskStatus, previewGgCleaning, startGgCleaningJob, startGgCleaningPreviewTask } from "../gg-cleaning/worker";
 import {
   exportGenerationHistory,
   getGenerationHistorySummary,
@@ -376,19 +376,19 @@ export const appRouter = t.router({
   }),
   runtime: t.router({
     aiConfig: t.router({
-      get: t.procedure.query(() => {
-        return getAiRuntimeConfig();
+      get: t.procedure.input(runtimeAiConfigGetInputSchema).query(({ input }) => {
+        return getAiRuntimeConfig(input.toolKey);
       }),
       set: t.procedure.input(runtimeAiConfigSetInputSchema).mutation(({ input }) => {
-        return setAiRuntimeModel(input.aiModel);
+        return setAiRuntimeConfig(input);
       }),
     }),
     categoryCalibrationAiConfig: t.router({
       get: t.procedure.query(() => {
-        return getCategoryCalibrationAiRuntimeConfig();
+        return getAiRuntimeConfig("category-calibration");
       }),
       set: t.procedure.input(runtimeAiConfigSetInputSchema).mutation(({ input }) => {
-        return setCategoryCalibrationAiRuntimeModel(input.aiModel);
+        return setAiRuntimeConfig({ ...input, toolKey: "category-calibration" });
       }),
     }),
   }),
@@ -415,6 +415,12 @@ export const appRouter = t.router({
   ggCleaning: t.router({
     preview: t.procedure.input(ggCleaningPreviewInputSchema).mutation(({ input }) => {
       return previewGgCleaning(input);
+    }),
+    previewTaskCreate: t.procedure.input(ggCleaningPreviewInputSchema).mutation(({ input }) => {
+      return startGgCleaningPreviewTask(input);
+    }),
+    previewTaskStatus: t.procedure.input(ggCleaningPreviewTaskStatusInputSchema).query(({ input }) => {
+      return getGgCleaningPreviewTaskStatus(input.taskId);
     }),
     run: t.procedure.input(ggCleaningRunInputSchema).mutation(({ input }) => {
       return startGgCleaningJob(input);

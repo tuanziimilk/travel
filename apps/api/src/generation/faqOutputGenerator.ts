@@ -1,10 +1,11 @@
 import { parse } from "csv-parse/sync";
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as XLSX from "xlsx";
 import { z } from "zod";
 import { faqOutputUploadMaxFileBytes, faqOutputUploadMaxRows, type ScType, type Uploader } from "@about-demo/trpc";
-import { env } from "../env";
+import { env, getAiRuntimeRequestConfig, getAiUnitCostForTool } from "../env";
 import { aiExecutor } from "../skills/aiExecutor";
 import { resolveSkillRoot } from "../skills/skillPath";
 import { skillRegistry } from "../skills/skillRegistry";
@@ -156,8 +157,7 @@ function mapOutputRow(row: Record<string, unknown>) {
   });
 }
 
-function parseFaqOutputFile(fileName: string, fileBase64: string) {
-  const buffer = Buffer.from(fileBase64, "base64");
+function parseFaqOutputFileBuffer(fileName: string, buffer: Buffer) {
   if (fileName.toLowerCase().endsWith(".csv")) {
     const records = parse(buffer.toString("utf8"), {
       columns: true,
@@ -175,10 +175,15 @@ function parseFaqOutputFile(fileName: string, fileBase64: string) {
   throw new Error("仅支持 .csv 或 .xlsx 文件。");
 }
 
+function parseFaqOutputFile(fileName: string, fileBase64: string) {
+  return parseFaqOutputFileBuffer(fileName, Buffer.from(fileBase64, "base64"));
+}
+
 function estimateCostUsd(promptTokens: number, completionTokens: number) {
+  const unitCost = getAiUnitCostForTool("output-faq");
   const usd =
-    (promptTokens / 1_000_000) * env.aiInputCostPer1M +
-    (completionTokens / 1_000_000) * env.aiOutputCostPer1M;
+    (promptTokens / 1_000_000) * unitCost.inputPer1M +
+    (completionTokens / 1_000_000) * unitCost.outputPer1M;
   return Math.round(usd * 1_000_000) / 1_000_000;
 }
 
@@ -536,15 +541,18 @@ type QueuedGenerationJobInput = {
   uploader: Uploader;
   note?: string;
   fileName: string;
-  fileBase64: string;
+  fileBase64?: string;
+  inputFilePath?: string;
 };
 
 const activeGenerationJobs = new Set<string>();
 const generationJobInputs = new Map<string, QueuedGenerationJobInput>();
 let generationSchedulerBootstrapped = false;
 let generationSchedulerRun = Promise.resolve();
+let generationWorkerStarted = false;
 
 function triggerGenerationScheduler() {
+  if (!env.runWorkers) return Promise.resolve();
   generationSchedulerRun = generationSchedulerRun
     .then(() => processGenerationQueue())
     .catch((error) => {
@@ -569,16 +577,17 @@ async function processGenerationQueue() {
 
     const queuedInput =
       generationJobInputs.get(nextJob.id) ||
-      (nextJob.inputFileBase64
+      (nextJob.inputFilePath || nextJob.inputFileBase64
         ? {
             scType: nextJob.scType as ScType,
             uploader: nextJob.uploader as Uploader,
             note: nextJob.note,
             fileName: nextJob.inputFileName,
-            fileBase64: nextJob.inputFileBase64,
+            fileBase64: nextJob.inputFileBase64 || undefined,
+            inputFilePath: nextJob.inputFilePath || undefined,
           }
         : null);
-    if (!queuedInput?.fileBase64) return;
+    if (!queuedInput?.fileBase64 && !queuedInput?.inputFilePath) return;
 
     activeGenerationJobs.add(nextJob.id);
     void runQueuedGenerationJob(nextJob.id, queuedInput);
@@ -605,14 +614,24 @@ async function executeFaqOutputGeneration(
     uploader: Uploader;
     note?: string;
     fileName: string;
-    fileBase64: string;
+    fileBase64?: string;
+    inputFilePath?: string;
   },
 ) {
-  const fileBytes = Buffer.from(input.fileBase64, "base64").length;
+  const fileBuffer =
+    input.fileBase64 != null
+      ? Buffer.from(input.fileBase64, "base64")
+      : input.inputFilePath
+        ? await readFile(input.inputFilePath)
+        : null;
+  if (!fileBuffer) {
+    throw new Error("上传文件不存在，无法继续执行 FAQ 输出。");
+  }
+  const fileBytes = fileBuffer.length;
   if (fileBytes > faqOutputUploadMaxFileBytes) {
     throw new Error(`上传文件过大，请控制在 ${Math.round(faqOutputUploadMaxFileBytes / 1024 / 1024)}MB 以内后再试`);
   }
-  const rows = parseFaqOutputFile(input.fileName, input.fileBase64);
+  const rows = parseFaqOutputFileBuffer(input.fileName, fileBuffer);
   if (rows.length > faqOutputUploadMaxRows) {
     throw new Error(`上传行数过多，请控制在 ${faqOutputUploadMaxRows} 行以内后再试`);
   }
@@ -677,7 +696,7 @@ async function executeFaqOutputGeneration(
       completionTokensSum: progressState.completionTokensSum,
       totalTokensSum: progressState.totalTokensSum,
       estimatedCostUsdSum: Math.round(progressState.estimatedCostUsdSum * 1_000_000) / 1_000_000,
-      aiModel: env.aiModel,
+      aiModel: getAiRuntimeRequestConfig("output-faq").aiModel,
     };
     progressWrite = progressWrite.then(() => updateGenerationJobProgress(snapshot));
     return progressWrite;
@@ -699,6 +718,7 @@ async function executeFaqOutputGeneration(
       const executed = await aiExecutor.execute<FaqGenerationResponse>({
         maxRetries: env.aiExecutorMaxRetries,
         requestTimeoutMs: env.aiRequestTimeoutMsBatch,
+        toolKey: "output-faq",
         buildMessages: () => prompt,
         validate: (candidate) => validateGenerationCandidate(candidate, item.subclass),
         buildRepairMessages: (candidate, errors) => buildRepairMessages(candidate, errors, item.subclass),
@@ -738,7 +758,7 @@ async function executeFaqOutputGeneration(
         totalTokens: executed.usage.totalTokens,
         estimatedCostUsd,
         elapsedMs: Date.now() - startedAt,
-        aiModel: env.aiModel,
+        aiModel: getAiRuntimeRequestConfig("output-faq").aiModel,
       });
 
       progressState.successRows += 1;
@@ -785,7 +805,7 @@ async function executeFaqOutputGeneration(
           discountDetails: extractionRow.discount_details,
           url: extractionRow.url,
           elapsedMs: Date.now() - startedAt,
-          aiModel: `${env.aiModel}:fallback`,
+          aiModel: `${getAiRuntimeRequestConfig("output-faq").aiModel}:fallback`,
         });
 
         progressState.successRows += 1;
@@ -848,36 +868,11 @@ async function executeFaqOutputGeneration(
     completionTokensSum: completionTokens,
     totalTokensSum: totalTokens,
     estimatedCostUsdSum: estimatedCostUsd,
-    aiModel: env.aiModel,
+    aiModel: getAiRuntimeRequestConfig("output-faq").aiModel,
     resultFileName,
     resultFileBase64: null,
     routeSummary,
-    rowResults: persistedAfterRun.map((item) =>
-      item.status === "success"
-        ? {
-            rowIndex: item.rowIndex,
-            status: "success" as const,
-            subclass: item.subclass,
-            factType: item.factType,
-            routeKey: item.routeKey,
-            runtime: {
-              elapsedMs: item.elapsedMs,
-              promptTokens: item.promptTokens,
-              completionTokens: item.completionTokens,
-              totalTokens: item.totalTokens,
-              estimatedCostUsd: item.estimatedCostUsd,
-              aiModel: item.aiModel,
-            },
-          }
-        : {
-            rowIndex: item.rowIndex,
-            status: "error" as const,
-            subclass: item.subclass,
-            factType: item.factType,
-            routeKey: item.routeKey,
-            error: item.errorReason,
-          },
-    ),
+    rowResults: [],
     errorReason,
   });
 }
@@ -906,14 +901,15 @@ export async function startFaqOutputGeneration(input: {
 
 export async function retryFaqOutputGeneration(jobId: string) {
   const job = await getGenerationJobForRetry(jobId);
-  if (!job.inputFileBase64) throw new Error("该任务缺少原始输入文件，无法重试。");
+  if (!job.inputFilePath && !job.inputFileBase64) throw new Error("该任务缺少原始输入文件，无法重试。");
 
   const retryInput = {
     scType: job.scType as ScType,
     uploader: job.uploader as Uploader,
     note: job.note,
     fileName: job.inputFileName,
-    fileBase64: job.inputFileBase64,
+    fileBase64: job.inputFileBase64 || undefined,
+    inputFilePath: job.inputFilePath || undefined,
   };
 
   await markGenerationJobQueued(jobId);
@@ -923,7 +919,13 @@ export async function retryFaqOutputGeneration(jobId: string) {
   return { jobId };
 }
 
-void triggerGenerationScheduler();
-setInterval(() => {
+export function startGenerationWorker() {
+  if (!env.runWorkers || generationWorkerStarted) return;
+  generationWorkerStarted = true;
   void triggerGenerationScheduler();
-}, 5000);
+  setInterval(() => {
+    void triggerGenerationScheduler();
+  }, 5000);
+}
+
+startGenerationWorker();

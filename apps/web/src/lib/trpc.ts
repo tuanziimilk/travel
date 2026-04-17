@@ -4,7 +4,14 @@ import { httpBatchLink } from "@trpc/client";
 import type { AppRouter } from "@about-demo/api-router";
 
 export const trpc = createTRPCReact<AppRouter>();
-export const queryClient = new QueryClient();
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 export const trpcClient = trpc.createClient({
   links: [

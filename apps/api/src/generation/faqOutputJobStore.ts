@@ -6,6 +6,7 @@ import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { db, pool } from "../db/client";
 import { contentGenerationJobs } from "../db/schema";
+import { env } from "../env";
 import { formatChinaDateTime, formatChinaIsoOffset } from "../utils/time";
 import {
   getPersistedGenerationSummary,
@@ -13,6 +14,7 @@ import {
   listPersistedHistoryJobIds,
   listPersistedHistoryRows,
 } from "./faqOutputRowStore";
+import { formatChinaDownloadTimestamp, sanitizeFileNameSegment, shortDownloadId } from "../downloads/downloadFileNames";
 
 const FAQ_BOARD_NAME_FIELD = "板块名称" as const;
 
@@ -137,11 +139,29 @@ let generationHistorySummaryRefreshPromise: Promise<void> | null = null;
 let generationHistorySummaryRefreshRequested = false;
 let generationHistorySummaryRefreshTimer: NodeJS.Timeout | null = null;
 let generationHousekeepingTimer: NodeJS.Timeout | null = null;
-const FAQ_RESULT_DIR = path.resolve(process.cwd(), ".runtime", "faq-output-results");
+const APP_RUNTIME_DIR = path.resolve(process.cwd(), "apps/api/.runtime");
+const FAQ_INPUT_DIR = path.resolve(APP_RUNTIME_DIR, "faq-output-inputs");
+const FAQ_RESULT_DIR = path.resolve(APP_RUNTIME_DIR, "faq-output-results");
+const FAQ_DOWNLOAD_TASK_DIR = path.resolve(APP_RUNTIME_DIR, "faq-download-tasks");
 const generationCountCacheTtlMs = 30 * 1000;
 const generationQueueCountCacheTtlMs = 15 * 1000;
 const faqResultRetentionMs = 14 * 24 * 60 * 60 * 1000;
 const faqTmpRetentionMs = 2 * 24 * 60 * 60 * 1000;
+const faqDownloadTaskRetentionMs = 24 * 60 * 60 * 1000;
+const faqDoneInputRetentionMs = env.faqOutputInputRetentionHoursDone * 60 * 60 * 1000;
+const faqFailedInputRetentionMs = env.faqOutputInputRetentionHoursFailed * 60 * 60 * 1000;
+
+export type FaqResultRepairAction = "already_valid" | "repaired_from_base64" | "rebuilt_from_inputs" | "rebuilt_from_rows";
+
+export type FaqResultRepairOutcome = {
+  jobId: string;
+  status: string;
+  createdAt: string;
+  finishedAt: string | null;
+  action: FaqResultRepairAction | "skipped";
+  resultFilePath: string;
+  reason?: string;
+};
 
 function buildGenerationHistoryCacheKey(input: HistoryFilters) {
   return JSON.stringify({
@@ -331,7 +351,7 @@ function bumpMaterializedHistorySummary(row: StoredFaqOutputRow, aggregateMap: M
 
 async function rebuildMaterializedHistorySummary(scType = "faq") {
   await ensureGenerationHistorySummaryTable();
-  const rows = await listPersistedHistoryRows(scType);
+  const rows = await listDoneGenerationRows(scType);
   const aggregateMap = new Map<string, MaterializedAggregate>();
 
   for (const row of rows) {
@@ -520,7 +540,7 @@ async function loadLegacyHistoryRows(input: HistoryFilters) {
 }
 
 function buildPersistedHistoryWhere(input: HistoryFilters) {
-  const conditions = ["j.sc_type = ?", "r.status = 'success'"];
+  const conditions = ["j.sc_type = ?", "j.status = 'done'", "r.status = 'success'"];
   const params: unknown[] = [input.scType || "faq"];
 
   const country = normalize(input.country).toUpperCase();
@@ -603,6 +623,8 @@ const faqDownloadSheetNames = {
 } as const;
 
 type GenerationDownloadVariant = "main" | "field_extract" | "full";
+type GenerationDownloadTaskVariant = GenerationDownloadVariant | "history_xlsx" | "history_csv";
+type GenerationDownloadTaskStatus = "queued" | "preparing" | "ready" | "failed" | "expired";
 
 function normalize(value: unknown) {
   return String(value || "").trim();
@@ -655,7 +677,7 @@ function mapStoredOutputRow(
   };
 }
 
-function parseStoredWorkbook(row: {
+async function parseStoredWorkbook(row: {
   id: string;
   uploader: string;
   note: string;
@@ -663,6 +685,7 @@ function parseStoredWorkbook(row: {
   startedAt: Date | null;
   finishedAt: Date | null;
   resultFileName: string;
+  resultFilePath: string | null;
   resultFileBase64: string | null;
   updatedAt: Date;
 }) {
@@ -670,12 +693,24 @@ function parseStoredWorkbook(row: {
   const cached = parsedWorkbookCache.get(cacheKey);
   if (cached) return cached;
 
-  if (!row.resultFileBase64) {
+  let buffer: Buffer | null = null;
+  if (row.resultFilePath) {
+    try {
+      buffer = await readFile(row.resultFilePath);
+    } catch {
+      buffer = null;
+    }
+  }
+  if (!buffer && row.resultFileBase64) {
+    buffer = Buffer.from(row.resultFileBase64, "base64");
+  }
+
+  if (!buffer) {
     parsedWorkbookCache.set(cacheKey, []);
     return [];
   }
 
-  const workbook = XLSX.read(Buffer.from(row.resultFileBase64, "base64"), { type: "buffer" });
+  const workbook = XLSX.read(buffer, { type: "buffer" });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
 
@@ -738,6 +773,32 @@ async function persistFaqResultWorkbook(jobId: string, fileName: string, workboo
   return resultFilePath;
 }
 
+async function persistFaqInputWorkbook(jobId: string, fileName: string, fileBase64: string) {
+  await mkdir(FAQ_INPUT_DIR, { recursive: true });
+  const normalizedExt = path.extname(fileName || "").toLowerCase();
+  const safeExt = normalizedExt === ".csv" || normalizedExt === ".xlsx" ? normalizedExt : ".bin";
+  const inputFilePath = path.join(FAQ_INPUT_DIR, `${jobId}${safeExt}`);
+  await writeFile(inputFilePath, Buffer.from(fileBase64, "base64"));
+  return inputFilePath;
+}
+
+async function readFaqInputBuffer(row: {
+  inputFilePath: string | null;
+  inputFileBase64: string | null;
+}) {
+  if (row.inputFilePath) {
+    try {
+      return await readFile(row.inputFilePath);
+    } catch {
+      // fall through to legacy base64
+    }
+  }
+  if (row.inputFileBase64) {
+    return Buffer.from(row.inputFileBase64, "base64");
+  }
+  return null;
+}
+
 function isLikelyXlsxBuffer(buffer: Buffer | null | undefined) {
   if (!buffer || buffer.length < 4) return false;
   return buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04;
@@ -797,12 +858,33 @@ async function buildWorkbookFromPersistedRows(jobId: string, variant: Generation
   }
 
   const workbook = XLSX.utils.book_new();
-  if (variant === "field_extract") {
-    return null;
-  }
-
   const successRows = persistedRows.filter((item) => item.status === "success");
   const failureRows = persistedRows.filter((item) => item.status === "error");
+
+  if (variant === "field_extract") {
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(
+        persistedRows.map((item) => ({
+          term_id: item.termId,
+          country: item.country,
+          domain: item.domain,
+          term_name: item.termName,
+          fact_type: item.factType,
+          supported: item.supported,
+          status: item.inputStatus,
+          discount_type: item.discountType,
+          discount_value: item.discountValue,
+          currency: item.currency,
+          discount_details: item.discountDetails,
+          url: item.url,
+        })),
+        { header: [...extractionSheetHeaders] },
+      ),
+      faqDownloadSheetNames.extract,
+    );
+    return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+  }
 
   XLSX.utils.book_append_sheet(
     workbook,
@@ -841,20 +923,64 @@ async function buildWorkbookFromPersistedRows(jobId: string, variant: Generation
     faqDownloadSheetNames.failures,
   );
 
+  if (variant === "full") {
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(
+        persistedRows.map((item) => ({
+          term_id: item.termId,
+          country: item.country,
+          domain: item.domain,
+          term_name: item.termName,
+          fact_type: item.factType,
+          supported: item.supported,
+          status: item.inputStatus,
+          discount_type: item.discountType,
+          discount_value: item.discountValue,
+          currency: item.currency,
+          discount_details: item.discountDetails,
+          url: item.url,
+        })),
+        { header: [...extractionSheetHeaders] },
+      ),
+      faqDownloadSheetNames.extract,
+    );
+  }
+
   return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }
 
 async function rebuildGenerationResultArtifact(row: typeof contentGenerationJobs.$inferSelect) {
-  if (!row.inputFileBase64) {
+  const inputBuffer = await readFaqInputBuffer(row);
+  if (!inputBuffer) {
+    const persistedBuffer = await buildWorkbookFromPersistedRows(row.id, "full");
+    if (persistedBuffer) {
+      const fileName = row.resultFileName || `faq-output-${row.id}.xlsx`;
+      const resultFilePath = await persistFaqResultWorkbook(row.id, fileName, persistedBuffer);
+      await db
+        .update(contentGenerationJobs)
+        .set({
+          resultFileName: fileName,
+          resultFilePath,
+        })
+        .where(eq(contentGenerationJobs.id, row.id));
+      return {
+        fileName,
+        xlsxBase64: persistedBuffer.toString("base64"),
+        buffer: persistedBuffer,
+        resultFilePath,
+      };
+    }
     return {
       fileName: row.resultFileName || `faq-output-${row.id}.xlsx`,
       xlsxBase64: row.resultFileBase64 || "",
       buffer: row.resultFileBase64 ? Buffer.from(row.resultFileBase64, "base64") : Buffer.alloc(0),
       resultFilePath: row.resultFilePath || "",
+      rebuiltFromRowsOnly: false,
     };
   }
 
-  const inputRows = parseGenerationInputWorkbook(row.inputFileName, row.inputFileBase64);
+  const inputRows = parseGenerationInputWorkbook(row.inputFileName, inputBuffer.toString("base64"));
   const persistedRows = await listPersistedGenerationRows(row.id);
   const persistedByRowIndex = new Map(persistedRows.map((item) => [item.rowIndex, item]));
   const successRows = persistedRows.filter((item) => item.status === "success");
@@ -927,12 +1053,114 @@ async function rebuildGenerationResultArtifact(row: typeof contentGenerationJobs
     .update(contentGenerationJobs)
     .set({
       resultFileName: fileName,
-      resultFileBase64: xlsxBase64,
       resultFilePath,
     })
     .where(eq(contentGenerationJobs.id, row.id));
 
-  return { fileName, xlsxBase64, buffer: workbookBuffer, resultFilePath };
+  return { fileName, xlsxBase64, buffer: workbookBuffer, resultFilePath, rebuiltFromRowsOnly: false };
+}
+
+async function restoreResultWorkbookFromBase64(row: typeof contentGenerationJobs.$inferSelect) {
+  if (!row.resultFileBase64) return null;
+  const buffer = Buffer.from(row.resultFileBase64, "base64");
+  if (!isLikelyXlsxBuffer(buffer)) return null;
+  const fileName = row.resultFileName || `faq-output-${row.id}.xlsx`;
+  const resultFilePath = await persistFaqResultWorkbook(row.id, fileName, buffer);
+  await db
+    .update(contentGenerationJobs)
+    .set({
+      resultFileName: fileName,
+      resultFilePath,
+    })
+    .where(eq(contentGenerationJobs.id, row.id));
+  return { fileName, resultFilePath, buffer };
+}
+
+export async function repairHistoricalFaqResultArtifacts(options?: {
+  jobIds?: string[];
+  olderThanHours?: number;
+  includeFailed?: boolean;
+}) {
+  const olderThanHours = Math.max(1, options?.olderThanHours ?? 24);
+  const statuses = options?.includeFailed ? ["done", "failed"] : ["done"];
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `
+      SELECT *
+      FROM content_generation_jobs
+      WHERE sc_type = 'faq'
+        AND status IN (${statuses.map(() => "?").join(", ")})
+        AND COALESCE(finished_at, created_at) < DATE_SUB(NOW(), INTERVAL ? HOUR)
+        ${options?.jobIds?.length ? `AND id IN (${options.jobIds.map(() => "?").join(", ")})` : ""}
+      ORDER BY COALESCE(finished_at, created_at) ASC
+    `,
+    [...statuses, olderThanHours, ...(options?.jobIds ?? [])],
+  );
+
+  const outcomes: FaqResultRepairOutcome[] = [];
+
+  for (const rawRow of rows) {
+    const row = rawRow as unknown as typeof contentGenerationJobs.$inferSelect;
+    const createdAtIso =
+      row.createdAt instanceof Date ? formatChinaIsoOffset(row.createdAt) : formatChinaIsoOffset(new Date(String(row.createdAt)));
+    const finishedAtIso =
+      row.finishedAt instanceof Date
+        ? formatChinaIsoOffset(row.finishedAt)
+        : row.finishedAt
+          ? formatChinaIsoOffset(new Date(String(row.finishedAt)))
+          : null;
+    const currentPath = row.resultFilePath || "";
+    if (currentPath && (await pathExists(currentPath))) {
+      outcomes.push({
+        jobId: row.id,
+        status: row.status,
+        createdAt: createdAtIso,
+        finishedAt: finishedAtIso,
+        action: "already_valid",
+        resultFilePath: currentPath,
+      });
+      continue;
+    }
+
+    const restored = await restoreResultWorkbookFromBase64(row);
+    if (restored) {
+      outcomes.push({
+        jobId: row.id,
+        status: row.status,
+        createdAt: createdAtIso,
+        finishedAt: finishedAtIso,
+        action: "repaired_from_base64",
+        resultFilePath: restored.resultFilePath,
+      });
+      continue;
+    }
+
+    const rebuilt = await rebuildGenerationResultArtifact(row);
+    if (rebuilt.resultFilePath && (await pathExists(rebuilt.resultFilePath))) {
+      const rebuiltAction: FaqResultRepairAction =
+        row.inputFilePath || row.inputFileBase64 ? "rebuilt_from_inputs" : "rebuilt_from_rows";
+      outcomes.push({
+        jobId: row.id,
+        status: row.status,
+        createdAt: createdAtIso,
+        finishedAt: finishedAtIso,
+        action: rebuiltAction,
+        resultFilePath: rebuilt.resultFilePath,
+      });
+      continue;
+    }
+
+    outcomes.push({
+      jobId: row.id,
+      status: row.status,
+      createdAt: createdAtIso,
+      finishedAt: finishedAtIso,
+      action: "skipped",
+      resultFilePath: row.resultFilePath || "",
+      reason: "No restorable file payload or rebuildable inputs were found.",
+    });
+  }
+
+  return outcomes;
 }
 
 async function listDoneGenerationRows(scType = "faq") {
@@ -944,10 +1172,14 @@ async function listDoneGenerationRows(scType = "faq") {
     .where(eq(contentGenerationJobs.scType, scType))
     .orderBy(desc(contentGenerationJobs.createdAt));
 
-  const workbookRows = rows
-    .filter((row) => (row.status === "done" || row.status === "failed") && row.resultFileBase64)
-    .filter((row) => !persistedJobIds.has(row.id))
-    .flatMap((row) => parseStoredWorkbook(row));
+  const workbookRows = (
+    await Promise.all(
+      rows
+        .filter((row) => (row.status === "done" || row.status === "failed") && (row.resultFilePath || row.resultFileBase64))
+        .filter((row) => !persistedJobIds.has(row.id))
+        .map((row) => parseStoredWorkbook(row)),
+    )
+  ).flat();
 
   return [
     ...persistedRows.map((row) => ({
@@ -1040,6 +1272,7 @@ export async function createGenerationJob(input: {
 }) {
   const { makeId } = await import("../utils/id");
   const id = makeId();
+  const inputFilePath = await persistFaqInputWorkbook(id, input.inputFileName, input.inputFileBase64);
 
   await db.insert(contentGenerationJobs).values({
     id,
@@ -1048,7 +1281,7 @@ export async function createGenerationJob(input: {
     uploader: input.uploader,
     note: input.note,
     inputFileName: input.inputFileName,
-    inputFileBase64: input.inputFileBase64,
+    inputFilePath,
     status: "queued",
     elapsedExecutionMs: 0,
     startedAt: null,
@@ -1057,7 +1290,7 @@ export async function createGenerationJob(input: {
     errorReason: null,
   });
 
-  return { jobId: id };
+  return { jobId: id, inputFilePath };
 }
 
 function getElapsedExecutionSnapshot(
@@ -1221,10 +1454,9 @@ export async function completeGenerationJob(input: {
       estimatedCostUsdSum: String(input.estimatedCostUsdSum),
       aiModel: input.aiModel,
       resultFileName: input.resultFileName,
-      resultFileBase64: input.resultFileBase64 || null,
       resultFilePath: input.resultFilePath || null,
       routeSummaryJson: input.routeSummary,
-      rowResultsJson: input.rowResults,
+      rowResultsJson: null,
       errorReason: input.errorReason || null,
       elapsedExecutionMs: settledElapsedMs,
       finishedAt: now,
@@ -1282,7 +1514,7 @@ export async function failGenerationJob(jobId: string, message: string) {
     .set({
       status: "failed",
       errorReason: message,
-      rowResultsJson: [{ rowIndex: 0, status: "error", subclass: "", factType: "", routeKey: "", error: message }],
+      rowResultsJson: null,
       resultFilePath: null,
       elapsedExecutionMs: settledElapsedMs,
       finishedAt: now,
@@ -1312,6 +1544,7 @@ function mapGenerationQueueRow(row: Record<string, unknown>) {
   const hasResultFilePath = Boolean(String(row.result_file_path || ""));
   const hasResultFileBase64 = Number(row.has_result_file_base64 || 0) > 0;
   const hasInputFileBase64 = Number(row.has_input_file_base64 || 0) > 0;
+  const hasInputFilePath = Number(row.has_input_file_path || 0) > 0;
   return {
     id: String(row.id || ""),
     status: String(row.status || ""),
@@ -1332,10 +1565,11 @@ function mapGenerationQueueRow(row: Record<string, unknown>) {
     resultFileName: String(row.result_file_name || ""),
     resultFilePath: String(row.result_file_path || ""),
     canDownload: hasResultFilePath || Boolean(row.result_file_name || row.status === "done" || row.status === "failed"),
-    canDownloadFieldExtract: hasResultFilePath || hasResultFileBase64 || hasInputFileBase64,
+    canDownloadFieldExtract: hasResultFilePath || hasResultFileBase64 || hasInputFilePath || hasInputFileBase64,
     createdAt: formatChinaIsoOffset(row.created_at instanceof Date ? row.created_at : new Date(String(row.created_at || ""))),
     startedAt: formatChinaIsoOffset(row.started_at instanceof Date ? row.started_at : row.started_at ? new Date(String(row.started_at)) : null),
     finishedAt: formatChinaIsoOffset(row.finished_at instanceof Date ? row.finished_at : row.finished_at ? new Date(String(row.finished_at)) : null),
+    routeSummary: (row.route_summary_json as RouteSummaryRow[] | null) || [],
   };
 }
 
@@ -1399,7 +1633,9 @@ export async function listGenerationJobs(page: number, pageSize: number, scType 
           error_reason,
           result_file_name,
           result_file_path,
+          route_summary_json,
           CASE WHEN result_file_base64 IS NULL OR result_file_base64 = '' THEN 0 ELSE 1 END AS has_result_file_base64,
+          CASE WHEN input_file_path IS NULL OR input_file_path = '' THEN 0 ELSE 1 END AS has_input_file_path,
           CASE WHEN input_file_base64 IS NULL OR input_file_base64 = '' THEN 0 ELSE 1 END AS has_input_file_base64,
           created_at,
           started_at,
@@ -1590,18 +1826,50 @@ async function readMaterializedHistorySummary(input: HistoryFilters): Promise<Ge
 export async function getGenerationJobResult(jobId: string) {
   const rows = await db.select().from(contentGenerationJobs).where(eq(contentGenerationJobs.id, jobId));
   const row = rows[0];
+  const hasReadableResultPath = row?.resultFilePath ? await pathExists(row.resultFilePath) : false;
   const rebuiltResult =
-    row && !row.resultFileBase64 && !row.resultFilePath && (row.status === "done" || row.status === "failed")
+    row &&
+    !row.resultFileBase64 &&
+    (!row.resultFilePath || !hasReadableResultPath) &&
+    (row.status === "done" || row.status === "failed")
       ? await rebuildGenerationResultArtifact(row)
       : null;
   if (!row) throw new Error("未找到 FAQ 输出任务。");
+  const persistedRows = row.rowResultsJson ? null : await listPersistedGenerationRows(jobId);
   return {
     id: row.id,
     fileName: rebuiltResult?.fileName || row.resultFileName || `faq-output-${row.id}.xlsx`,
     xlsxBase64: rebuiltResult?.xlsxBase64 || row.resultFileBase64 || "",
     status: row.status,
     routeSummary: (row.routeSummaryJson as RouteSummaryRow[] | null) || [],
-    rowResults: (row.rowResultsJson as RowRuntimeResult[] | null) || [],
+    rowResults:
+      (row.rowResultsJson as RowRuntimeResult[] | null) ||
+      (persistedRows || []).map((item) =>
+        item.status === "success"
+          ? {
+              rowIndex: item.rowIndex,
+              status: "success" as const,
+              subclass: item.subclass,
+              factType: item.factType,
+              routeKey: item.routeKey,
+              runtime: {
+                elapsedMs: item.elapsedMs,
+                promptTokens: item.promptTokens,
+                completionTokens: item.completionTokens,
+                totalTokens: item.totalTokens,
+                estimatedCostUsd: item.estimatedCostUsd,
+                aiModel: item.aiModel,
+              },
+            }
+          : {
+              rowIndex: item.rowIndex,
+              status: "error" as const,
+              subclass: item.subclass,
+              factType: item.factType,
+              routeKey: item.routeKey,
+              error: item.errorReason,
+            },
+      ),
     summary: {
       totalRows: row.totalRows,
       executableRows: row.executableRows,
@@ -1645,7 +1913,7 @@ export async function getGenerationJobDownloadPayload(jobId: string, options?: {
   const shouldRebuild =
     !fileBuffer &&
     (row.status === "done" || row.status === "failed") &&
-    Boolean(row.inputFileBase64);
+    Boolean(row.inputFilePath || row.inputFileBase64);
   const rebuiltResult = shouldRebuild ? await rebuildGenerationResultArtifact(row) : null;
 
   if (!fileBuffer && rebuiltResult?.buffer && isLikelyXlsxBuffer(rebuiltResult.buffer)) {
@@ -1726,6 +1994,7 @@ export async function getGenerationJobForRetry(jobId: string) {
     uploader: row.uploader,
     note: row.note,
     inputFileName: row.inputFileName,
+    inputFilePath: row.inputFilePath || "",
     inputFileBase64: row.inputFileBase64 || "",
   };
 }
@@ -1766,7 +2035,9 @@ export async function getGenerationHistorySummary(input: HistoryFilters): Promis
 
     const totalRows = Number(((summaryRows[0] || {}) as Record<string, unknown>).total_rows || 0);
     if (totalRows === 0) {
-      return buildLegacyHistorySummary(await loadLegacyHistoryRows(input));
+      const empty = createEmptyHistorySummaryResult("ready", new Date().toISOString());
+      setHistoryCacheValue(generationHistorySummaryCache, cacheKey, empty);
+      return empty;
     }
 
     const [byCountryRows] = await pool.query<RowDataPacket[]>(
@@ -1863,10 +2134,10 @@ export async function listGenerationHistoryRows(input: HistoryFilters): Promise<
           SELECT
             r.job_id,
             r.row_index
-          FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_id, idx_generation_jobs_sc_type_uploader_id)
-          INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_status_country_subclass_job_row) ON r.job_id = j.id
+          FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_status_created_id)
+          STRAIGHT_JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_job_status_country_subclass_term_row) ON r.job_id = j.id
           ${whereSql}
-          ORDER BY COALESCE(j.finished_at, j.created_at) DESC, r.row_index ASC
+          ORDER BY j.created_at DESC, r.row_index ASC
           LIMIT ? OFFSET ?
         `,
         [...params, pageSize + 1, start],
@@ -1879,27 +2150,22 @@ export async function listGenerationHistoryRows(input: HistoryFilters): Promise<
     }));
     const hasMore = pageKeyRows[0].length > pageSize;
 
-    if (!pageKeys.length && cachedTotal === 0) {
-      const legacyRows = await loadLegacyHistoryRows(input);
-      const pagedRows = legacyRows.slice(start, start + pageSize);
+    if (!pageKeys.length) {
       const result = {
-        total: legacyRows.length,
-        hasMore: start + pagedRows.length < legacyRows.length,
-        totalIsEstimated: false,
-        rows: pagedRows.map((row) => ({
-          jobId: row.jobId,
-          uploader: row.uploader,
-          createdAt: formatChinaIsoOffset(row.createdAt),
-          finishedAt: formatChinaIsoOffset(row.finishedAt),
-          Country: row.Country,
-          TermID: row.TermID,
-          TermName: row.TermName,
-          Domain: row.Domain,
-          Subclass: row.Subclass,
-          Titile1: row.Titile1,
-          "Brief Introduction": row["Brief Introduction"],
-        })),
+        total: cachedTotal ?? start,
+        hasMore: false,
+        totalIsEstimated: cachedTotal == null,
+        rows: [],
       };
+      logGenerationPerf("historyRows", {
+        page,
+        pageSize,
+        rows: 0,
+        total: result.total,
+        hasMore: false,
+        totalIsEstimated: result.totalIsEstimated,
+        durationMs: Date.now() - startedAt,
+      });
       setHistoryCacheValue(generationHistoryRowsCache, cacheKey, result);
       return result;
     }
@@ -1925,8 +2191,8 @@ export async function listGenerationHistoryRows(input: HistoryFilters): Promise<
             r.title1,
             r.brief_introduction,
             r.row_index
-          FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_id, idx_generation_jobs_sc_type_uploader_id)
-          INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_status_country_subclass_job_row) ON r.job_id = j.id
+          FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_status_created_id)
+          STRAIGHT_JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_job_status_country_subclass_term_row) ON r.job_id = j.id
           WHERE (r.job_id, r.row_index) IN (${tuplePlaceholders})
           ORDER BY FIELD(CONCAT(r.job_id, ':', r.row_index), ${fieldPlaceholders})
         `,
@@ -2022,6 +2288,302 @@ export async function exportGenerationHistory(input: HistoryFilters & { format?:
     fileName: `${fileStem}.xlsx`,
     mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     contentBase64: Buffer.from(buffer).toString("base64"),
+  };
+}
+
+async function writeHistoryExportFile(input: HistoryFilters & { format?: "xlsx" | "csv" }, taskId: string) {
+  const allRows = await listDoneGenerationRows(input.scType || "faq");
+  const filteredRows = filterHistoryRows(allRows, input);
+  const exportRows = buildHistoryExportRows(filteredRows);
+  const format = input.format || "xlsx";
+  const fileName = buildGenerationHistoryFileName(input, format);
+  const resultFilePath = path.join(FAQ_DOWNLOAD_TASK_DIR, `${taskId}.${format}`);
+
+  if (format === "csv") {
+    await writeFile(resultFilePath, Buffer.from(toCsv(exportRows), "utf8"));
+    return {
+      fileName,
+      resultFilePath,
+      contentType: "text/csv;charset=utf-8",
+    };
+  }
+
+  const workbook = XLSX.utils.book_new();
+  const sheet = XLSX.utils.json_to_sheet(exportRows);
+  XLSX.utils.book_append_sheet(workbook, sheet, "faq_history");
+  const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+  await writeFile(resultFilePath, Buffer.from(buffer));
+  return {
+    fileName,
+    resultFilePath,
+    contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  };
+}
+
+function generationVariantLabel(variant: GenerationDownloadTaskVariant) {
+  if (variant === "field_extract") return "字段提取";
+  if (variant === "full") return "完整结果";
+  if (variant === "main") return "main";
+  return sanitizeFileNameSegment(variant, "结果");
+}
+
+async function getGenerationDownloadMeta(jobId: string) {
+  const [jobRows] = await pool.query<RowDataPacket[]>(
+    `
+      SELECT sc_type, uploader, total_rows
+      FROM content_generation_jobs
+      WHERE id = ?
+      LIMIT 1
+    `,
+    [jobId],
+  );
+  const [countryRows] = await pool.query<RowDataPacket[]>(
+    `
+      SELECT DISTINCT country
+      FROM content_generation_job_rows
+      WHERE job_id = ? AND country IS NOT NULL AND country <> ''
+      LIMIT 4
+    `,
+    [jobId],
+  );
+  const countries = countryRows.map((row) => String(row.country || "").trim().toUpperCase()).filter(Boolean);
+  const country = countries.length <= 0 ? "NA" : countries.length === 1 ? countries[0] : `MULTI${countries.length}`;
+  const job = jobRows[0] || {};
+  return {
+    scType: String(job.sc_type || "faq"),
+    uploader: String(job.uploader || ""),
+    totalRows: Number(job.total_rows || 0),
+    country,
+  };
+}
+
+function buildGenerationJobFileName(input: {
+  jobId: string;
+  variant: GenerationDownloadTaskVariant;
+  scType: string;
+  country: string;
+  totalRows: number;
+}) {
+  const scType = sanitizeFileNameSegment(input.scType || "faq", "faq");
+  const country = sanitizeFileNameSegment(input.country, "NA");
+  const rowCount = Math.max(0, Number(input.totalRows || 0));
+  const variant = generationVariantLabel(input.variant);
+  return `FAQ输出_${scType}_${country}_${rowCount}行_${variant}_${formatChinaDownloadTimestamp()}_${shortDownloadId(input.jobId, "job")}.xlsx`;
+}
+
+function buildGenerationHistoryFileName(input: HistoryFilters & { format?: "xlsx" | "csv" }, format: "xlsx" | "csv") {
+  const scType = sanitizeFileNameSegment(input.scType || "faq", "faq");
+  const country = sanitizeFileNameSegment(input.country ? normalizeCountry(input.country) : "ALL", "ALL");
+  const uploader = sanitizeFileNameSegment(input.uploader || "ALL", "ALL");
+  return `FAQ历史_${scType}_${country}_${uploader}_${format}_${formatChinaDownloadTimestamp()}.${format}`;
+}
+
+function mapDownloadTaskRow(row: RowDataPacket) {
+  return {
+    taskId: String(row.id || ""),
+    jobId: String(row.job_id || ""),
+    variant: String(row.variant || "") as GenerationDownloadTaskVariant,
+    status: String(row.status || "") as GenerationDownloadTaskStatus,
+    progressPercent: Number(row.progress_percent || 0),
+    statusText: String(row.status_text || ""),
+    fileName: String(row.file_name || ""),
+    resultFilePath: String(row.result_file_path || ""),
+    fileSizeBytes: Number(row.file_size_bytes || 0),
+    errorMessage: String(row.error_message || ""),
+    expiresAt: row.expires_at ? formatChinaIsoOffset(row.expires_at instanceof Date ? row.expires_at : new Date(String(row.expires_at))) : null,
+    createdAt: formatChinaIsoOffset(row.created_at instanceof Date ? row.created_at : new Date(String(row.created_at || ""))),
+    updatedAt: formatChinaIsoOffset(row.updated_at instanceof Date ? row.updated_at : new Date(String(row.updated_at || ""))),
+  };
+}
+
+async function updateDownloadTask(
+  taskId: string,
+  input: {
+    status: GenerationDownloadTaskStatus;
+    progressPercent: number;
+    statusText: string;
+    fileName?: string;
+    resultFilePath?: string;
+    fileSizeBytes?: number;
+    errorMessage?: string | null;
+    expiresAt?: Date | null;
+  },
+) {
+  await pool.query(
+    `
+      UPDATE content_generation_download_tasks
+      SET
+        status = ?,
+        progress_percent = ?,
+        status_text = ?,
+        file_name = COALESCE(?, file_name),
+        result_file_path = COALESCE(?, result_file_path),
+        file_size_bytes = COALESCE(?, file_size_bytes),
+        error_message = ?,
+        expires_at = COALESCE(?, expires_at)
+      WHERE id = ?
+    `,
+    [
+      input.status,
+      Math.max(0, Math.min(100, Math.round(input.progressPercent))),
+      input.statusText,
+      input.fileName ?? null,
+      input.resultFilePath ?? null,
+      input.fileSizeBytes ?? null,
+      input.errorMessage ?? null,
+      input.expiresAt ?? null,
+      taskId,
+    ],
+  );
+}
+
+async function prepareGenerationDownloadTask(taskId: string, input: HistoryFilters & { jobId: string; variant: GenerationDownloadTaskVariant; format?: "xlsx" | "csv" }) {
+  try {
+    await updateDownloadTask(taskId, {
+      status: "preparing",
+      progressPercent: 15,
+      statusText: "正在后台准备文件，可继续浏览页面。",
+    });
+    await mkdir(FAQ_DOWNLOAD_TASK_DIR, { recursive: true });
+
+    let fileName = "";
+    let resultFilePath = "";
+    let contentType = "application/octet-stream";
+
+    if (input.variant === "history_xlsx" || input.variant === "history_csv") {
+      const exportResult = await writeHistoryExportFile(
+        {
+          scType: input.scType,
+          country: input.country,
+          subclass: input.subclass,
+          uploader: input.uploader,
+          keyword: input.keyword,
+          startDate: input.startDate,
+          endDate: input.endDate,
+          format: input.variant === "history_csv" ? "csv" : "xlsx",
+        },
+        taskId,
+      );
+      fileName = exportResult.fileName;
+      resultFilePath = exportResult.resultFilePath;
+      contentType = exportResult.contentType;
+    } else {
+      const payload = await getGenerationJobDownloadPayload(input.jobId, { variant: input.variant });
+      const meta = await getGenerationDownloadMeta(input.jobId);
+      fileName = buildGenerationJobFileName({
+        jobId: input.jobId,
+        variant: input.variant,
+        scType: meta.scType,
+        country: meta.country,
+        totalRows: meta.totalRows,
+      });
+      contentType = payload.contentType;
+      resultFilePath = path.join(FAQ_DOWNLOAD_TASK_DIR, `${taskId}.xlsx`);
+      await writeFile(resultFilePath, payload.buffer);
+    }
+
+    const fileStat = await stat(resultFilePath);
+    await updateDownloadTask(taskId, {
+      status: "ready",
+      progressPercent: 100,
+      statusText: "文件准备完成，浏览器即将开始下载。",
+      fileName,
+      resultFilePath,
+      fileSizeBytes: fileStat.size,
+      errorMessage: null,
+      expiresAt: new Date(Date.now() + faqDownloadTaskRetentionMs),
+    });
+    return { contentType };
+  } catch (error) {
+    await updateDownloadTask(taskId, {
+      status: "failed",
+      progressPercent: 100,
+      statusText: "文件准备失败。",
+      errorMessage: error instanceof Error ? error.message : String(error),
+      expiresAt: new Date(Date.now() + faqDownloadTaskRetentionMs),
+    });
+    throw error;
+  }
+}
+
+export async function createGenerationDownloadTask(input: {
+  jobId: string;
+  variant?: GenerationDownloadVariant;
+}) {
+  const { makeId } = await import("../utils/id");
+  const id = makeId();
+  const variant = input.variant || "main";
+  await pool.query(
+    `
+      INSERT INTO content_generation_download_tasks
+        (id, job_id, variant, status, progress_percent, status_text, expires_at)
+      VALUES (?, ?, ?, 'queued', 0, '已加入下载准备队列。', ?)
+    `,
+    [id, input.jobId, variant, new Date(Date.now() + faqDownloadTaskRetentionMs)],
+  );
+  void prepareGenerationDownloadTask(id, { jobId: input.jobId, variant }).catch((error) => {
+    console.error("faq download task failed", error);
+  });
+  return getGenerationDownloadTask(id);
+}
+
+export async function createGenerationHistoryExportDownloadTask(input: HistoryFilters & { format?: "xlsx" | "csv" }) {
+  const { makeId } = await import("../utils/id");
+  const id = makeId();
+  const variant: GenerationDownloadTaskVariant = (input.format || "xlsx") === "csv" ? "history_csv" : "history_xlsx";
+  await pool.query(
+    `
+      INSERT INTO content_generation_download_tasks
+        (id, job_id, variant, status, progress_percent, status_text, expires_at)
+      VALUES (?, 'history-export', ?, 'queued', 0, '已加入历史导出准备队列。', ?)
+    `,
+    [id, variant, new Date(Date.now() + faqDownloadTaskRetentionMs)],
+  );
+  void prepareGenerationDownloadTask(id, { ...input, jobId: "history-export", variant }).catch((error) => {
+    console.error("faq history export download task failed", error);
+  });
+  return getGenerationDownloadTask(id);
+}
+
+export async function getGenerationDownloadTask(taskId: string) {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `
+      SELECT *
+      FROM content_generation_download_tasks
+      WHERE id = ?
+      LIMIT 1
+    `,
+    [taskId],
+  );
+  const row = rows[0];
+  if (!row) throw new Error("Download task was not found.");
+  const mapped = mapDownloadTaskRow(row);
+  if (mapped.status !== "expired" && row.expires_at && new Date(String(row.expires_at)).getTime() < Date.now()) {
+    await updateDownloadTask(taskId, {
+      status: "expired",
+      progressPercent: mapped.progressPercent,
+      statusText: "下载文件已过期，请重新创建下载任务。",
+      errorMessage: mapped.errorMessage || null,
+    });
+    return { ...mapped, status: "expired" as const, statusText: "下载文件已过期，请重新创建下载任务。" };
+  }
+  return mapped;
+}
+
+export async function getGenerationDownloadTaskFile(taskId: string) {
+  const task = await getGenerationDownloadTask(taskId);
+  if (task.status !== "ready") throw new Error(task.errorMessage || "Download task is not ready yet.");
+  if (!task.resultFilePath || !(await pathExists(task.resultFilePath))) {
+    throw new Error("Prepared download file is missing or expired.");
+  }
+  const fileStat = await stat(task.resultFilePath);
+  const ext = path.extname(task.fileName || "").toLowerCase();
+  return {
+    fileName: task.fileName || `faq-download-${taskId}${ext || ".xlsx"}`,
+    resultFilePath: task.resultFilePath,
+    contentType:
+      ext === ".csv" ? "text/csv;charset=utf-8" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    fileSizeBytes: fileStat.size,
   };
 }
 
@@ -2145,7 +2707,7 @@ export async function exportGenerationCountryRollup(input: { scType?: string; co
 
   const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
   return {
-    fileName: `faq-result-${country}.xlsx`,
+    fileName: `FAQ国家汇总_${sanitizeFileNameSegment(scType, "faq")}_${sanitizeFileNameSegment(country, "NA")}_${formatChinaDownloadTimestamp()}.xlsx`,
     contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     buffer,
     summary: {
@@ -2254,27 +2816,106 @@ async function cleanupFaqResultFiles() {
   return { removedFiles, removedBytes };
 }
 
+async function cleanupFaqInputFiles() {
+  await mkdir(FAQ_INPUT_DIR, { recursive: true });
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `
+      SELECT id, status, input_file_path, COALESCE(finished_at, created_at) AS retained_at
+      FROM content_generation_jobs
+      WHERE sc_type = 'faq' AND input_file_path IS NOT NULL AND input_file_path <> ''
+    `,
+  );
+  const now = Date.now();
+  let removedFiles = 0;
+  let removedBytes = 0;
+
+  for (const row of rows) {
+    const inputFilePath = String(row.input_file_path || "");
+    if (!inputFilePath) continue;
+    if (!(await pathExists(inputFilePath))) continue;
+    const retainedAt =
+      row.retained_at instanceof Date ? row.retained_at.getTime() : new Date(String(row.retained_at || "")).getTime();
+    const status = String(row.status || "");
+    const retentionMs =
+      status === "failed"
+        ? faqFailedInputRetentionMs
+        : status === "done"
+          ? faqDoneInputRetentionMs
+          : Number.POSITIVE_INFINITY;
+    if (!Number.isFinite(retainedAt) || now - retainedAt < retentionMs) continue;
+    const fileStat = await stat(inputFilePath).catch(() => null);
+    if (!fileStat?.isFile()) continue;
+    removedFiles += 1;
+    removedBytes += fileStat.size;
+    await rm(inputFilePath, { force: true });
+  }
+
+  return { removedFiles, removedBytes };
+}
+
+async function cleanupFaqDownloadTaskFiles() {
+  await mkdir(FAQ_DOWNLOAD_TASK_DIR, { recursive: true });
+  const [expiredRows] = await pool.query<RowDataPacket[]>(
+    `
+      SELECT id, result_file_path
+      FROM content_generation_download_tasks
+      WHERE expires_at IS NOT NULL AND expires_at < NOW()
+    `,
+  );
+  let removedFiles = 0;
+  let removedBytes = 0;
+
+  for (const row of expiredRows) {
+    const resultFilePath = String(row.result_file_path || "");
+    if (!resultFilePath || !(await pathExists(resultFilePath))) continue;
+    const fileStat = await stat(resultFilePath).catch(() => null);
+    if (!fileStat?.isFile()) continue;
+    await rm(resultFilePath, { force: true });
+    removedFiles += 1;
+    removedBytes += fileStat.size;
+  }
+
+  await pool.query(
+    `
+      UPDATE content_generation_download_tasks
+      SET status = 'expired', status_text = '下载文件已过期，请重新创建下载任务。'
+      WHERE expires_at IS NOT NULL AND expires_at < NOW() AND status <> 'expired'
+    `,
+  );
+
+  return { removedFiles, removedBytes };
+}
+
 export async function runGenerationHousekeeping() {
   const startedAt = Date.now();
-  const runtimeRoot = path.resolve(process.cwd(), ".runtime");
+  const runtimeRoot = APP_RUNTIME_DIR;
   const tmpRoot = path.resolve(process.cwd(), "tmp");
-  const [runtimeStats, faqResultStats, tmpStats, faqResultCleanup, tmpCleanup] = await Promise.all([
+  const [runtimeStats, faqInputStats, faqResultStats, tmpStats, faqResultCleanup, faqInputCleanup, faqDownloadCleanup, tmpCleanup] = await Promise.all([
     collectDirectoryStats(runtimeRoot),
+    collectDirectoryStats(FAQ_INPUT_DIR),
     collectDirectoryStats(FAQ_RESULT_DIR),
     collectDirectoryStats(tmpRoot),
     cleanupFaqResultFiles(),
+    cleanupFaqInputFiles(),
+    cleanupFaqDownloadTaskFiles(),
     cleanupDirectoryByAge(tmpRoot, faqTmpRetentionMs),
   ]);
 
   logGenerationPerf("housekeeping", {
     runtimeFiles: runtimeStats.files,
     runtimeBytes: runtimeStats.bytes,
+    faqInputFiles: faqInputStats.files,
+    faqInputBytes: faqInputStats.bytes,
     faqResultFiles: faqResultStats.files,
     faqResultBytes: faqResultStats.bytes,
     tmpFiles: tmpStats.files,
     tmpBytes: tmpStats.bytes,
     removedResultFiles: faqResultCleanup.removedFiles,
     removedResultBytes: faqResultCleanup.removedBytes,
+    removedInputFiles: faqInputCleanup.removedFiles,
+    removedInputBytes: faqInputCleanup.removedBytes,
+    removedDownloadTaskFiles: faqDownloadCleanup.removedFiles,
+    removedDownloadTaskBytes: faqDownloadCleanup.removedBytes,
     removedTmpFiles: tmpCleanup.removedFiles,
     removedTmpBytes: tmpCleanup.removedBytes,
     durationMs: Date.now() - startedAt,
@@ -2295,9 +2936,7 @@ export function startGenerationHousekeeping() {
 
 export function warmGenerationHistoryCaches() {
   setTimeout(() => {
-    void refreshMaterializedHistorySummary("faq").catch(() => undefined);
     void getGenerationHistorySummary({ scType: "faq" }).catch(() => undefined);
-    void listGenerationHistoryRows({ scType: "faq", page: 1, pageSize: 20 }).catch(() => undefined);
     void getGenerationQueueCount("faq").catch(() => undefined);
-  }, 1500);
+  }, 10_000);
 }

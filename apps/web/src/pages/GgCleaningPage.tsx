@@ -1,12 +1,15 @@
 import * as Select from "@radix-ui/react-select";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ggCleaningUploadMaxFileBytes, ggCleaningUploadMaxRows, uploaderOptions } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
 import { formatChinaDateTime } from "../utils/time";
+import { createGlobalDownloadTask, useDownloadCenter } from "../components/DownloadCenter";
 
 const GG_SOURCE_COLUMN = "采集数据源";
 const uploadLimitMb = Math.round(ggCleaningUploadMaxFileBytes / 1024 / 1024);
 const ggCleaningFileChunkBytes = 8 * 1024 * 1024;
+const ggCleaningPreviewTimeoutMs = 15000;
+const ggCleaningDirectFileMaxBytes = 256 * 1024;
 const ggCleaningUploadApiBase = (() => {
   const trpcUrl = import.meta.env.VITE_TRPC_URL || "/trpc";
   if (/^https?:\/\//i.test(trpcUrl)) {
@@ -84,14 +87,6 @@ function triggerBrowserDownload(url: string, fileName?: string) {
   anchor.remove();
 }
 
-function downloadBase64File(fileName: string, base64: string) {
-  const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
-  const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  const url = URL.createObjectURL(blob);
-  triggerBrowserDownload(url, fileName);
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 function downloadTextFile(fileName: string, content: string, mimeType = "text/csv;charset=utf-8") {
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
@@ -99,27 +94,30 @@ function downloadTextFile(fileName: string, content: string, mimeType = "text/cs
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function downloadFileFromResponse(response: Response, fallbackFileName: string) {
-  if (!response.ok) {
-    let message = `Download failed with status ${response.status}.`;
-    try {
-      const payload = (await response.json()) as { error?: string };
-      if (payload?.error) message = payload.error;
-    } catch {
-      // keep default message
-    }
-    throw new Error(message);
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
+  let timeoutHandle: number | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutHandle = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle !== null) window.clearTimeout(timeoutHandle);
   }
-  const blob = await response.blob();
-  const disposition = response.headers.get("Content-Disposition") || "";
-  const encodedNameMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
-  const plainNameMatch = disposition.match(/filename=\"?([^\";]+)\"?/i);
-  const fileName = encodedNameMatch?.[1]
-    ? decodeURIComponent(encodedNameMatch[1])
-    : plainNameMatch?.[1] || fallbackFileName;
-  const url = URL.createObjectURL(blob);
-  triggerBrowserDownload(url, fileName);
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function readFileAsBase64(file: File) {
+  const buffer = await file.arrayBuffer();
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const chunk = bytes.subarray(offset, Math.min(bytes.length, offset + chunkSize));
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
 }
 
 function formatDuration(startedAt?: string | null, finishedAt?: string | null) {
@@ -147,6 +145,20 @@ function formatProgress(processedRows: number, totalRows: number) {
   return Math.max(0, Math.min(100, Math.round((processedRows / totalRows) * 100)));
 }
 
+function resolveQueueTotalRows(row: {
+  totalRows: number;
+  groupedRows: number;
+  summary?: Record<string, unknown> | null;
+}) {
+  const summary = (row.summary as Record<string, unknown> | undefined) || {};
+  const summaryTotalRows = Number(summary.totalRows || 0);
+  const summaryGroupedRows = Number(summary.groupedRows || 0);
+  return {
+    totalRows: summaryTotalRows > 0 ? summaryTotalRows : row.totalRows,
+    groupedRows: summaryGroupedRows > 0 ? summaryGroupedRows : row.groupedRows,
+  };
+}
+
 function formatSummaryHeadline(processedRows: number, groupedRows: number, successRows: number, failedRows: number) {
   return `${processedRows}/${groupedRows} | 成功 ${successRows} | 失败 ${failedRows}`;
 }
@@ -155,6 +167,10 @@ function formatSummaryMeta(summary: Record<string, unknown> | undefined, inputMo
   const chunkCount = Number(summary?.chunkCount || 0);
   if (chunkCount > 0) return `模式 ${inputMode} | 输入 ${totalRows} 行 | 分组 ${groupedRows} | Chunk ${chunkCount}`;
   return `模式 ${inputMode} | 输入 ${totalRows} 行 | 分组 ${groupedRows}`;
+}
+
+function formatGroupedRowsLabel(groupedRows: number, estimated?: boolean) {
+  return estimated ? `≈ ${groupedRows}` : String(groupedRows);
 }
 
 const queueStatusText: Record<string, string> = {
@@ -171,21 +187,46 @@ export function GgCleaningPage() {
   const [includeDebugSheet, setIncludeDebugSheet] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadedFileId, setUploadedFileId] = useState("");
+  const [directFileBase64, setDirectFileBase64] = useState("");
   const [uploadedChunkCount, setUploadedChunkCount] = useState(0);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [previewTaskId, setPreviewTaskId] = useState("");
   const [currentJobId, setCurrentJobId] = useState("");
   const [queuePage, setQueuePage] = useState(1);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const utils = trpc.useUtils();
+  const downloadCenter = useDownloadCenter();
 
   const previewMutation = trpc.ggCleaning.preview.useMutation();
+  const previewTaskCreateMutation = trpc.ggCleaning.previewTaskCreate.useMutation();
   const runMutation = trpc.ggCleaning.run.useMutation({
     onSuccess: async () => {
       await queueQuery.refetch();
     },
   });
-  const queueQuery = trpc.ggCleaning.queue.useQuery({ page: queuePage, pageSize: queuePageSize }, { refetchInterval: 4000 });
+  const previewTaskQuery = trpc.ggCleaning.previewTaskStatus.useQuery(
+    { taskId: previewTaskId },
+    {
+      enabled: Boolean(previewTaskId),
+      refetchInterval: (query) => {
+        const status = query.state.data?.status;
+        if (!status) return 1000;
+        return status === "ready" || status === "failed" || status === "expired" ? false : 1000;
+      },
+    },
+  );
+  const queueQuery = trpc.ggCleaning.queue.useQuery(
+    { page: queuePage, pageSize: queuePageSize },
+    {
+      placeholderData: (previousData) => previousData,
+      refetchOnWindowFocus: false,
+      refetchInterval: (query) => {
+        const rows = query.state.data?.rows ?? [];
+        const hasActive = rows.some((row) => row.status === "queued" || row.status === "running");
+        return hasActive ? 4000 : 12000;
+      },
+    },
+  );
   const statusQuery = trpc.ggCleaning.status.useQuery(
     { jobId: currentJobId },
     {
@@ -198,8 +239,9 @@ export function GgCleaningPage() {
     },
   );
 
-  const previewData = previewMutation.data;
   const currentStatus = statusQuery.data;
+  const asyncPreviewData = previewTaskQuery.data?.preview ?? null;
+  const previewData = asyncPreviewData ?? previewMutation.data;
   const queueRows = useMemo(() => {
     const rows = queueQuery.data?.rows ?? [];
     if (!currentStatus || !currentJobId) return rows;
@@ -210,11 +252,30 @@ export function GgCleaningPage() {
     return Math.max(1, Math.ceil(total / queuePageSize));
   }, [queueQuery.data?.total]);
 
+  useEffect(() => {
+    const task = previewTaskQuery.data;
+    if (!task) return;
+    if (task.status === "ready" && task.preview) {
+      const groupedLabel = formatGroupedRowsLabel(task.preview.groupedRows, task.preview.groupedRowsEstimated);
+      const previewSuffix = task.preview.groupedRowsEstimated ? "（当前先展示估算分组数，真实分组会在任务启动后后台精确计算）" : "";
+      setNotice(`文件上传完成，后台预览已准备好。有效输入 ${task.preview.totalRows} 行 / ${groupedLabel} 组。${previewSuffix}`);
+      setError("");
+    } else if (task.status === "failed") {
+      setError(task.errorMessage || "GG 预览生成失败。");
+    } else if (task.status === "expired") {
+      setError("GG 预览已过期，请重新上传文件。");
+    } else {
+      setNotice(task.statusText || "正在后台准备预览...");
+    }
+  }, [previewTaskQuery.data]);
+
   async function handleFileChange(nextFile: File | null) {
     setError("");
     setNotice("");
     setUploadedFileId("");
+    setDirectFileBase64("");
     setUploadedChunkCount(0);
+    setPreviewTaskId("");
     setSelectedFile(nextFile);
     if (!nextFile) return;
     if (nextFile.size > ggCleaningUploadMaxFileBytes) {
@@ -225,17 +286,31 @@ export function GgCleaningPage() {
 
     try {
       setIsUploadingFile(true);
-      const upload = await uploadRawFile(nextFile, (_progress, text) => {
-        setNotice(text);
-      });
-      setUploadedFileId(upload.uploadId);
-      setUploadedChunkCount(upload.chunkCount);
-      const preview = await previewMutation.mutateAsync({ fileName: nextFile.name, uploadId: upload.uploadId });
-      setNotice(`文件上传完成，系统已在服务端自动解析。预览有效输入 ${preview.totalRows} 行 / ${preview.groupedRows} 组，上传分片 ${upload.chunkCount} 个。`);
+      if (nextFile.size <= ggCleaningDirectFileMaxBytes) {
+        setNotice("小文件走极速预览通道，正在直接解析...");
+        const fileBase64 = await readFileAsBase64(nextFile);
+        setDirectFileBase64(fileBase64);
+        const preview = await withTimeout(
+          previewMutation.mutateAsync({ fileName: nextFile.name, fileBase64 }),
+          ggCleaningPreviewTimeoutMs,
+          "GG 预览生成超时，请重试；如果多次出现，请联系我排查服务器。",
+        );
+        setNotice(`小文件已直接解析。预览有效输入 ${preview.totalRows} 行 / ${formatGroupedRowsLabel(preview.groupedRows, preview.groupedRowsEstimated)} 组。`);
+      } else {
+        const upload = await uploadRawFile(nextFile, (_progress, text) => {
+          setNotice(text);
+        });
+        setUploadedFileId(upload.uploadId);
+        setUploadedChunkCount(upload.chunkCount);
+        const previewTask = await previewTaskCreateMutation.mutateAsync({ fileName: nextFile.name, uploadId: upload.uploadId });
+        setPreviewTaskId(previewTask.taskId);
+        setNotice(`文件上传完成，已转入后台预览队列。上传分片 ${upload.chunkCount} 个，你可以继续填写上传人和备注。`);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "文件上传失败");
       setSelectedFile(null);
       setUploadedFileId("");
+      setDirectFileBase64("");
       setUploadedChunkCount(0);
     } finally {
       setIsUploadingFile(false);
@@ -243,9 +318,20 @@ export function GgCleaningPage() {
   }
 
   async function runJob() {
-    if (!selectedFile || !uploadedFileId) {
+    if (!selectedFile || (!uploadedFileId && !directFileBase64)) {
       setError("请先上传文件。");
       return;
+    }
+    if (previewTaskId) {
+      const previewTask = previewTaskQuery.data;
+      if (!previewTask || previewTask.status === "queued" || previewTask.status === "preparing") {
+        setError("大文件预览仍在后台准备，请等预览完成后再创建任务。");
+        return;
+      }
+      if (previewTask.status !== "ready") {
+        setError(previewTask.errorMessage || "当前预览任务不可用，请重新上传文件。");
+        return;
+      }
     }
     setError("");
     setNotice("");
@@ -254,7 +340,9 @@ export function GgCleaningPage() {
         uploader,
         note,
         fileName: selectedFile.name,
-        uploadId: uploadedFileId,
+        uploadId: uploadedFileId || undefined,
+        fileBase64: directFileBase64 || undefined,
+        previewTaskId: previewTaskId || undefined,
       });
       setCurrentJobId(result.jobId);
       setQueuePage(1);
@@ -267,28 +355,22 @@ export function GgCleaningPage() {
   async function downloadJobResult(jobId: string) {
     setError("");
     try {
-      const url = new URL(`${ggCleaningUploadApiBase}/gg-cleaning/jobs/${encodeURIComponent(jobId)}/download`);
-      if (includeDebugSheet) url.searchParams.set("includeDebug", "1");
-      const response = await fetch(url.toString(), {
-        method: "GET",
-        credentials: "include",
+      await downloadCenter.createDownloadTask({
+        toolType: "gg-cleaning",
+        sourceLabel: includeDebugSheet ? "GG 清洗完整结果" : "GG 清洗商家结果",
+        create: () => createGlobalDownloadTask({ kind: "gg-cleaning", jobId, includeDebug: includeDebugSheet }),
       });
-      await downloadFileFromResponse(response, `gg-cleaning-${jobId}.xlsx`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "下载结果失败，请稍后重试。");
     }
-    return;
-    const data = await utils.client.ggCleaning.result.query({ jobId });
-    if (!data.xlsxBase64) {
-      setError(data.errorReason || "当前任务暂无可下载结果，请稍后刷新列表后重试。");
-      return;
-    }
-    downloadBase64File(data.fileName, data.xlsxBase64);
   }
 
   function downloadDemoTemplate() {
     downloadTextFile("gg-cleaning-demo.csv", ggCleaningDemoCsv);
   }
+
+  const previewTaskStatus = previewTaskQuery.data;
+  const previewPending = Boolean(previewTaskId) && (!previewTaskStatus || previewTaskStatus.status === "queued" || previewTaskStatus.status === "preparing");
 
   return (
     <div className="grid translation-page">
@@ -329,6 +411,19 @@ export function GgCleaningPage() {
             </div>
           </div>
 
+          {previewPending && previewTaskStatus ? (
+            <div className="translation-feedback success" style={{ marginTop: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
+                <strong>后台预览中</strong>
+                <span>{previewTaskStatus.progressPercent}%</span>
+              </div>
+              <div className="progress-track" style={{ marginBottom: 8 }}>
+                <div className="progress-fill" style={{ width: `${previewTaskStatus.progressPercent}%` }} />
+              </div>
+              <div className="muted">{previewTaskStatus.statusText || "系统正在解析文件结构与样例行..."}</div>
+            </div>
+          ) : null}
+
           {selectedFile && previewData ? (
             <div className="translation-current-file-card">
               <div className="output-status-chip">
@@ -345,7 +440,7 @@ export function GgCleaningPage() {
               </div>
               <div className="output-status-chip">
                 <span>分组数</span>
-                <strong>{previewData.groupedRows}</strong>
+                <strong>{formatGroupedRowsLabel(previewData.groupedRows, previewData.groupedRowsEstimated)}</strong>
               </div>
               <div className="output-status-chip">
                 <span>上传分片</span>
@@ -394,13 +489,18 @@ export function GgCleaningPage() {
           <button
             className="btn-primary translation-run-btn"
             type="button"
-            disabled={!selectedFile || !uploadedFileId || isUploadingFile || previewMutation.isPending || runMutation.isPending}
+            disabled={!selectedFile || (!uploadedFileId && !directFileBase64) || isUploadingFile || previewMutation.isPending || previewTaskCreateMutation.isPending || previewPending || runMutation.isPending}
             onClick={() => void runJob()}
           >
-            {runMutation.isPending ? "正在创建任务..." : "创建 GG 清洗任务"}
+            {previewPending ? "等待预览完成..." : runMutation.isPending ? "正在创建任务..." : "创建 GG 清洗任务"}
           </button>
         </div>
 
+        {queueQuery.error ? (
+          <div className="translation-feedback error">
+            {queueQuery.data ? "队列刷新失败，正在重试。当前先展示上一次成功结果。" : `队列加载失败：${queueQuery.error.message}。系统会自动重试，你也可以手动刷新。`}
+          </div>
+        ) : null}
         {error ? <div className="translation-feedback error">{error}</div> : null}
         {notice ? <div className="translation-feedback success">{notice}</div> : null}
       </div>
@@ -449,7 +549,8 @@ export function GgCleaningPage() {
             </thead>
             <tbody>
               {queueRows.map((row) => {
-                const progressPercent = formatProgress(row.processedRows, row.groupedRows);
+                const resolvedTotals = resolveQueueTotalRows(row);
+                const progressPercent = formatProgress(row.processedRows, resolvedTotals.groupedRows);
                 const canDownload = Boolean(row.canDownload || row.resultFilePath);
                 return (
                   <tr key={row.id}>
@@ -459,14 +560,14 @@ export function GgCleaningPage() {
                     <td title={row.errorReason || row.inputFileName}>
                       <div className="gg-cleaning-summary-cell">
                         <div className="progress-label" style={{ marginBottom: 6 }}>
-                          <span>{formatSummaryHeadline(row.processedRows, row.groupedRows, row.successRows, row.failedRows)}</span>
+                          <span>{formatSummaryHeadline(row.processedRows, resolvedTotals.groupedRows, row.successRows, row.failedRows)}</span>
                           <strong>{progressPercent}%</strong>
                         </div>
                         <div className="progress-track" style={{ marginBottom: 6 }}>
                           <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
                         </div>
                         <div className="muted gg-cleaning-summary-meta">
-                          {formatSummaryMeta(row.summary as Record<string, unknown> | undefined, row.inputMode, row.totalRows, row.groupedRows)}
+                          {formatSummaryMeta(row.summary as Record<string, unknown> | undefined, row.inputMode, resolvedTotals.totalRows, resolvedTotals.groupedRows)}
                         </div>
                         {row.errorReason ? (
                           <div className="muted" style={{ fontSize: 12, color: "#b42318", marginTop: 6 }}>
@@ -485,9 +586,14 @@ export function GgCleaningPage() {
                   </tr>
                 );
               })}
-              {queueRows.length === 0 ? (
+              {queueRows.length === 0 && !queueQuery.error ? (
                 <tr>
                   <td colSpan={7}>最近两周暂无 GG 清洗任务。</td>
+                </tr>
+              ) : null}
+              {queueRows.length === 0 && queueQuery.error ? (
+                <tr>
+                  <td colSpan={7}>队列暂时加载失败，正在重试，不代表历史任务已消失。</td>
                 </tr>
               ) : null}
             </tbody>

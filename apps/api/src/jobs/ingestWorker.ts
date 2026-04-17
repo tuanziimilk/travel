@@ -1,5 +1,7 @@
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import {
@@ -15,7 +17,7 @@ import { aboutScoreRows, ingestJobs, uploadBatches } from "../db/schema";
 import { makeId } from "../utils/id";
 import { scoreAboutByAiWithMeta, type ScoreIssueFlags } from "../scoring/aboutAiScorer";
 import { buildConsistentComparisonKeyDeltas } from "../scoring/validators/scoreValidator";
-import { env } from "../env";
+import { env, getAiRuntimeRequestConfig } from "../env";
 import { sha256 } from "../utils/hash";
 import { formatChinaIsoOffset } from "../utils/time";
 import {
@@ -39,6 +41,10 @@ const headerOnline = "About-线上";
 const headerAi = "About-AI优化";
 const headerOp = "About-OP复核";
 const requiredHeaders = ["TermID", "TermName", "Domain", "Country", headerOnline, headerAi, headerOp];
+
+function resolveQualityAiModel(moduleId: "about" | "faq") {
+  return getAiRuntimeRequestConfig(moduleId === "about" ? "quality-about" : "quality-faq").aiModel;
+}
 
 export type ParsedUploadRow = {
   sourceRowIndex: number;
@@ -68,12 +74,26 @@ const pendingIngestJobsByModule: Record<ModuleId, PendingIngestJob[]> = {
   about: [],
   faq: [],
 };
+const ingestQueueCountCache = new Map<string, { expiresAt: number; value: number }>();
+const ingestQueueCountCacheTtlMs = 15 * 1000;
 const ingestRunnerWorkingByModule: Record<ModuleId, boolean> = {
   about: false,
   faq: false,
 };
 const publishAboutSectionName = "About";
 const ingestJobStallMs = env.ingestJobStallMs;
+const ingestInputDir = path.resolve(process.cwd(), "apps/api/.runtime/ingest-inputs");
+let ingestRecoveryTimer: NodeJS.Timeout | null = null;
+
+type PersistedIngestPayload = {
+  jobId: string;
+  batchId: string;
+  moduleId: ModuleId;
+  outputMode: OutputMode;
+  retryScope: "all" | "failed_only";
+  retryOfJobId?: string;
+  rows: ParsedUploadRow[];
+};
 
 function snapshotText(value: string | null | undefined) {
   return env.snapshotEnabled ? String(value || "").trim() : null;
@@ -84,6 +104,29 @@ function rowSignatureFromInput(row: ParsedUploadRow) {
   const hashAi = sha256(row.About_ai || "");
   const hashOp = row.About_op?.trim() ? sha256(row.About_op) : "";
   return [row.TermID || "", row.Domain || "", hashOnline, hashAi, hashOp].join("|");
+}
+
+function ingestInputPath(jobId: string) {
+  return path.join(ingestInputDir, `${jobId}.json`);
+}
+
+async function persistIngestPayload(payload: PersistedIngestPayload) {
+  await mkdir(ingestInputDir, { recursive: true });
+  await writeFile(ingestInputPath(payload.jobId), JSON.stringify(payload), "utf8");
+}
+
+async function readPersistedIngestPayload(jobId: string) {
+  try {
+    const text = await readFile(ingestInputPath(jobId), "utf8");
+    const payload = JSON.parse(text) as PersistedIngestPayload;
+    return Array.isArray(payload.rows) && payload.rows.length > 0 ? payload : null;
+  } catch {
+    return null;
+  }
+}
+
+function hasQueuedIngestJob(moduleId: ModuleId, jobId: string) {
+  return pendingIngestJobsByModule[moduleId].some((item) => item.jobId === jobId);
 }
 
 function rowSignatureFromStored(row: {
@@ -187,7 +230,7 @@ async function backfillMissingErrorRows(
   for (const row of rows) {
     const signature = rowSignatureFromInput(row);
     if (touchedSignatures.has(signature)) continue;
-    await insertErrorRow(batchId, row, reason);
+    await insertErrorRow(batchId, row, reason, "about");
     touchedSignatures.add(signature);
   }
 }
@@ -452,7 +495,7 @@ export async function saveManualScoreToBatch(params: {
     passOp: op ? (op.pass_for_publish ? 1 : 0) : null,
     keyDeltas,
     issuesFlags: buildIssueFlags(params.scored),
-    aiModel: env.aiModel,
+    aiModel: resolveQualityAiModel((params.input.moduleId || "about") as "about" | "faq"),
     aiPromptVersion: env.aiPromptVersion,
     snapshotOnline: snapshotText(params.input.About_online),
     snapshotAi: snapshotText(params.input.About_ai),
@@ -482,6 +525,14 @@ export async function startIngestJob(batchId: string, fileName: string, fileBase
   ingestPayloadByBatch.set(batchId, rows);
   const jobId = makeId();
   await ensureIngestJobsColumns();
+  await persistIngestPayload({
+    jobId,
+    batchId,
+    rows,
+    moduleId,
+    outputMode,
+    retryScope: "all",
+  });
   await db.insert(ingestJobs).values({
     id: jobId,
     batchId,
@@ -514,7 +565,9 @@ export async function startIngestJob(batchId: string, fileName: string, fileBase
     outputMode,
     retryScope: "all",
   });
-  void processPendingIngestJobs(moduleId);
+  if (env.runWorkers) {
+    void processPendingIngestJobs(moduleId);
+  }
   return { jobId, totalRows: rows.length };
 }
 
@@ -731,7 +784,7 @@ async function runIngest(
 
         if (await isCancelled()) return;
 
-        await insertScoreRow(batchId, row, scored.output, scored.diagnostics?.issueFlags);
+        await insertScoreRow(batchId, row, scored.output, moduleId, scored.diagnostics?.issueFlags);
         success += 1;
         finalizedDone += 1;
         promptTokensSum += scored.runtime.promptTokens;
@@ -808,7 +861,7 @@ async function runIngest(
 
           if (await isCancelled()) return;
 
-          await insertScoreRow(batchId, candidate.row, scored.output, scored.diagnostics?.issueFlags);
+          await insertScoreRow(batchId, candidate.row, scored.output, moduleId, scored.diagnostics?.issueFlags);
           success += 1;
           finalizedDone += 1;
           promptTokensSum += scored.runtime.promptTokens;
@@ -851,7 +904,7 @@ async function runIngest(
 
   for (const candidate of pendingFailures) {
     if (await isCancelled()) break;
-    await insertErrorRow(batchId, candidate.row, candidate.error);
+    await insertErrorRow(batchId, candidate.row, candidate.error, moduleId);
     failed += 1;
     finalizedDone += 1;
     await flushProgress(false);
@@ -944,6 +997,7 @@ async function insertScoreRow(
   batchId: string,
   row: ParsedUploadRow,
   scored: ScoreOutput,
+  moduleId: ModuleId,
   issueFlagsOverride?: ScoreIssueFlags,
 ) {
   await ensureAboutScoreRowsColumns();
@@ -985,7 +1039,7 @@ async function insertScoreRow(
     passOp: op ? (op.pass_for_publish ? 1 : 0) : null,
     keyDeltas,
     issuesFlags: issueFlagsOverride ?? buildIssueFlags(scored),
-    aiModel: env.aiModel,
+    aiModel: resolveQualityAiModel(moduleId),
     aiPromptVersion: env.aiPromptVersion,
     snapshotOnline: snapshotText(row.About_online),
     snapshotAi: snapshotText(row.About_ai),
@@ -1022,7 +1076,7 @@ function ensureKeyDeltas(scored: ScoreOutput) {
   return fallback;
 }
 
-async function insertErrorRow(batchId: string, row: ParsedUploadRow, error: unknown) {
+async function insertErrorRow(batchId: string, row: ParsedUploadRow, error: unknown, moduleId: ModuleId) {
   await ensureAboutScoreRowsColumns();
   await db.insert(aboutScoreRows).values({
     id: makeId(),
@@ -1056,7 +1110,7 @@ async function insertErrorRow(batchId: string, row: ParsedUploadRow, error: unkn
     passOp: null,
     keyDeltas: [],
     issuesFlags: { failed: true },
-    aiModel: env.aiModel,
+    aiModel: resolveQualityAiModel(moduleId),
     aiPromptVersion: env.aiPromptVersion,
     snapshotOnline: snapshotText(row.About_online),
     snapshotAi: snapshotText(row.About_ai),
@@ -1151,6 +1205,7 @@ export async function getIngestStatus(jobId: string) {
     ...withChinaJobTimestamps(job),
     ...(rawTimes || {}),
     outputMode: (batch?.outputMode || "full") as OutputMode,
+    uploader: batch?.uploader || "",
     retryScope: String(job.retryScope || "all"),
     isFailedOnlyRetry: String(job.retryScope || "all") === "failed_only",
     failureReasonStats: job.failureReasonStatsJson || {},
@@ -1165,34 +1220,101 @@ export async function listIngestJobs(page = 1, pageSize = 20, moduleId?: "about"
   const safePage = Math.max(1, page);
   const safePageSize = Math.max(1, Math.min(50, pageSize));
   const offset = (safePage - 1) * safePageSize;
-  const rows = await db.select().from(ingestJobs).orderBy(desc(ingestJobs.startedAt));
-  const batchRows = await db.select().from(uploadBatches);
-  const moduleByBatchId = new Map(batchRows.map((item) => [item.id, String(item.moduleId || "about")]));
-  const filtered = moduleId
-    ? rows.filter((item) => moduleByBatchId.get(item.batchId) === moduleId)
-    : rows;
+  const startedAtMs = Date.now();
+  const queueKey = `${moduleId || "all"}`;
+  const cachedCount = ingestQueueCountCache.get(queueKey);
+  const countPromise =
+    cachedCount && cachedCount.expiresAt > Date.now()
+      ? Promise.resolve(cachedCount.value)
+      : pool
+          .query(
+            `
+              SELECT COUNT(*) AS total_count
+              FROM ingest_jobs j
+              INNER JOIN upload_batches b ON b.id = j.batch_id
+              ${moduleId ? "WHERE b.module_id = ?" : ""}
+            `,
+            moduleId ? [moduleId] : [],
+          )
+          .then(([rows]) => {
+            const totalCount = Number((rows as Array<{ total_count?: number }>)[0]?.total_count || 0);
+            ingestQueueCountCache.set(queueKey, {
+              expiresAt: Date.now() + ingestQueueCountCacheTtlMs,
+              value: totalCount,
+            });
+            return totalCount;
+          });
+  const pageRows = await db
+    .select({
+      id: ingestJobs.id,
+      batchId: ingestJobs.batchId,
+      status: ingestJobs.status,
+      retryScope: ingestJobs.retryScope,
+      merchantTotal: ingestJobs.merchantTotal,
+      totalRows: ingestJobs.totalRows,
+      doneRows: ingestJobs.doneRows,
+      failedRows: ingestJobs.failedRows,
+      initialFailedRows: ingestJobs.initialFailedRows,
+      recoveredRows: ingestJobs.recoveredRows,
+      finalFailedRows: ingestJobs.finalFailedRows,
+      elapsedMs: ingestJobs.elapsedMs,
+      etaSeconds: ingestJobs.etaSeconds,
+      promptTokensSum: ingestJobs.promptTokensSum,
+      completionTokensSum: ingestJobs.completionTokensSum,
+      totalTokensSum: ingestJobs.totalTokensSum,
+      estimatedCostUsdSum: ingestJobs.estimatedCostUsdSum,
+      predictedTotalTokens: ingestJobs.predictedTotalTokens,
+      predictedCostUsd: ingestJobs.predictedCostUsd,
+      failureReasonStatsJson: ingestJobs.failureReasonStatsJson,
+      errorReason: ingestJobs.errorReason,
+      startedAt: ingestJobs.startedAt,
+      finishedAt: ingestJobs.finishedAt,
+      updatedAt: ingestJobs.updatedAt,
+    })
+    .from(ingestJobs)
+    .innerJoin(uploadBatches, eq(uploadBatches.id, ingestJobs.batchId))
+    .where(moduleId ? eq(uploadBatches.moduleId, moduleId) : undefined)
+    .orderBy(desc(ingestJobs.startedAt))
+    .limit(safePageSize)
+    .offset(offset);
+  const batchRows = await db
+    .select({
+      id: uploadBatches.id,
+      moduleId: uploadBatches.moduleId,
+      outputMode: uploadBatches.outputMode,
+      uploader: uploadBatches.uploader,
+    })
+    .from(uploadBatches)
+    .where(inArray(uploadBatches.id, pageRows.map((item) => item.batchId)));
   const batchById = new Map(batchRows.map((item) => [item.id, item]));
-  const pageRows = filtered.slice(offset, offset + safePageSize);
   const rawTimeMap = await getIngestJobRawTimeMap(pageRows.map((item) => item.id));
+  const total = await countPromise;
+  const mappedRows = pageRows.map((item) => {
+    const batch = batchById.get(item.batchId);
+    const rawTimes = rawTimeMap.get(item.id);
+    return {
+      ...withChinaJobTimestamps(item),
+      ...(rawTimes || {}),
+      outputMode: (batch?.outputMode || "full") as OutputMode,
+      uploader: batch?.uploader || "",
+      retryScope: String(item.retryScope || "all"),
+      isFailedOnlyRetry: String(item.retryScope || "all") === "failed_only",
+      failureReasonSummary:
+        formatFailureReasonStats(item.failureReasonStatsJson) ||
+        (item.errorReason || (item.failedRows > 0 ? "存在失败行，请下载结果查看失败原因列" : "")),
+    };
+  });
+  const payloadBytes = Buffer.byteLength(JSON.stringify(mappedRows), "utf8");
+  const heapUsedMb = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+  const logLine = `[queue] route=batch.ingest.queue duration_ms=${Date.now() - startedAtMs} rows=${mappedRows.length} payload_bytes=${payloadBytes} heap_used_mb=${heapUsedMb}`;
+  if (Date.now() - startedAtMs > 2000 || payloadBytes > 256 * 1024) console.warn(`${logLine} warn=threshold_exceeded`);
+  else console.log(logLine);
   return {
-    total: filtered.length,
+    total,
     page: safePage,
     pageSize: safePageSize,
-    rows: pageRows.map((item) => {
-      const batch = batchById.get(item.batchId);
-      const rawTimes = rawTimeMap.get(item.id);
-      return {
-        ...withChinaJobTimestamps(item),
-        ...(rawTimes || {}),
-        outputMode: (batch?.outputMode || "full") as OutputMode,
-        retryScope: String(item.retryScope || "all"),
-        isFailedOnlyRetry: String(item.retryScope || "all") === "failed_only",
-        failureReasonStats: item.failureReasonStatsJson || {},
-        failureReasonSummary:
-          formatFailureReasonStats(item.failureReasonStatsJson) ||
-          (item.errorReason || (item.failedRows > 0 ? "存在失败行，请下载结果查看失败原因列" : "")),
-      };
-    }),
+    hasMore: offset + mappedRows.length < total,
+    rows: mappedRows,
   };
 }
 
@@ -1241,6 +1363,15 @@ export async function retryIngestJob(jobId: string, scope: "all" | "failed_only"
     moduleId === "faq"
       ? new Set(payloadRows.map((row) => String(row.TermID || "").trim() || String(row.Domain || "").trim())).size
       : payloadRows.length;
+  await persistIngestPayload({
+    jobId: newJobId,
+    batchId: job.batchId,
+    rows: payloadRows,
+    moduleId,
+    outputMode,
+    retryScope: scope,
+    retryOfJobId: jobId,
+  });
   await db.insert(ingestJobs).values({
     id: newJobId,
     batchId: job.batchId,
@@ -1274,7 +1405,9 @@ export async function retryIngestJob(jobId: string, scope: "all" | "failed_only"
     retryScope: scope,
     retryOfJobId: jobId,
   });
-  void processPendingIngestJobs(moduleId);
+  if (env.runWorkers) {
+    void processPendingIngestJobs(moduleId);
+  }
 
   return { ok: true, newJobId };
 }
@@ -1330,6 +1463,71 @@ async function markStalledJobsAsFailed() {
         .where(eq(ingestJobs.id, row.id));
     }
   }
+}
+
+async function failPendingJobWithoutPayload(jobId: string, batchId: string) {
+  const reason = "job input payload was unavailable after API restart; please re-upload the file";
+  await db.update(uploadBatches).set({ rowCount: 0 }).where(eq(uploadBatches.id, batchId));
+  await db
+    .update(ingestJobs)
+    .set({
+      status: "failed",
+      finishedAt: sql`CURRENT_TIMESTAMP`,
+      etaSeconds: 0,
+      doneRows: 0,
+      failedRows: 0,
+      initialFailedRows: 0,
+      recoveredRows: 0,
+      finalFailedRows: 0,
+      failureReasonStatsJson: buildFailureReasonStats([reason]),
+      errorReason: reason,
+    })
+    .where(and(eq(ingestJobs.id, jobId), eq(ingestJobs.status, "pending")));
+}
+
+async function recoverPendingIngestJobsOnce() {
+  await ensureIngestJobsColumns();
+  const rows = await db.select().from(ingestJobs).where(eq(ingestJobs.status, "pending")).orderBy(ingestJobs.startedAt);
+  if (!rows.length) return;
+  const batchRows = await db.select().from(uploadBatches);
+  const batchById = new Map(batchRows.map((item) => [item.id, item]));
+
+  for (const row of rows) {
+    const batch = batchById.get(row.batchId);
+    const moduleId = (batch?.moduleId || "about") as ModuleId;
+    if (ingestRunnerWorkingByModule[moduleId] || hasQueuedIngestJob(moduleId, row.id)) continue;
+
+    const payload = await readPersistedIngestPayload(row.id);
+    if (!payload) {
+      await failPendingJobWithoutPayload(row.id, row.batchId);
+      console.warn(`[ingest-recovery] marked pending job ${row.id} failed because persisted payload is missing`);
+      continue;
+    }
+
+    pendingIngestJobsByModule[moduleId].push({
+      jobId: row.id,
+      batchId: row.batchId,
+      rows: payload.rows,
+      moduleId,
+      outputMode: payload.outputMode,
+      retryScope: payload.retryScope,
+      retryOfJobId: payload.retryOfJobId,
+    });
+    console.log(`[ingest-recovery] re-queued pending job ${row.id} for module ${moduleId}`);
+    void processPendingIngestJobs(moduleId);
+  }
+}
+
+export function startIngestRecoveryScheduler() {
+  if (ingestRecoveryTimer) return;
+  void recoverPendingIngestJobsOnce().catch((error) => {
+    console.error("[ingest-recovery] startup recovery failed", error);
+  });
+  ingestRecoveryTimer = setInterval(() => {
+    void recoverPendingIngestJobsOnce().catch((error) => {
+      console.error("[ingest-recovery] scheduled recovery failed", error);
+    });
+  }, 30_000);
 }
 
 export async function getBatchResult(batchId: string) {

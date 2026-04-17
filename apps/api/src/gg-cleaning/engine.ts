@@ -21,8 +21,10 @@ export type GgCleaningPreview = {
   inputMode: GgCleaningInputMode;
   totalRows: number;
   groupedRows: number;
+  groupedRowsEstimated?: boolean;
   chunkCount?: number;
   oversizedGroupCount?: number;
+  previewStrategy?: "full" | "fast";
   columns: Array<{ name: string; sampleValues: string[] }>;
   sampleRows: Array<Record<string, string>>;
 };
@@ -48,8 +50,10 @@ type PreviewBuildInput = {
   sampleRawRows: Array<Record<string, unknown>>;
   totalRows: number;
   groupedRows: number;
+  groupedRowsEstimated?: boolean;
   chunkCount?: number;
   oversizedGroupCount?: number;
+  previewStrategy?: "full" | "fast";
 };
 
 type InputRow = {
@@ -59,6 +63,12 @@ type InputRow = {
   termName: string;
   factType: string;
   sourceType: string;
+  normalizedTermId: string;
+  countryCode: string;
+  canonicalFactType: string;
+  normalizedSourceType: string;
+  domainHost: string;
+  domainPath: string;
   snippet: string;
   productUrls: string[];
   existence: GgCleaningExistence;
@@ -74,6 +84,9 @@ type SideResult = {
   reasonCn: string;
   value: string;
   url: string;
+  urlHost: string;
+  domainMatchType: string;
+  urlSelectedFromProductUrls: boolean;
   snippet: string;
   matchedRule: string;
   evidenceSentence: string;
@@ -95,6 +108,10 @@ type GroupAccumulator = {
   domain: string;
   termName: string;
   factType: string;
+  domainHost: string;
+  domainPath: string;
+  countryCode: string;
+  canonicalFactType: string;
   aimode: SideAccumulator;
   searchlab: SideAccumulator;
 };
@@ -110,6 +127,9 @@ type DecisionRow = {
   finalReasonCn: string;
   finalValue: string;
   finalUrl: string;
+  finalUrlHost: string;
+  finalDomainMatchType: string;
+  finalUrlSelectedFromProductUrls: boolean;
   finalSnippet: string;
   finalMatchedRule: string;
   finalEvidenceSentence: string;
@@ -158,6 +178,10 @@ type DebugRow = {
   final_reason_cn: string;
   final_value: string;
   final_url: string;
+  input_domain: string;
+  final_url_host: string;
+  domain_match_type: string;
+  url_selected_from_product_urls: string;
   final_snippet: string;
   final_matched_rule: string;
   final_evidence_sentence: string;
@@ -228,6 +252,10 @@ const DEBUG_HEADERS: Array<keyof DebugRow> = [
   "final_reason_cn",
   "final_value",
   "final_url",
+  "input_domain",
+  "final_url_host",
+  "domain_match_type",
+  "url_selected_from_product_urls",
   "final_snippet",
   "final_matched_rule",
   "final_evidence_sentence",
@@ -314,7 +342,34 @@ type FactFallbackClues = {
 };
 
 const AFFIRMATIVE_PREFIX = /^(?:yes|yeah|ja|si|sí|tak|oui|네|예)\b/i;
-const NEGATIVE_PREFIX = /^(?:no|nein|nie|non|아니|없습니다|없다|없음)\b/i;
+const NEGATIVE_PREFIX = /^(?:no|nee|nein|nie|non|아니|없습니다|없다|없음)\b/i;
+const LEAD_NEGATIVE_CUE_PATTERNS = [
+  /^(?:no|nee|nein|non)\b/i,
+  /^\bgeen\b/i,
+  /^\bniet\b/i,
+  /^\bgeen\s+(?:specifieke|vaste|publieke)\b/i,
+  /^\b(?:biedt|offre|propose)\s+niet\b/i,
+  /^\bop basis van\b.{0,35}\bgeen\b/i,
+  /^\b(?:uit|op)\s+de beschikbare informatie\b.{0,40}\bgeen\b/i,
+  /^\bil n['’]est pas\b/i,
+  /^\bpas de\b/i,
+];
+const AFFIRMATIVE_PREFIX_DISQUALIFIER_PATTERNS = [
+  /\bmaar\b/i,
+  /\bbut\b/i,
+  /\bhowever\b/i,
+  /\bafhankelijk van\b/i,
+  /\bhangt af van\b/i,
+  /\bdepends on\b/i,
+  /\bnot applicable\b/i,
+  /\bniet van toepassing\b/i,
+  /\bgeen fysieke (?:producten|verzending|levering)\b/i,
+  /\bdigitale tickets?\b/i,
+  /\balleen bij\b/i,
+  /\bonly for\b/i,
+  /\bonly when\b/i,
+  /\b(?:individuele|individual)\s+(?:verkoper|seller)\b/i,
+];
 
 const GENERIC_NEGATIVE_PATTERNS = [
   /\b(?:no|not|does not|do not|cannot|can't)\b.{0,40}\b(?:evidence|information|mention|specific|direct|official)\b/i,
@@ -332,7 +387,7 @@ const GENERIC_NEGATIVE_PATTERNS = [
   /\bkein(?:en|em|e)?\b.{0,40}\b(?:rabatt|programm|angebot|preisgarantie)\b/i,
   /\bnicht\b.{0,25}\b(?:verfugbar|verfuegbar|bestatigt|bestätigt|explizit|direkt)\b/i,
   /\bbrak\b.{0,30}\b(?:informacji|potwierdzenia|danych)\b/i,
-  /\bnie\b.{0,35}\b(?:ma|mozna potwierdzic|można potwierdzić|oferuje|potwierdzają|potwierdzajacych|potwierdzających)\b/i,
+  /\bnie\b.{0,35}(?:ma|mozna potwierdzic|można potwierdzić|mo[żz]na potwierdzi[ćc]|wymienia|promuje|oferuje|potwierdzają|potwierdzajacych|potwierdzających)/i,
   /\bno hay\b.{0,35}\b(?:informacion|información|evidencia|confirmacion|confirmación)\b/i,
   /\bno se\b.{0,35}\b(?:menciona|encontraron resultados|confirma)\b/i,
   /\b공식적으로\b.{0,20}\b(?:없|않)\S*/i,
@@ -1246,6 +1301,10 @@ const MILITARY_AMBIGUOUS_ENTITY_PATTERNS = [
 
 const REFERRAL_NON_CONSUMER_PATTERNS = [
   /\baffiliate program\b/i,
+  /\baffiliate\b.{0,35}\b(?:program|commission|creators?|sponsors?)\b/i,
+  /\bprograma de afiliados\b/i,
+  /\bprograma de patrocinio\b/i,
+  /\bpatrocinio\b.{0,35}\b(?:creadores?|afiliados|sponsors?)\b/i,
   /\bcommission\b/i,
   /\bcreator\w*\b/i,
   /\bblogger\w*\b/i,
@@ -1264,6 +1323,7 @@ const REFERRAL_NON_CONSUMER_PATTERNS = [
 ];
 
 const REFERRAL_HARD_NEGATIVE_PATTERNS = [
+  /\bdoes not\b.{0,25}\b(?:provide|offer|have)\b.{0,25}\b(?:a )?(?:standard|formal|public|consumer)?\b.{0,20}\brefer-a-friend\b.{0,20}\b(?:discount|program|offer)\b/i,
   /\bdoes not\b.{0,25}\b(?:provide|offer)\b.{0,25}\b(?:a )?(?:formal|standard|public|consumer)\b.{0,20}\b(?:refer(?:-a-friend)?|referral)\b.{0,20}\b(?:discount|program|offer)\b/i,
   /\bno\b.{0,25}\bformal\b.{0,20}\b(?:refer(?:-a-friend)?|referral)\b.{0,20}\b(?:program|offer)\b/i,
   /\bno\b.{0,25}\b(?:direct|public)\b.{0,20}\bevidence\b.{0,20}\b(?:of|for)\b.{0,20}\b(?:a )?(?:refer(?:-a-friend)?|referral)\b.{0,20}\b(?:discount|program|offer)\b/i,
@@ -1313,6 +1373,12 @@ const SHIPPING_AMBIGUOUS_ENTITY_PATTERNS = [
   /\btheir primary service is property booking\b/i,
 ];
 
+const SHIPPING_SELLER_DEPENDENT_PATTERNS = [
+  /\b(?:gratis|kosteloze) (?:verzending|bezorging|levering)\b.{0,45}\bafhankelijk van\b.{0,25}\b(?:de )?(?:verkoper|aanbieding)\b/i,
+  /\b(?:gratis|kosteloze) (?:verzending|bezorging|levering)\b.{0,45}\bhangt af van\b.{0,25}\b(?:de )?(?:verkoper|aanbieding)\b/i,
+  /\b(?:gratis|free) (?:shipping|delivery)\b.{0,45}\bdepends on\b.{0,25}\b(?:the )?(?:seller|listing)\b/i,
+];
+
 const SHIPPING_INFERENCE_ONLY_PATTERNS = [
   /\bdoes not detail explicitly\b/i,
   /\best(?:e|á)\b.{0,20}\bun est[aá]ndar com[uú]n\b/i,
@@ -1329,6 +1395,9 @@ const SHIPPING_HARD_NEGATIVE_PATTERNS = [
   /\bfree (?:shipping|delivery)\b.{0,50}\b(?:only )?(?:through|via)\b.{0,25}\b(?:third-?party|marketplaces?|retailers?)\b/i,
   /\boccasional\b.{0,20}\bfree (?:shipping|delivery)\b.{0,35}\b(?:promotion|promotions|campaigns?)\b.{0,35}\b(?:rather than|not)\b.{0,20}\b(?:a )?(?:standard|regular|standing)\b/i,
   /\bgeen standaard gratis (?:verzending|bezorging|levering)\b/i,
+  /\bgeen fysieke (?:producten|verzending|levering)\b/i,
+  /\bdigitale tickets?\b.{0,35}\bgeen\b.{0,20}\b(?:fysieke )?(?:verzending|levering)\b/i,
+  /\b(?:gratis|kosteloze) (?:verzending|bezorging|levering)\b.{0,45}\bniet van toepassing\b/i,
   /\b(?:gratis|kosteloze) (?:verzending|bezorging|levering)\b.{0,40}\b(?:alleen|soms|via)\b.{0,20}\b(?:acties|promoties|codes?)\b/i,
   /\bpas de livraison gratuite\b.{0,40}\b(?:standard|g[ée]n[ée]rale|hors promotion)\b/i,
   /\blivraison gratuite\b.{0,50}\b(?:principalement|uniquement|parfois)\b.{0,25}\b(?:via|gr[aâ]ce [àa]|avec)\b.{0,20}\b(?:codes?|promotions|offres ponctuelles)\b/i,
@@ -1336,6 +1405,14 @@ const SHIPPING_HARD_NEGATIVE_PATTERNS = [
   /\bplutot qu['’]?une livraison gratuite\b/i,
   /\bnon mentionn[ée]e?\b.{0,30}\bcomme syst[eé]matique\b/i,
   /\bne mentionne pas\b.{0,35}\b(?:de )?livraison gratuite\b/i,
+];
+
+const SHIPPING_LIMITED_POSITIVE_PATTERNS = [
+  /\b(?:gratis|kosteloze) (?:verzending|bezorging|levering)\b.{0,45}\balleen\b.{0,25}\b(?:bij|voor)\b.{0,30}\b(?:afhalen|afhaalpunt|filiaal|vestiging)\b/i,
+  /\b(?:gratis|kosteloze) (?:verzending|bezorging|levering)\b.{0,55}\b(?:geselecteerde|specifieke)\s+producten\b/i,
+  /\b(?:gratis|kosteloze) (?:verzending|bezorging|levering)\b.{0,55}\bactieproducten\b/i,
+  /\bvoor thuisbezorging\b.{0,35}\b(?:gelden|zijn er)\b.{0,20}\b(?:wel )?(?:bezorgkosten|verzendkosten)\b/i,
+  /\bgratis levering\b.{0,45}\balleen\b.{0,30}\bafhaalpunten\b/i,
 ];
 
 const CROSS_ENTITY_CONTRAST_PATTERNS = [
@@ -1456,10 +1533,19 @@ const CHILD_STRONG_POSITIVE_PATTERNS = [
 ];
 
 const AAA_HARD_NEGATIVE_PATTERNS = [
+  /\bno\b.{0,35}\b(?:menciona|indica|ofrece|hay indicios|hay evidencia|hay informaci[oó]n)\b.{0,45}\b(?:descuentos? )?(?:para )?(?:miembros? )?(?:de )?aaa\b/i,
+  /\bno\b.{0,35}\b(?:descuento|beneficio)\b.{0,25}\baaa\b/i,
+  /\bgeen\b.{0,35}\b(?:aaa|anwb)\b.{0,25}\b(?:korting|voordeel)\b/i,
+  /\bkeine?\b.{0,35}\baaa\b.{0,25}\b(?:rabatt|vorteil)\b/i,
+  /\b(?:ne mentionne pas|aucune?|pas de)\b.{0,45}\b(?:r[ée]duction|avantage)\b.{0,25}\baaa\b/i,
   /\bnie znaleziono żadnych dowodów\b.{0,45}\baaa\b/i,
   /\bbezpośrednich informacji\b.{0,45}\baaa\b/i,
+  /\bnie\b.{0,35}\b(?:oferuje|wskazuje|informuje|akceptuje)\b.{0,45}\baaa\b/i,
+  /\bbrak\b.{0,35}\b(?:informacji|potwierdzenia|dowod[oó]w)\b.{0,45}\baaa\b/i,
   /\b공식 온라인몰에서는 AAA 할인 혜택을 받을 수 없습니다\b/i,
   /\b직접적인 정보는 .*aaa.*확인되지 않았습니다\b/i,
+  /\baaa\b.{0,30}(?:할인|혜택)\b.{0,20}(?:없|않|확인되지)/i,
+  /(?:没有|未|并未).{0,35}AAA.{0,20}(?:折扣|优惠|会员)/i,
   /\bdoes not offer\b.{0,25}\baaa\b.{0,20}\b(?:discount|benefit)\b/i,
   /\bnot\b.{0,20}\baaa\b.{0,20}\b(?:partner|participating merchant|affiliate)\b/i,
 ];
@@ -1469,6 +1555,15 @@ const EXISTING_CUSTOMER_HARD_POSITIVE_PATTERNS = [
   /\bview renewal offers?\b/i,
   /\bexisting subscribers?\b.{0,35}\b(?:apply|receive|get|use)\b.{0,20}\b(?:discount|promo code|savings)\b/i,
   /\bcurrent members?\b.{0,35}\b(?:receive|get|unlock)\b.{0,20}\b(?:discount|benefit|offer)\b/i,
+  /\b(?:yes|sí|si|tak|oui|ja)\b.{0,80}\b(?:existing customers?|clientes existentes|clientes recurrentes|clientes actuales|sta[łl]ych klient[oó]w|loyal customers?|bestaande klanten|clients fid[eé]les)\b.{0,80}\b(?:discounts?|descuentos?|beneficios?|benefits?|zni[żz]k\w*|rabat\w*|korting|avantages?|r[ée]ductions?)\b/i,
+  /\b(?:programa de puntos|programa de fidelizaci[oó]n|puntos de fidelidad|program lojalno[śs]ciow\w*|punkty lojalno[śs]ciow\w*|loyalty points?|rewards? program|programme de fid[eé]lit[eé]|loyaliteitsprogramma)\b.{0,90}\b(?:discounts?|descuentos?|beneficios?|canjeables?|zni[żz]k\w*|rabat\w*|korting|r[ée]ductions?|avantages?)\b/i,
+  /\b(?:sta[łl]ych klient[oó]w|clientes existentes|clientes recurrentes|existing customers?|repeat customers?|bestaande klanten|clients fid[eé]les)\b.{0,90}\b(?:programa de puntos|program lojalno[śs]ciow\w*|punkty|loyalty points?|rewards?|newsletter|club|korting|r[ée]duction)\b/i,
+  /\bindywidualn\w*\b.{0,30}\brabat\w*\b.{0,45}\b(?:klient[oó]w|kolejnych zakupach|sta[łl]ych)\b/i,
+  /\bzni[żz]ki\b.{0,45}\b(?:przy kolejnych zam[oó]wieniach|dla sta[łl]ych klient[oó]w)\b/i,
+  /\b(?:tak|sí|si|yes)\b.{0,60}\b(?:program lojalno[śs]ciow\w*|programa de fidelizaci[oó]n|loyalty program|club|rewards?)\b/i,
+  /\b(?:program lojalno[śs]ciow\w*|programa de fidelizaci[oó]n|loyalty program|club|rewards?)\b.{0,80}\b(?:sta[łl]ych klient[oó]w|clientes existentes|clientes actuales|existing customers?|repeat customers?)\b/i,
+  /\bnewsletter\b.{0,70}\b(?:clientes existentes|clientes actuales|existing customers?|sta[łl]ych klient[oó]w|loyal customers?)\b.{0,50}\b(?:descuentos?|promociones?|coupons?|codes?|zni[żz]k\w*|rabat\w*)\b/i,
+  /\b(?:clientes existentes|clientes actuales|existing customers?|sta[łl]ych klient[oó]w|loyal customers?)\b.{0,70}\bnewsletter\b.{0,50}\b(?:descuentos?|promociones?|coupons?|codes?|zni[żz]k\w*|rabat\w*)\b/i,
   /\bvaste klanten(?:bestand)?\b.{0,35}\b(?:exclusieve )?(?:actiecodes?|kortingscodes?|aanbiedingen)\b/i,
   /\bbestaande klanten\b.{0,35}\b(?:kunnen )?(?:profiteren van|ontvangen|krijgen)\b.{0,25}\b(?:kortingen|actiecodes?|aanbiedingen)\b/i,
   /现有客户.{0,24}(?:折扣|优惠|续订优惠|专用)/,
@@ -1530,6 +1625,18 @@ const EXISTING_CUSTOMER_AMBIGUOUS_PATTERNS = [
 ];
 
 const EXISTING_CUSTOMER_HARD_NEGATIVE_PATTERNS = [
+  /\bno\b.{0,35}\b(?:menciona|anuncia|detalla|ofrece|indica)\b.{0,55}\b(?:programas? de (?:descuento|fidelizaci[oó]n)|descuentos? (?:autom[aá]ticos?|fijos?|especiales?)|clientes existentes|clientes recurrentes)\b/i,
+  /\bno hay\b.{0,45}\b(?:programa|descuento|beneficio)\b.{0,35}\b(?:fidelizaci[oó]n|clientes existentes|clientes recurrentes)\b/i,
+  /\bsin mencionar expl[ií]citamente\b.{0,55}\b(?:descuento|programa|beneficio)\b.{0,35}\b(?:clientes existentes|clientes recurrentes|fidelizaci[oó]n)\b/i,
+  /\bnie\b.{0,35}\b(?:posiada|promuje|reklamuje|informuje|ma)\b.{0,65}\b(?:program\w* lojalno[śs]ciow\w*|zni[żz]k\w* dla sta[łl]ych klient[oó]w|rabat\w* dla sta[łl]ych klient[oó]w)\b/i,
+  /\bnie\b.{0,35}promuje.{0,45}(?:zni\w*|rabat\w*).{0,25}sta[łl]ych klient[oó]w/i,
+  /\bnie\b.{0,35}(?:posiada|ma|informuje).{0,55}(?:zni\w*|rabat\w*).{0,25}sta[łl]ych klient[oó]w/i,
+  /\bbrak\b.{0,45}\b(?:bezpo[śs]redniej|wyra[źz]nych?)?\b.{0,25}\binformacj\w*\b.{0,65}\b(?:program\w* lojalno[śs]ciow\w*|sta[łl]ych klient[oó]w|lojalnych klient[oó]w)\b/i,
+  /\bgeen\b.{0,45}\b(?:loyaliteitsprogramma|kortingsprogramma|vaste klantenkorting|korting voor bestaande klanten)\b/i,
+  /\bkeine?\b.{0,45}\b(?:treueprogramm|kundenprogramm|bestandskundenrabatt|rabatt f[uü]r bestehende kunden)\b/i,
+  /\b(?:ne mentionne pas|aucune?|pas de)\b.{0,55}\b(?:programme de fid[eé]lit[eé]|r[ée]duction pour clients? existants?|avantage clients? fid[eé]les)\b/i,
+  /\bne mentionne pas\b.{0,80}\b(?:r[eé]duction|remise|avantage)\b.{0,35}\b(?:clients? existants?|clients? fid[eé]les)\b/i,
+  /\bpas de\b.{0,45}\b(?:programme de fid[eé]lit[eé]|r[eé]duction|remise)\b.{0,35}\b(?:clients? existants?|clients? fid[eé]les)?\b/i,
   /\bgeen\b.{0,35}\b(?:specifiek|structureel)\b.{0,20}\bkortingsprogramma\b.{0,20}\bvoor\b.{0,20}\bbestaande klanten\b/i,
   /\bgeen\b.{0,35}\b(?:specifiek|formeel|vast)\b.{0,20}\b(?:loyaliteitsprogramma|klantenprogramma)\b/i,
   /\ber is\b.{0,20}\bgeen\b.{0,20}\bspecifiek\b.{0,20}\bstructureel\b.{0,20}\bkortingsprogramma\b/i,
@@ -1599,9 +1706,20 @@ const LOYALTY_HARD_NEGATIVE_PATTERNS = [
 ];
 
 const PRICE_GUARANTEE_HARD_NEGATIVE_PATTERNS = [
+  /\bno\b.{0,35}\b(?:anuncia|menciona|ofrece|indica|publica|cuenta con)\b.{0,60}\b(?:garant[ií]a (?:formal )?(?:de )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|equiparaci[oó]n de precios?|price match)\b/i,
+  /\bno\b.{0,45}\b(?:garant[ií]a|pol[ií]tica)\b.{0,35}\b(?:igualar|igualen|mejorar|equiparar|price match)\b/i,
+  /\bno hay\b.{0,45}\b(?:constancia|evidencia|indicios|informaci[oó]n)\b.{0,45}\b(?:garant[ií]a (?:del? )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|price match)\b/i,
+  /\b(?:precio competitivo|precios competitivos|relaci[oó]n calidad-precio|mejores precios online)\b.{0,100}\b(?:no\b.{0,35}\b(?:garant[ií]a|igualaci[oó]n|equiparaci[oó]n|price match))\b/i,
   /\bno hay indicios p[uú]blicos o expl[ií]citos\b.{0,35}\b(?:garant[ií]a de mejor precio|igualaci[oó]n de precios)\b/i,
   /\bno hay indicios\b.{0,35}\bofrezca\b.{0,25}\b(?:una )?(?:garant[ií]a de mejor precio|igualaci[oó]n de precios)\b/i,
   /\bno hay indicios\b.{0,80}\b(?:garant|igualaci)\w*/i,
+  /\bno\b.{0,30}\b(?:ofrece|menciona|publica|indica)\b.{0,35}\b(?:formalmente )?(?:una )?(?:garant[ií]a (?:formal )?(?:de )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|price match)\b/i,
+  /\bno menciona expl[ií]citamente\b.{0,45}\b(?:garant[ií]a (?:de )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|price match)\b/i,
+  /\bnie\b.{0,35}\bpromuje\b.{0,35}\b(?:gwarancj\w*|has[łl]\w*)\b.{0,35}\b(?:najlepszej|najni[żz]szej)\b.{0,15}\bceny\b/i,
+  /\bnie\b.{0,30}\boferuje\b.{0,45}\bgwarancj\w*\b.{0,25}\b(?:najlepszej|najni[żz]szej)\b.{0,15}\bceny\b/i,
+  /\bnie jest to\b.{0,30}\b(?:price match|best price guarantee|lowest price guarantee)\b/i,
+  /\bnie\b.{0,30}\boferuje\b.{0,35}\bformaln\w*\b.{0,25}\bgwarancj\w*\b.{0,25}\b(?:najlepszej|najni[żz]szej)\b.{0,15}\bceny\b/i,
+  /\bnie posiada\b.{0,35}\bformaln\w*\b.{0,25}\bgwarancj\w*\b.{0,25}\b(?:najlepszej|najni[żz]szej)\b.{0,15}\bceny\b/i,
   /\bnie wynika\b.{0,25}\b(?:aby )?(?:firma|marka)\b.{0,35}\boferowa[łl]a\b.{0,25}\bformaln\w*\b.{0,25}\bgwarancj\w*\b(?: najlepszej ceny)?\b/i,
   /\bbrak\b.{0,35}\bformalnej\b.{0,20}\bgwarancji\b.{0,20}\bnajlepszej ceny\b/i,
   /\bno\b.{0,25}\b(?:official|public|direct|traditional)\b.{0,20}\b(?:price match|price guarantee|best price guarantee)\b/i,
@@ -1625,6 +1743,17 @@ const APP_CROSS_ENTITY_NEGATIVE_PATTERNS = [
 const BLUE_LIGHT_CARD_HARD_NEGATIVE_PATTERNS = [
   /\bno confirmation\b.{0,35}\bblue light(?: card)?\b.{0,20}\bdiscount\b/i,
   /\bthere is no confirmation\b.{0,35}\bblue light(?: card)?\b.{0,20}\bdiscount\b/i,
+  /\bno\b.{0,35}\b(?:menciona|confirma|hay evidencia|hay informaci[oó]n|hay indicios|indica|acepta|acepten|ofrece)\b.{0,45}\b(?:la tarjeta )?blue light(?: card)?\b/i,
+  /\bblue light(?: card)?\b.{0,45}\b(?:no\b.{0,25}\b(?:acepta|aceptan|menciona|ofrece|figura|aparece|confirma))\b/i,
+  /\bbrak\b.{0,35}\b(?:informacji|potwierdzenia|dowod[oó]w)\b.{0,35}\bblue light(?: card)?\b/i,
+  /\bnie\b.{0,45}\b(?:wspomina|potwierdza|oferuje|informuje|akceptuje|wynika|wskazuje)\b.{0,45}\bblue light(?: card)?\b/i,
+  /\bnie\b.{0,35}\b(?:figuruje|znajduje si[eę])\b.{0,45}\b(?:partner[oó]w )?blue light(?: card)?\b/i,
+  /\bgeen\b.{0,45}\bblue light(?: card)?\b.{0,25}\b(?:korting|acceptatie|voordeel)\b/i,
+  /\bkeine?\b.{0,45}\bblue light(?: card)?\b.{0,25}\b(?:rabatt|akzeptanz|vorteil)\b/i,
+  /\b(?:ne mentionne pas|aucune?|pas de)\b.{0,45}\bblue light(?: card)?\b.{0,25}\b(?:r[ée]duction|acceptation|avantage)\b/i,
+  /(?:没有|未|并未).{0,35}Blue Light Card.{0,20}(?:折扣|优惠|接受|支持)/i,
+  /\bblue light(?: card)?\b.{0,30}(?:할인|혜택|제휴)\b.{0,20}(?:없|않|확인되지)/i,
+  /blue light(?: card)?.{0,60}(?:확인되지|없|않)/i,
   /\binstead of blue light discounts?\b/i,
   /\bdoes not offer\b.{0,30}\bblue light(?: card)?\b.{0,20}\bdiscounts?\b/i,
   /\bblue light card is a discount service\b.{0,70}\b(?:united kingdom|uk)\b/i,
@@ -1632,7 +1761,12 @@ const BLUE_LIGHT_CARD_HARD_NEGATIVE_PATTERNS = [
 
 const FAMILY_HARD_NEGATIVE_PATTERNS = [
   /\bdoes not offer a dedicated family discount\b/i,
-  /\bdoes not offer\b.{0,25}\b(?:a )?(?:specific|dedicated)\b.{0,20}\bfamily\b.{0,15}\bdiscount\b/i,
+  /\bdoes not offer\b.{0,25}\b(?:a )?(?:standard|specific|dedicated)\b.{0,20}\bfamily\b.{0,15}\bdiscount\b/i,
+  /\bfriends and family\b.{0,35}\b(?:sale|promotion|event)s?\b.{0,45}\brather than\b.{0,25}\b(?:a )?(?:dedicated|standard)?\b.{0,15}\bfamily\b.{0,15}\bdiscount\b/i,
+  /\bno\b.{0,35}\b(?:menciona|ofrece|indica|tiene)\b.{0,35}\b(?:descuento|oferta)\b.{0,20}\b(?:familiar|familias?|familias numerosas)\b/i,
+  /\bno menciona expl[ií]citamente\b.{0,45}\b(?:descuento|oferta)\b.{0,20}\b(?:familiar|familias?|familias numerosas)\b/i,
+  /\bnie\b.{0,35}\b(?:znaleziono|ma|oferuje|wspomina)\b.{0,35}\b(?:dedykowan\w*|specjaln\w*)?\b.{0,25}\b(?:zni[żz]k\w*|rabat\w*)\b.{0,25}\b(?:rodzinn\w*|dla rodzin)\b/i,
+  /\bbrak\b.{0,35}\b(?:informacji|dedykowan\w*)\b.{0,35}\b(?:zni[żz]k\w*|rabat\w*)\b.{0,25}\b(?:rodzinn\w*|dla rodzin)\b/i,
   /\bkeine?\b.{0,15}\b(?:speziellen?|dedizierten?)\b.{0,20}\bfamilienrabatte?\b/i,
   /\bfamily(?:-size| size)\b.{0,40}\b(?:packs?|products?|bags?)\b.{0,50}\b(?:rather than|instead of|not)\b.{0,25}\b(?:a )?(?:dedicated )?family discount\b/i,
   /\b(?:for|to)\b.{0,12}\bindividuals? and families\b/i,
@@ -1647,6 +1781,15 @@ const GIFT_CARD_STRONG_POSITIVE_PATTERNS = [
   /\b(?:digital )?gift cards?\b.{0,35}\b(?:available|purchase|page)\b/i,
   /\b(?:geschenkgutscheine?|geschenkkarten?)\b.{0,40}\b(?:bestellt|erh[aä]ltlich|einl[oö]sbar|genutzt)\b/i,
   /\b(?:gift cards?|gift vouchers?)\b.{0,35}\b(?:for purchase|to purchase|purchase these directly)\b/i,
+  /\b(?:tarjetas? de regalo|cheques? regalo|bonos? regalo|cupones? de regalo|vales? regalo)\b.{0,60}\b(?:ofrece|disponibles?|adquirir|comprar|compra|v[aá]lid[oa]s?|canjear|importe)\b/i,
+  /\b(?:ofrece|dispone de|vende|permite adquirir|puedes adquirir)\b.{0,60}\b(?:tarjetas? de regalo|cheques? regalo|bonos? regalo|cupones? de regalo|vales? regalo)\b/i,
+  /\b(?:karty podarunkowe|karty prezentowe|bony podarunkowe|bony prezentowe|vouchery prezentowe|vouchery kwotowe)\b.{0,70}\b(?:oferuje|dost[eę]pne|naby[ćc]|zakup|elektroniczn\w*|wysy[łl]ane|pdf|kwot\w*)\b/i,
+  /\b(?:oferuje|sprzedaje|posiada|dost[eę]pne s[ąa])\b.{0,60}\b(?:karty podarunkowe|karty prezentowe|bony podarunkowe|bony prezentowe|vouchery prezentowe|vouchery kwotowe)\b/i,
+  /\b(?:bons? cadeaux?|cartes? cadeaux?|chèques? cadeaux?)\b.{0,55}\b(?:disponibles?|acheter|offre|propose|valables?)\b/i,
+  /\b(?:cadeaubonnen|cadeaukaarten)\b.{0,45}\b(?:beschikbaar|kopen|aangeboden|inwisselen)\b/i,
+  /\b(?:geschenkkarten?|geschenkgutscheine?)\b.{0,45}\b(?:verf[uü]gbar|kaufen|erh[aä]ltlich|einl[oö]sen)\b/i,
+  /(?:礼品卡|礼券|电子礼品卡).{0,30}(?:购买|提供|可用|兑换)/,
+  /(?:기프트카드|상품권|선물 카드).{0,30}(?:구매|제공|사용|교환)/,
   /\bcreate and sell your own gift cards\b/i,
 ];
 
@@ -1658,6 +1801,18 @@ const GIFT_CARD_PLATFORM_SELF_SERVICE_POSITIVE_PATTERNS = [
 const GIFT_CARD_HARD_NEGATIVE_PATTERNS = [
   /\bno direct evidence that\b.{0,80}\boffers?\b.{0,20}\b(?:brand-specific|own)\b.{0,20}\bgift cards?\b/i,
   /\bno direct evidence\b.{0,40}\b(?:brand-specific|own)\b.{0,20}\bgift cards?\b/i,
+  /\bno\b.{0,35}\b(?:especifica|menciona|ofrece|vende|lista)\b.{0,45}\b(?:tarjetas? regalo|gift cards?|vales? regalo|e-?gift cards?)\b/i,
+  /\bno\b.{0,45}\b(?:oferta|venta|disponibilidad)\b.{0,35}\b(?:tarjetas? de regalo|cheques? regalo|bonos? regalo|vales? regalo)\b/i,
+  /\b(?:no menciona|no ofrece|no vende|no lista)\b.{0,70}\b(?:tarjetas? de regalo|cheques? regalo|bonos? regalo|vales? regalo)\b/i,
+  /\b(?:nie ma|nie znaleziono|nie wynika|nie oferuje|nie posiada|nie wyr[oó][żz]nia|brak)\b.{0,80}\b(?:kart podarunkowych|kart prezentowych|bon[oó]w podarunkowych|bon[oó]w prezentowych|voucher[oó]w|w[łl]asnych kart podarunkowych)\b/i,
+  /\b(?:nie mo[żz]na|nie można)\b.{0,35}\bpotwierdzi[ćc]\b.{0,70}\b(?:karty podarunkowe|karty prezentowe|bony podarunkowe|vouchery)\b/i,
+  /\b(?:geen|niet)\b.{0,45}\b(?:cadeaubonnen|cadeaukaarten|gift cards?)\b/i,
+  /\bkeine?\b.{0,45}\b(?:geschenkkarten?|geschenkgutscheine?|gift cards?)\b/i,
+  /\b(?:ne mentionne pas|aucune?|pas de)\b.{0,55}\b(?:cartes? cadeaux?|bons? cadeaux?|chèques? cadeaux?)\b/i,
+  /(?:没有|未|并未|不提供).{0,40}(?:礼品卡|礼券|电子礼品卡)/,
+  /(?:기프트카드|상품권|선물 카드).{0,35}(?:없|않|확인되지)/,
+  /\b(?:cajitas? de regalo|envoltorio de regalo|gift wrapping|personalized card|tarjeta personalizada)\b.{0,80}\b(?:no\b.{0,30}\b(?:tarjetas? regalo|gift cards?)|although no|aunque no)\b/i,
+  /\b(?:tarjetas? personalizadas?|personalized cards?)\b.{0,60}\b(?:no|not)\b.{0,30}\b(?:tarjetas? regalo|gift cards?)\b/i,
   /\bdoes not\b.{0,25}\b(?:currently )?(?:offer|sell|list)\b.{0,30}\b(?:traditional |official )?gift cards?\b/i,
   /\bdoes not appear to offer\b.{0,30}\b(?:traditional |official )?gift cards?\b/i,
   /\binstead of purchasing a gift card\b/i,
@@ -1675,6 +1830,115 @@ const RETURN_AMBIGUOUS_POLICY_PATTERNS = [
   /\beBay\b.{0,35}\bdoes not force free returns\b/i,
   /\bfree returns?\b.{0,30}\bif\b.{0,20}\bitem not as described\b/i,
 ];
+
+const LEAD_EXPLICIT_NO_PATTERNS: Partial<Record<string, RegExp[]>> = {
+  "existing customer": [
+    /\bno\b.{0,35}\b(?:menciona|anuncia|detalla|ofrece|indica)\b.{0,55}\b(?:programas? de (?:descuento|fidelizaci[oó]n)|descuentos? (?:autom[aá]ticos?|fijos?|especiales?)|clientes existentes|clientes recurrentes)\b/i,
+    /\bsin mencionar expl[ií]citamente\b.{0,55}\b(?:descuento|programa|beneficio)\b.{0,35}\b(?:clientes existentes|clientes recurrentes|fidelizaci[oó]n)\b/i,
+    /\bnie\b.{0,35}\b(?:posiada|promuje|reklamuje|informuje|ma)\b.{0,65}\b(?:program\w* lojalno[śs]ciow\w*|zni[żz]k\w* dla sta[łl]ych klient[oó]w|rabat\w* dla sta[łl]ych klient[oó]w)\b/i,
+    /\bnie\b.{0,35}promuje.{0,45}(?:zni\w*|rabat\w*).{0,25}sta[łl]ych klient[oó]w/i,
+    /\bnie\b.{0,35}(?:posiada|ma|informuje).{0,55}(?:zni\w*|rabat\w*).{0,25}sta[łl]ych klient[oó]w/i,
+    /\bbrak\b.{0,45}\b(?:bezpo[śs]redniej|wyra[źz]nych?)?\b.{0,25}\binformacj\w*\b.{0,65}\b(?:program\w* lojalno[śs]ciow\w*|sta[łl]ych klient[oó]w|lojalnych klient[oó]w)\b/i,
+    /\bgeen\b.{0,45}\b(?:loyaliteitsprogramma|kortingsprogramma|vaste klantenkorting|korting voor bestaande klanten)\b/i,
+    /\bkeine?\b.{0,45}\b(?:treueprogramm|kundenprogramm|bestandskundenrabatt|rabatt f[uü]r bestehende kunden)\b/i,
+    /\b(?:ne mentionne pas|aucune?|pas de)\b.{0,55}\b(?:programme de fid[eé]lit[eé]|r[ée]duction pour clients? existants?|avantage clients? fid[eé]les)\b/i,
+    /\bne mentionne pas\b.{0,80}\b(?:r[eé]duction|remise|avantage)\b.{0,35}\b(?:clients? existants?|clients? fid[eé]les)\b/i,
+  ],
+  app: [
+    /\bdoes not\b.{0,30}\b(?:offer|have|provide|list|mention)\b.{0,35}\b(?:an? )?(?:dedicated|specific|app-exclusive|app based|app-only)?\b.{0,20}\bapp(?:-exclusive|-specific|-based)?\b.{0,20}\b(?:discount|offer|benefit|coupon|code)\b/i,
+    /\bno\b.{0,30}\b(?:dedicated|specific|app-exclusive|app based|app-only)?\b.{0,20}\bapp(?:-exclusive|-specific|-based)?\b.{0,20}\b(?:discount|offer|benefit|coupon|code)\b/i,
+    /\bkeine\b.{0,45}\bspezifische\b.{0,25}\bapp\b.{0,20}\b(?:mit|rabatt|erw[aä]hnt)\b/i,
+    /\bnie posiada\b.{0,55}\b(?:dedykowan\w+|w[łl]asnej|mobiln\w*)?\b.{0,25}\baplikacj\w+\b/i,
+    /\bnie ma\b.{0,45}\b(?:dedykowan\w+|w[łl]asnej|mobiln\w*)?\b.{0,25}\baplikacj\w+\b/i,
+    /\bno (?:cuenta con|dispone de|tiene|posee)\b.{0,45}\b(?:una )?(?:aplicaci[oó]n m[oó]vil|app)\b.{0,35}\b(?:propia|dedicada|de compras|para realizar compras)?\b/i,
+    /\bno\b.{0,35}\b(?:ofrece|hay)\b.{0,35}\b(?:descuentos?|beneficios?|cupones?)\b.{0,25}\b(?:por|en|mediante|a trav[eé]s de)\b.{0,15}\b(?:app|aplicaci[oó]n)\b/i,
+  ],
+  "price guarantee": [
+    /\bno\b.{0,30}\b(?:ofrece|menciona|publica|indica)\b.{0,35}\b(?:formalmente )?(?:una )?(?:garant[ií]a (?:formal )?(?:de )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|price match)\b/i,
+    /\bno hay\b.{0,45}\b(?:constancia|evidencia|indicios|informaci[oó]n)\b.{0,45}\b(?:garant[ií]a (?:del? )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|price match)\b/i,
+    /\bno\b.{0,45}\b(?:garant[ií]a|pol[ií]tica)\b.{0,35}\b(?:igualar|igualen|mejorar|equiparar|price match)\b/i,
+    /\bno menciona expl[ií]citamente\b.{0,45}\b(?:garant[ií]a (?:de )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|price match)\b/i,
+    /\bnie\b.{0,35}\bpromuje\b.{0,35}\b(?:gwarancj\w*|has[łl]\w*)\b.{0,35}\b(?:najlepszej|najni[żz]szej)\b.{0,15}\bceny\b/i,
+    /\bnie\b.{0,30}\boferuje\b.{0,45}\bgwarancj\w*\b.{0,25}\b(?:najlepszej|najni[żz]szej)\b.{0,15}\bceny\b/i,
+    /\bnie jest to\b.{0,30}\b(?:price match|best price guarantee|lowest price guarantee)\b/i,
+    /\bnie\b.{0,30}\boferuje\b.{0,35}\bformaln\w*\b.{0,25}\bgwarancj\w*\b.{0,25}\b(?:najlepszej|najni[żz]szej)\b.{0,15}\bceny\b/i,
+  ],
+  return: [
+    /\bno especifica\b.{0,45}\b(?:devoluciones?|returns?)\b.{0,35}\b(?:gratuitas?|gratis|free)\b/i,
+    /\bno\b.{0,30}\bindica\b.{0,45}\b(?:devoluciones?|returns?)\b.{0,35}\b(?:gratuitas?|gratis|free)\b/i,
+    /\bklient\b.{0,35}\bponosi\b.{0,35}\bkoszt\w*\b.{0,25}\bzwrot\w*\b/i,
+    /\bnie\b.{0,35}\boferuje\b.{0,35}\bdarmow\w*\b.{0,25}\bzwrot\w*\b/i,
+  ],
+  family: [
+    /\bdoes not offer\b.{0,25}\b(?:a )?(?:standard|specific|dedicated)\b.{0,20}\bfamily\b.{0,15}\bdiscount\b/i,
+    /\bfriends and family\b.{0,35}\b(?:sale|promotion|event)s?\b.{0,45}\brather than\b.{0,25}\b(?:a )?(?:dedicated|standard)?\b.{0,15}\bfamily\b.{0,15}\bdiscount\b/i,
+    /\bno menciona expl[ií]citamente\b.{0,45}\b(?:descuento|oferta)\b.{0,20}\b(?:familiar|familias?|familias numerosas)\b/i,
+    /\bnie\b.{0,35}mo[żz]na.{0,25}potwierdzi[ćc].{0,70}(?:zni[żz]k\w*|rabat\w*).{0,25}(?:rodzinn\w*|dla rodzin)/i,
+    /\bnie\b.{0,35}wymienia.{0,25}wprost.{0,35}(?:zni[żz]k\w*|rabat\w*).{0,25}(?:rodzinn\w*|dla rodzin)/i,
+    /\bnie\b.{0,35}\b(?:znaleziono|ma|oferuje|wspomina)\b.{0,35}\b(?:dedykowan\w*|specjaln\w*)?\b.{0,25}\b(?:zni[żz]k\w*|rabat\w*)\b.{0,25}\b(?:rodzinn\w*|dla rodzin)\b/i,
+  ],
+  "gift card": [
+    /\bno\b.{0,35}\b(?:especifica|menciona|ofrece|vende|lista)\b.{0,45}\b(?:tarjetas? regalo|gift cards?|vales? regalo|e-?gift cards?)\b/i,
+    /\b(?:nie ma|nie znaleziono|nie wynika|nie oferuje|nie posiada|nie wyr[oó][żz]nia|brak)\b.{0,80}\b(?:kart podarunkowych|kart prezentowych|bon[oó]w podarunkowych|bon[oó]w prezentowych|voucher[oó]w|w[łl]asnych kart podarunkowych)\b/i,
+    /\b(?:nie mo[żz]na|nie można)\b.{0,35}\bpotwierdzi[ćc]\b.{0,70}\b(?:karty podarunkowe|karty prezentowe|bony podarunkowe|vouchery)\b/i,
+    /\b(?:cajitas? de regalo|envoltorio de regalo|gift wrapping|personalized card|tarjeta personalizada)\b.{0,80}\b(?:no\b.{0,30}\b(?:tarjetas? regalo|gift cards?)|aunque no|although no)\b/i,
+  ],
+  referral: [
+    /\bno\b.{0,35}\b(?:especifica|menciona|ofrece|tiene|hay)\b.{0,45}\b(?:programa|descuento|recompensa)\b.{0,25}\b(?:referir|referidos|referidos?|recomendaci[oó]n|referral)\b/i,
+    /\bno\b.{0,35}\b(?:formal|p[uú]blico|para consumidores?)\b.{0,25}\b(?:referral|refer(?:-a-friend)?|referidos?)\b/i,
+  ],
+  aaa: [
+    /\bno\b.{0,35}\b(?:menciona|confirma|hay evidencia|hay informaci[oó]n|hay indicios|indica|ofrece)\b.{0,45}\b(?:descuentos? )?(?:para )?(?:miembros? )?(?:de )?aaa\b/i,
+    /\bbrak\b.{0,35}\b(?:informacji|potwierdzenia|dowod[oó]w)\b.{0,35}\baaa\b/i,
+    /\bnie\b.{0,35}\b(?:oferuje|wskazuje|informuje|akceptuje)\b.{0,45}\baaa\b/i,
+  ],
+  "blue light card": [
+    /\bno\b.{0,35}\b(?:menciona|confirma|hay evidencia|hay informaci[oó]n|hay indicios|indica|acepta|acepten|ofrece)\b.{0,45}\b(?:la tarjeta )?blue light(?: card)?\b/i,
+    /\bbrak\b.{0,35}\b(?:informacji|potwierdzenia|dowod[oó]w)\b.{0,35}\bblue light(?: card)?\b/i,
+    /\bnie\b.{0,45}\b(?:wspomina|potwierdza|oferuje|informuje|akceptuje|wynika|wskazuje)\b.{0,45}\bblue light(?: card)?\b/i,
+  ],
+  clearance: [
+    /\bno\b.{0,35}\b(?:tiene|dispone de|cuenta con|menciona)\b.{0,45}\b(?:secci[oó]n )?(?:outlet|liquidaci[oó]n|clearance|rebajas?)\b/i,
+    /\bnie\b.{0,35}\b(?:posiada|ma|wspomina)\b.{0,45}\b(?:dedykowan\w* )?(?:sekcj\w* )?(?:outlet|wyprzeda[żz]|clearance)\b/i,
+  ],
+};
+
+const LEAD_EXPLICIT_YES_PATTERNS: Partial<Record<string, RegExp[]>> = {
+  "existing customer": EXISTING_CUSTOMER_HARD_POSITIVE_PATTERNS,
+  family: [
+    /\bkarta du[żz]ej rodziny\b.{0,60}\b(?:zni[żz]k\w*|rabat\w*|discount)\b/i,
+    /\b(?:sí|si|yes|tak)\b.{0,70}\b(?:descuentos?|zni[żz]k\w*|rabat\w*)\b.{0,35}\b(?:familias numerosas|familias?|rodzin\w*)\b/i,
+    /\b(?:family|familias?|rodzin\w*)\b.{0,50}\b(?:ticket|package|pass|discount|descuento|zni[żz]k\w*|rabat\w*)\b/i,
+  ],
+  "price guarantee": [
+    /\b(?:price match|best price guarantee|lowest price guarantee|garant[ií]a (?:del? )?(?:mejor precio|precio m[aá]s bajo)|igualaci[oó]n de precios?|gwarancj\w* (?:najlepszej|najni[żz]szej) ceny|gwarancj[ęe] ceny)\b/i,
+  ],
+  return: [
+    /\b(?:free returns?|free return shipping|prepaid return label|devoluciones? gratis|devoluciones? gratuitas?|darmowe zwroty|bezp[łl]atne zwroty)\b/i,
+  ],
+  "gift card": GIFT_CARD_STRONG_POSITIVE_PATTERNS,
+  app: [
+    /\b(?:app|aplicaci[oó]n|aplikacj\w*)\b.{0,45}\b(?:exclusive|exclusiv[oa]s?|dedykowan\w*|specjaln\w*)\b.{0,35}\b(?:discount|descuento|coupon|code|zni[żz]k\w*|rabat\w*)\b/i,
+    /\b(?:download|using|order(?:ing)? via|comprar (?:por|en)|zam[oó]wienia? przez)\b.{0,35}\b(?:app|aplicaci[oó]n|aplikacj\w*)\b.{0,35}\b(?:discount|descuento|coupon|zni[żz]k\w*|rabat\w*)\b/i,
+  ],
+  referral: [
+    /\b(?:refer a friend|friend referral|referral reward|consumer referral|programa de referidos|recompensa por referir|pole[ćc] znajomemu)\b/i,
+  ],
+  clearance: [
+    /\b(?:sale|outlet|clearance|liquidaci[oó]n|rebajas?|wyprzeda[żz]|promocje)\b.{0,55}\b(?:discounted products?|productos? rebajad[oa]s|productos? con descuento|zni[żz]k\w*|rabat\w*)\b/i,
+    /\b(?:productos? rebajad[oa]s|productos? con descuento|afgeprijsde artikelen|discounted products?)\b/i,
+  ],
+  "blue light card": [
+    /\b(?:accepts?|acepta|akceptuje|honors?|honou?rs?|aceptan|akceptuj[ąa])\b.{0,45}\bblue light(?: card)?\b/i,
+    /\bblue light(?: card)?\b.{0,55}\b(?:discounts?|descuentos?|zni[żz]k\w*|rabat\w*|benefits?|혜택|할인)\b/i,
+  ],
+  aaa: [
+    /\b(?:accepts?|acepta|akceptuje|honors?|honou?rs?)\b.{0,35}\baaa\b/i,
+    /\baaa\b.{0,45}\b(?:discounts?|descuentos?|zni[żz]k\w*|rabat\w*|benefits?|혜택|할인)\b/i,
+  ],
+};
+
+const LEAD_SCREENING_YES_FACT_TYPES = new Set(["existing customer", "family", "clearance"]);
 
 const SYMBOL_TO_CURRENCY: Record<string, string> = {
   "$": "USD",
@@ -1919,8 +2183,10 @@ export function buildGgCleaningPreviewFromMetadata(input: PreviewBuildInput): Gg
     inputMode,
     totalRows: input.totalRows,
     groupedRows: input.groupedRows,
+    groupedRowsEstimated: input.groupedRowsEstimated,
     chunkCount: input.chunkCount,
     oversizedGroupCount: input.oversizedGroupCount,
+    previewStrategy: input.previewStrategy || "full",
     columns: sampleColumns(sampleRows, input.columns),
     sampleRows,
   };
@@ -1941,6 +2207,41 @@ function normalizeDomain(value: string) {
   if (!raw) return "";
   const stripped = raw.replace(/^https?:\/\//, "");
   return stripped.split(/[/?#]/)[0].replace(/^\.+/, "");
+}
+
+function normalizePathname(value: string) {
+  const raw = normalizeText(value).toLowerCase();
+  if (!raw || raw === "/") return "";
+  const prefixed = raw.startsWith("/") ? raw : `/${raw}`;
+  return prefixed.replace(/\/+$/, "");
+}
+
+function parseDomainReference(value: unknown) {
+  const raw = String(value ?? "");
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { raw, host: "", pathname: "" };
+  }
+
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const parsed = new URL(withProtocol);
+    return {
+      raw,
+      host: normalizeDomain(parsed.hostname),
+      pathname: normalizePathname(parsed.pathname),
+    };
+  } catch {
+    const stripped = trimmed.replace(/^https?:\/\//i, "").split(/[?#]/)[0];
+    const slashIndex = stripped.indexOf("/");
+    const hostPart = slashIndex >= 0 ? stripped.slice(0, slashIndex) : stripped;
+    const pathPart = slashIndex >= 0 ? stripped.slice(slashIndex) : "";
+    return {
+      raw,
+      host: normalizeDomain(hostPart),
+      pathname: normalizePathname(pathPart),
+    };
+  }
 }
 
 function cleanSnippetText(value: string) {
@@ -2000,6 +2301,58 @@ function hasExplicitFactTerm(text: string, factType: string) {
   return Boolean(loweredFactType && text.toLowerCase().includes(loweredFactType));
 }
 
+function scoreLeadScreeningSentence(sentence: string, factType: string, index: number): SentenceEvidence | null {
+  if (index >= 2) return null;
+  const leadBoost = 1;
+  const explicitNoPatterns = LEAD_EXPLICIT_NO_PATTERNS[factType] || [];
+  if (hasPattern(sentence, explicitNoPatterns)) {
+    return {
+      existence: "no",
+      reasonCn: "前两句出现明确否定证据",
+      matchedRule: "lead_explicit_no",
+      evidenceSentence: sentence,
+      confidenceBucket: "strong",
+      score: 8 + leadBoost,
+    };
+  }
+
+  const explicitYesPatterns = LEAD_EXPLICIT_YES_PATTERNS[factType] || [];
+  if (
+    hasPattern(sentence, explicitYesPatterns) &&
+    !hasPattern(sentence, GENERIC_NEGATIVE_PATTERNS) &&
+    !hasPattern(sentence, LEAD_NEGATIVE_CUE_PATTERNS) &&
+    !NEGATIVE_PREFIX.test(sentence)
+  ) {
+    return {
+      existence: "yes",
+      reasonCn: "前两句出现明确肯定证据",
+      matchedRule: "lead_explicit_yes",
+      evidenceSentence: sentence,
+      confidenceBucket: "strong",
+      score: 8 + leadBoost,
+    };
+  }
+
+  if (
+    LEAD_SCREENING_YES_FACT_TYPES.has(factType) &&
+    !hasPattern(sentence, GENERIC_NEGATIVE_PATTERNS) &&
+    !hasPattern(sentence, LEAD_NEGATIVE_CUE_PATTERNS) &&
+    hasExplicitFactTerm(sentence, factType) &&
+    hasPattern(sentence, GENERIC_BENEFIT_PATTERNS)
+  ) {
+    return {
+      existence: "yes",
+      reasonCn: "前两句出现初筛正向权益信号",
+      matchedRule: "lead_screening_yes",
+      evidenceSentence: sentence,
+      confidenceBucket: "weak",
+      score: 5 + leadBoost,
+    };
+  }
+
+  return null;
+}
+
 function scoreSentence(sentence: string, factType: string, index: number): SentenceEvidence {
   const rule = getFactRule(factType);
   const fallback = FACT_FALLBACK_CLUES[factType];
@@ -2012,6 +2365,24 @@ function scoreSentence(sentence: string, factType: string, index: number): Sente
   const crossEntityContrast =
     CROSS_ENTITY_SENSITIVE_FACT_TYPES.has(factType) &&
     hasPattern(sentence, CROSS_ENTITY_CONTRAST_PATTERNS);
+  const leadingNegativeCue = index < 2 && hasPattern(sentence, LEAD_NEGATIVE_CUE_PATTERNS);
+  const affirmativePrefixBlocked =
+    hasPattern(sentence, AFFIRMATIVE_PREFIX_DISQUALIFIER_PATTERNS) ||
+    (factType === "shipping" && (
+      hasPattern(sentence, SHIPPING_HARD_NEGATIVE_PATTERNS) ||
+      hasPattern(sentence, SHIPPING_LIMITED_POSITIVE_PATTERNS) ||
+      hasPattern(sentence, SHIPPING_AMBIGUOUS_ENTITY_PATTERNS)
+    ));
+  const strongMerchantPositive =
+    explicit &&
+    matchedFactPositive &&
+    !matchedFactNegative &&
+    !matchedGenericNegative &&
+    !crossEntityContrast &&
+    !affirmativePrefixBlocked;
+
+  const earlyLeadScreeningEvidence = scoreLeadScreeningSentence(sentence, factType, index);
+  if (earlyLeadScreeningEvidence?.existence === "no") return earlyLeadScreeningEvidence;
 
   if (rule.ignore?.some((pattern) => pattern.test(sentence)) && (!explicit || factType === "app")) {
     return {
@@ -2282,6 +2653,17 @@ function scoreSentence(sentence: string, factType: string, index: number): Sente
     };
   }
 
+  if (factType === "shipping" && hasPattern(sentence, SHIPPING_SELLER_DEPENDENT_PATTERNS)) {
+    return {
+      existence: "unknown",
+      reasonCn: index < 2 ? "前两句显示配送权益依卖家或商品而变" : "正文显示配送权益依卖家或商品而变",
+      matchedRule: "shipping_seller_dependent",
+      evidenceSentence: sentence,
+      confidenceBucket: "none",
+      score: 0,
+    };
+  }
+
   if (factType === "shipping" && hasPattern(sentence, SHIPPING_HARD_NEGATIVE_PATTERNS)) {
     return {
       existence: "no",
@@ -2290,6 +2672,17 @@ function scoreSentence(sentence: string, factType: string, index: number): Sente
       evidenceSentence: sentence,
       confidenceBucket: "strong",
       score: 7 + leadBoost,
+    };
+  }
+
+  if (factType === "shipping" && hasPattern(sentence, SHIPPING_LIMITED_POSITIVE_PATTERNS)) {
+    return {
+      existence: "unknown",
+      reasonCn: index < 2 ? "前两句仅出现条件式配送权益" : "正文仅出现条件式配送权益",
+      matchedRule: "shipping_limited_positive",
+      evidenceSentence: sentence,
+      confidenceBucket: "none",
+      score: 0,
     };
   }
 
@@ -2413,6 +2806,9 @@ function scoreSentence(sentence: string, factType: string, index: number): Sente
     };
   }
 
+  const leadScreeningEvidence = earlyLeadScreeningEvidence;
+  if (leadScreeningEvidence) return leadScreeningEvidence;
+
   if (factType === "shipping" && hasPattern(sentence, SHIPPING_INFERENCE_ONLY_PATTERNS)) {
     positiveScore = Math.max(0, positiveScore - 3);
     negativeScore = Math.max(0, negativeScore - 1);
@@ -2428,8 +2824,19 @@ function scoreSentence(sentence: string, factType: string, index: number): Sente
     matchedRule = "child_non_discount_context";
   }
 
-  if (AFFIRMATIVE_PREFIX.test(sentence) && explicit && !crossEntityContrast) {
-    positiveScore += 3 + leadBoost;
+  if (leadingNegativeCue && !strongMerchantPositive) {
+    return {
+      existence: "no",
+      reasonCn: index < 2 ? "前两句出现前置明确否定证据" : "正文出现前置明确否定证据",
+      matchedRule: "lead_negative_cue",
+      evidenceSentence: sentence,
+      confidenceBucket: "weak",
+      score: 5 + leadBoost,
+    };
+  }
+
+  if (AFFIRMATIVE_PREFIX.test(sentence) && strongMerchantPositive) {
+    positiveScore += 2 + leadBoost;
     matchedRule = "affirmative_prefix";
   }
   if (NEGATIVE_PREFIX.test(sentence) && (explicit || hasPattern(sentence, GENERIC_NEGATIVE_PATTERNS))) {
@@ -2550,6 +2957,17 @@ function explainExistence(factType: string, snippet: string): SentenceEvidence {
     };
   }
 
+  if (factType === "app" && hasPattern(text, LEAD_EXPLICIT_NO_PATTERNS.app || [])) {
+    return {
+      existence: "no",
+      reasonCn: "全文存在明确否定证据",
+      matchedRule: "lead_explicit_no",
+      evidenceSentence: getLeadSentences(text, 2).join(" "),
+      confidenceBucket: "strong",
+      score: 8,
+    };
+  }
+
   if (
     factType === "first responder" &&
     hasPattern(text, FIRST_RESPONDER_AMBIGUOUS_ENTITY_PATTERNS)
@@ -2608,6 +3026,20 @@ function explainExistence(factType: string, snippet: string): SentenceEvidence {
     };
   }
 
+  if (
+    factType === "referral" &&
+    (hasPattern(text, REFERRAL_NON_CONSUMER_PATTERNS) || hasPattern(text, REFERRAL_HARD_NEGATIVE_PATTERNS))
+  ) {
+    return {
+      existence: "no",
+      reasonCn: "全文存在明确否定证据",
+      matchedRule: hasPattern(text, REFERRAL_NON_CONSUMER_PATTERNS) ? "referral_non_consumer" : "referral_hard_negative",
+      evidenceSentence: getLeadSentences(text, 2).join(" "),
+      confidenceBucket: "strong",
+      score: 7,
+    };
+  }
+
   if (factType === "birthday" && hasPattern(text, BIRTHDAY_HARD_NEGATIVE_PATTERNS)) {
     return {
       existence: "no",
@@ -2646,6 +3078,22 @@ function explainExistence(factType: string, snippet: string): SentenceEvidence {
       existence: "yes",
       reasonCn: "全文存在明确肯定证据",
       matchedRule: "new_customer_hard_positive",
+      evidenceSentence: getLeadSentences(text, 2).join(" "),
+      confidenceBucket: "strong",
+      score: 7,
+    };
+  }
+
+  if (
+    factType === "existing customer" &&
+    hasPattern(text, EXISTING_CUSTOMER_HARD_POSITIVE_PATTERNS) &&
+    !hasPattern(text, EXISTING_CUSTOMER_HARD_NEGATIVE_PATTERNS) &&
+    !hasPattern(text, EXISTING_CUSTOMER_AMBIGUOUS_PATTERNS)
+  ) {
+    return {
+      existence: "yes",
+      reasonCn: "全文存在明确肯定证据",
+      matchedRule: "existing_customer_strong_positive",
       evidenceSentence: getLeadSentences(text, 2).join(" "),
       confidenceBucket: "strong",
       score: 7,
@@ -3350,22 +3798,52 @@ function parseUrlParts(url: string) {
     const parsed = new URL(url);
     return {
       host: normalizeDomain(parsed.hostname),
-      pathname: parsed.pathname.toLowerCase(),
+      pathname: normalizePathname(parsed.pathname),
       lowered: parsed.toString().toLowerCase(),
     };
   } catch {
     const lowered = url.toLowerCase();
     return {
       host: normalizeDomain(url),
-      pathname: lowered,
+      pathname: normalizePathname(lowered),
       lowered,
     };
   }
 }
 
-function isUrlOnDomain(host: string, domain: string) {
-  const normalizedDomain = normalizeDomain(domain);
-  return Boolean(normalizedDomain && (host === normalizedDomain || host.endsWith(`.${normalizedDomain}`)));
+const SAFE_SUBDOMAIN_PREFIXES = new Set([
+  "www",
+  "m",
+  "support",
+  "help",
+  "shop",
+  "store",
+  "care",
+  "services",
+  "service",
+  "info",
+  "en",
+  "uk",
+  "us",
+  "de",
+  "fr",
+  "nl",
+  "pl",
+  "es",
+  "kr",
+]);
+
+function classifyDomainMatch(host: string, pathname: string, domainHost: string, domainPath = "") {
+  if (!domainHost || !host) return "off_domain";
+  if (domainPath && pathname && pathname.includes(domainPath) && (host === domainHost || host.endsWith(`.${domainHost}`))) {
+    return "brand_path";
+  }
+  if (host === domainHost) {
+    return "exact_host";
+  }
+  if (!host.endsWith(`.${domainHost}`)) return "off_domain";
+  const prefix = host.slice(0, -(domainHost.length + 1)).split(".").pop() || "";
+  return SAFE_SUBDOMAIN_PREFIXES.has(prefix) ? "subdomain" : "brand_subdomain";
 }
 
 function isUrlAllowedPartner(host: string, factType: string) {
@@ -3390,21 +3868,63 @@ function isHomepagePath(pathname: string) {
   return /^\/?$/.test(pathname) || /^\/[a-z]{2}(?:-[a-z]{2})?\/?$/.test(pathname);
 }
 
-function pickBestUrl(urls: string[], domain: string, factType: string, country = "") {
-  if (!urls.length) return "";
+function pickBestUrl(urls: string[], domainHost: string, factType: string, country = "", domainPath = "") {
+  if (!urls.length) {
+    return {
+      url: "",
+      urlHost: "",
+      domainMatchType: "off_domain",
+      urlSelectedFromProductUrls: false,
+    };
+  }
   const scored = [...urls]
-    .map((url) => ({ url, score: scoreUrl(url, domain, factType, country) }))
+    .map((url) => ({ url, ...scoreUrl(url, domainHost, factType, country, domainPath) }))
     .sort((left, right) => right.score - left.score || left.url.length - right.url.length);
   const best = scored[0];
-  return best && best.score >= 45 ? best.url : "";
+  if (!best || best.score < 45) {
+    return {
+      url: "",
+      urlHost: "",
+      domainMatchType: "off_domain",
+      urlSelectedFromProductUrls: false,
+    };
+  }
+  return {
+    url: best.url,
+    urlHost: best.host,
+    domainMatchType: best.domainMatchType,
+    urlSelectedFromProductUrls: true,
+  };
 }
 
-function scoreUrl(url: string, domain: string, factType: string, country: string) {
+function scoreUrl(url: string, domainHost: string, factType: string, country: string, domainPath = "") {
   const { host, pathname, lowered } = parseUrlParts(url);
-  const onDomain = isUrlOnDomain(host, domain);
+  const domainMatchType = classifyDomainMatch(host, pathname, domainHost, domainPath);
+  const onDomain =
+    domainMatchType === "exact_host" ||
+    domainMatchType === "subdomain" ||
+    domainMatchType === "brand_path" ||
+    domainMatchType === "brand_subdomain";
   const allowedPartner = !onDomain && isUrlAllowedPartner(host, factType);
-  let score = onDomain ? 40 : allowedPartner ? 32 : -30;
+  let score =
+    domainMatchType === "exact_host"
+      ? 40
+      : domainMatchType === "subdomain"
+        ? 38
+        : domainMatchType === "brand_path"
+          ? 34
+          : domainMatchType === "brand_subdomain"
+            ? 24
+            : allowedPartner
+              ? 32
+              : -30;
   if (allowedPartner) score += 18;
+  if (domainMatchType === "brand_subdomain") score -= 6;
+  if (domainMatchType === "brand_path") score += 4;
+  if (domainPath) {
+    if (pathname.includes(domainPath)) score += 16;
+    else if (domainMatchType === "exact_host" && isHomepagePath(pathname)) score -= 12;
+  }
 
   if (!allowedPartner && URL_BAD_HOST_PATTERNS.some((pattern) => host.includes(pattern))) score -= 50;
   if (/(^|[.-])(preprod|staging|stage|test|dev|npr)([.-]|$)/.test(host)) score -= 18;
@@ -3445,10 +3965,17 @@ function scoreUrl(url: string, domain: string, factType: string, country: string
 
   if (URL_NEEDS_TARGETED_HINT.has(factType) && !strongHitCount && !allowedPartner) score -= onDomain ? 18 : 8;
   score -= Math.max(0, pathname.split("/").filter(Boolean).length - 3);
-  return score;
+  return { score, host, domainMatchType };
 }
 
 function toInputRow(row: Record<string, unknown>) {
+  const domainRef = parseDomainReference(row.domain);
+  const rawTermId = String(row.term_id ?? "");
+  const rawCountry = String(row.country ?? "");
+  const rawDomain = domainRef.raw;
+  const rawTermName = String(row.term_name ?? "");
+  const rawFactType = String(row.subclass ?? "");
+  const rawSourceType = String(row[GG_COLLECTED_SOURCE_COLUMN] ?? "");
   const factType = canonicalFactType(normalizeText(row.subclass));
   const snippet = parseSnippetCell(row.content);
   const productUrls = parseProductUrlsCell(row.product_urls);
@@ -3456,12 +3983,18 @@ function toInputRow(row: Record<string, unknown>) {
   const inferred = explainExistence(factType, snippet);
   const existence = inferred.existence;
   const inputRow = {
-    termId: normalizeText(row.term_id),
-    country: normalizeText(row.country).toUpperCase(),
-    domain: normalizeDomain(normalizeText(row.domain)),
-    termName: normalizeText(row.term_name),
-    factType,
-    sourceType: normalizeCollectedSourceType(row[GG_COLLECTED_SOURCE_COLUMN]),
+    termId: rawTermId,
+    country: rawCountry,
+    domain: rawDomain,
+    termName: rawTermName,
+    factType: rawFactType,
+    sourceType: rawSourceType,
+    normalizedTermId: normalizeText(row.term_id),
+    countryCode: normalizeText(row.country).toUpperCase(),
+    canonicalFactType: factType,
+    normalizedSourceType: normalizeCollectedSourceType(row[GG_COLLECTED_SOURCE_COLUMN]),
+    domainHost: domainRef.host,
+    domainPath: domainRef.pathname,
     snippet,
     productUrls,
     existence,
@@ -3472,8 +4005,8 @@ function toInputRow(row: Record<string, unknown>) {
     confidenceBucket: inferred.confidenceBucket,
   } satisfies InputRow;
 
-  if (!inputRow.termId || !inputRow.country || !inputRow.factType) return null;
-  if (inputRow.sourceType !== "aimode" && inputRow.sourceType !== "searchlab") return null;
+  if (!inputRow.normalizedTermId || !inputRow.countryCode || !inputRow.canonicalFactType) return null;
+  if (inputRow.normalizedSourceType !== "aimode" && inputRow.normalizedSourceType !== "searchlab") return null;
   return inputRow;
 }
 
@@ -3483,7 +4016,7 @@ function toInputRows(parsed: ParsedFile, inputMode: GgCleaningInputMode) {
 }
 
 function groupKeyOf(row: Pick<InputRow, "termId" | "country" | "factType">) {
-  return `${row.termId}__${row.country}__${row.factType}`;
+  return `${normalizeText(row.termId)}__${normalizeText(row.country).toUpperCase()}__${canonicalFactType(normalizeText(row.factType))}`;
 }
 
 function confidenceRank(value: SideResult["confidenceBucket"]) {
@@ -3561,13 +4094,16 @@ function updateSideAccumulator(acc: SideAccumulator, row: InputRow) {
   }
 }
 
-function reduceSideAccumulator(acc: SideAccumulator, domain: string, factType: string, country: string): SideResult {
+function reduceSideAccumulator(acc: SideAccumulator, _domainHost: string, factType: string, country: string): SideResult {
   if (!acc.bestRow) {
     return {
       supported: "unknown",
       reasonCn: "当前来源无有效数据",
       value: "",
       url: "",
+      urlHost: "",
+      domainMatchType: "off_domain",
+      urlSelectedFromProductUrls: false,
       snippet: "",
       matchedRule: "no_source_data",
       evidenceSentence: "",
@@ -3581,12 +4117,16 @@ function reduceSideAccumulator(acc: SideAccumulator, domain: string, factType: s
     pickedRow.existence === "yes" ? acc.noRanks.has(rank) : pickedRow.existence === "no" ? acc.yesRanks.has(rank) : false;
   const supported = hasOppositeAtSameRank ? "unknown" : pickedRow.existence;
   const reasonCn = supported === "unknown" ? "source-level conflict" : pickedRow.existenceReasonCn;
+  const pickedUrl = pickBestUrl(Array.from(acc.productUrlSet), pickedRow.domainHost, factType, country, pickedRow.domainPath);
 
   return {
     supported,
     reasonCn,
     value: supported === "yes" ? acc.firstValue : "",
-    url: pickBestUrl(Array.from(acc.productUrlSet), domain, factType, country),
+    url: pickedUrl.url,
+    urlHost: pickedUrl.urlHost,
+    domainMatchType: pickedUrl.domainMatchType,
+    urlSelectedFromProductUrls: pickedUrl.urlSelectedFromProductUrls,
     snippet: pickedRow.snippet,
     matchedRule: supported === "unknown" ? "side_conflict" : pickedRow.matchedRule,
     evidenceSentence: pickedRow.evidenceSentence || pickedRow.snippet,
@@ -3615,23 +4155,27 @@ function addInputRowToGroups(groups: Map<string, GroupAccumulator>, row: InputRo
       domain: row.domain,
       termName: row.termName,
       factType: row.factType,
+      domainHost: row.domainHost,
+      domainPath: row.domainPath,
+      countryCode: row.countryCode,
+      canonicalFactType: row.canonicalFactType,
       aimode: createSideAccumulator(),
       searchlab: createSideAccumulator(),
     };
     groups.set(key, group);
   }
-  updateSideAccumulator(row.sourceType === "aimode" ? group.aimode : group.searchlab, row);
+  updateSideAccumulator(row.normalizedSourceType === "aimode" ? group.aimode : group.searchlab, row);
 }
 
 function buildDecisionRowsFromGroups(groups: Map<string, GroupAccumulator>) {
 
   const decisions: DecisionRow[] = [];
   for (const [groupKey, group] of groups) {
-    const aimode = reduceSideAccumulator(group.aimode, group.domain, group.factType, group.country);
-    const searchlab = reduceSideAccumulator(group.searchlab, group.domain, group.factType, group.country);
+    const aimode = reduceSideAccumulator(group.aimode, group.domainHost, group.canonicalFactType, group.countryCode);
+    const searchlab = reduceSideAccumulator(group.searchlab, group.domainHost, group.canonicalFactType, group.countryCode);
     const finalExistence = mergeExistence(aimode, searchlab);
     const finalValue = finalExistence.existence === "yes" ? mergeValue(aimode.value, searchlab.value) : "";
-    const finalUrl = pickBestUrl([aimode.url, searchlab.url].filter(Boolean), group.domain, group.factType, group.country);
+    const finalUrlPick = pickBestUrl([aimode.url, searchlab.url].filter(Boolean), group.domainHost, group.canonicalFactType, group.countryCode, group.domainPath);
     const finalSnippet =
       (finalExistence.existence === aimode.supported ? aimode.snippet : "") ||
       (finalExistence.existence === searchlab.supported ? searchlab.snippet : "") ||
@@ -3648,7 +4192,10 @@ function buildDecisionRowsFromGroups(groups: Map<string, GroupAccumulator>) {
       finalSupported: finalExistence.existence,
       finalReasonCn: finalExistence.reasonCn,
       finalValue,
-      finalUrl,
+      finalUrl: finalUrlPick.url,
+      finalUrlHost: finalUrlPick.urlHost,
+      finalDomainMatchType: finalUrlPick.domainMatchType,
+      finalUrlSelectedFromProductUrls: finalUrlPick.urlSelectedFromProductUrls,
       finalSnippet,
       finalMatchedRule:
         finalExistence.existence === "unknown"
@@ -3722,6 +4269,10 @@ function toDebugRows(decisions: DecisionRow[]): DebugRow[] {
     final_reason_cn: item.finalReasonCn,
     final_value: item.finalValue,
     final_url: item.finalUrl,
+    input_domain: item.domain,
+    final_url_host: item.finalUrlHost,
+    domain_match_type: item.finalDomainMatchType,
+    url_selected_from_product_urls: item.finalUrlSelectedFromProductUrls ? "1" : "0",
     final_snippet: item.finalSnippet,
     final_matched_rule: item.finalMatchedRule,
     final_evidence_sentence: item.finalEvidenceSentence,
@@ -3841,6 +4392,8 @@ type RawRowsProgressCallback = (progress: {
   discoveredGroups: number;
 }) => void | Promise<void>;
 
+const GG_BUFFERED_PATH_PARSE_MAX_BYTES = 2 * 1024 * 1024;
+
 async function summarizeRawRows(
   rawRows: AsyncIterable<Record<string, unknown>>,
   options?: { includeGroups?: boolean; onProgress?: RawRowsProgressCallback },
@@ -3887,13 +4440,77 @@ async function summarizeRawRows(
   };
 }
 
+async function summarizeBufferedRowsFromFile(
+  filePath: string,
+  fileName: string,
+  options?: { includeGroups?: boolean; onProgress?: RawRowsProgressCallback },
+): Promise<RawRowsSummary> {
+  const buffer = await fs.readFile(filePath);
+  const rawRows = parseBufferRows(fileName, buffer);
+  return summarizeRawRows(
+    (async function* () {
+      for (const row of rawRows) yield row;
+    })(),
+    options,
+  );
+}
+
+async function buildFastSpreadsheetPreview(filePath: string): Promise<PreviewBuildInput> {
+  const buffer = await fs.readFile(filePath);
+  const workbook = XLSX.read(buffer, { type: "buffer", sheetRows: 6 });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const headerRows = XLSX.utils.sheet_to_json<Array<unknown>>(sheet, { header: 1, defval: "" });
+  const header = Array.isArray(headerRows[0]) ? headerRows[0].map((item) => String(item ?? "").trim()).filter(Boolean) : [];
+  const sampleRawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" }).slice(0, 5);
+  const ref = String(sheet?.["!ref"] || "");
+  const range = ref ? XLSX.utils.decode_range(ref) : null;
+  const totalRows = range ? Math.max(0, range.e.r - range.s.r) : sampleRawRows.length;
+  return {
+    columns: header.length ? header : collectColumns(sampleRawRows),
+    sampleRawRows,
+    totalRows,
+    groupedRows: totalRows,
+    groupedRowsEstimated: true,
+    previewStrategy: "fast",
+  };
+}
+
+async function summarizeRawRowsFromFile(
+  filePath: string,
+  fileName: string,
+  options?: { includeGroups?: boolean; onProgress?: RawRowsProgressCallback },
+): Promise<RawRowsSummary> {
+  const lowerName = fileName.toLowerCase();
+  if (lowerName.endsWith(".csv") || lowerName.endsWith(".jsonl")) {
+    const stats = await fs.stat(filePath);
+    if (stats.size <= GG_BUFFERED_PATH_PARSE_MAX_BYTES) {
+      return summarizeBufferedRowsFromFile(filePath, fileName, options);
+    }
+  }
+  return summarizeRawRows(iterateRawRowsFromFile(filePath, fileName), options);
+}
+
 async function buildPreviewFromFile(filePath: string, fileName: string): Promise<GgCleaningPreview> {
-  const summary = await summarizeRawRows(iterateRawRowsFromFile(filePath, fileName));
+  const lowerName = fileName.toLowerCase();
+  if (lowerName.endsWith(".xlsx") || lowerName.endsWith(".xlsm")) {
+    return buildGgCleaningPreviewFromMetadata(await buildFastSpreadsheetPreview(filePath));
+  }
+  const summary = await summarizeRawRowsFromFile(filePath, fileName);
   return buildGgCleaningPreviewFromMetadata(summary);
 }
 
 export async function previewGgCleaningFileByPath(input: { fileName: string; filePath: string }): Promise<GgCleaningPreview> {
   return buildPreviewFromFile(input.filePath, input.fileName);
+}
+
+export async function previewGgCleaningFileByPathWithProgress(
+  input: { fileName: string; filePath: string },
+  options?: { onProgress?: RawRowsProgressCallback },
+): Promise<GgCleaningPreview> {
+  const summary = await summarizeRawRowsFromFile(input.filePath, input.fileName, {
+    onProgress: options?.onProgress,
+  });
+  return buildGgCleaningPreviewFromMetadata(summary);
 }
 
 export async function executeGgCleaningByPath(
@@ -3902,7 +4519,7 @@ export async function executeGgCleaningByPath(
     onProgress?: RawRowsProgressCallback;
   },
 ) {
-  const summary = await summarizeRawRows(iterateRawRowsFromFile(input.filePath, input.fileName), {
+  const summary = await summarizeRawRowsFromFile(input.filePath, input.fileName, {
     includeGroups: true,
     onProgress: options?.onProgress,
   });

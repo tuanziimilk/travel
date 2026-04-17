@@ -71,8 +71,8 @@ export const translationUploadMaxFileBytes = 12 * 1024 * 1024;
 export const translationUploadMaxRows = 3000;
 export const translationTextMaxChars = 12000;
 export const translationDefaultTargetLanguage = "Simplified Chinese";
-export const translationDefaultAiModel = "gpt-4o-mini";
-export const categoryCalibrationDefaultAiModel = "gpt-4o-mini";
+export const translationDefaultAiModel = "gemini-2.5-flash-lite";
+export const categoryCalibrationDefaultAiModel = "gemini-2.5-flash-lite";
 export const ggCleaningUploadMaxFileBytes = 300 * 1024 * 1024;
 export const ggCleaningUploadMaxRows = 500000;
 export const categoryCalibrationUploadMaxFileBytes = 50 * 1024 * 1024;
@@ -105,9 +105,30 @@ export const aiModelOptions = [
   "gpt-4.1-nano",
   "gpt-4o",
   "gpt-4o-mini",
+  "gemini-2.5-pro",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-3.1-pro-preview",
+  "gemini-3-flash-preview",
+  "gemini-3.1-flash-lite-preview",
 ] as const;
 export const aiModelSchema = z.enum(aiModelOptions);
 export type AiModel = z.infer<typeof aiModelSchema>;
+
+export const aiProviderOptions = ["openai", "gemini"] as const;
+export const aiProviderSchema = z.enum(aiProviderOptions);
+export type AiProvider = z.infer<typeof aiProviderSchema>;
+
+export const toolScopedAiConfigKeyOptions = [
+  "quality-about",
+  "quality-faq",
+  "output-faq",
+  "translation-batch",
+  "translation-text",
+  "category-calibration",
+] as const;
+export const toolScopedAiConfigKeySchema = z.enum(toolScopedAiConfigKeyOptions);
+export type ToolScopedAiConfigKey = z.infer<typeof toolScopedAiConfigKeySchema>;
 
 export const scoreBreakdownSchema = z.object({
   A: z.number(),
@@ -291,7 +312,13 @@ export const skillRollbackInputSchema = z.object({
 });
 
 export const runtimeAiConfigSetInputSchema = z.object({
-  aiModel: aiModelSchema,
+  toolKey: toolScopedAiConfigKeySchema,
+  provider: aiProviderSchema.optional(),
+  aiModel: aiModelSchema.optional(),
+});
+
+export const runtimeAiConfigGetInputSchema = z.object({
+  toolKey: toolScopedAiConfigKeySchema,
 });
 
 export const generationFrameworkGetInputSchema = z.object({
@@ -393,18 +420,25 @@ export const translationResultInputSchema = z.object({
 export const ggCleaningPreviewInputSchema = z
   .object({
     fileName: z.string().min(1),
+    fileBase64: z.string().min(1).optional(),
     uploadId: z.string().min(1).optional(),
   })
-  .refine((value) => Boolean(value.uploadId), "uploadId is required");
+  .refine((value) => Boolean(value.uploadId || value.fileBase64), "uploadId or fileBase64 is required");
+
+export const ggCleaningPreviewTaskStatusInputSchema = z.object({
+  taskId: z.string().min(1),
+});
 
 export const ggCleaningRunInputSchema = z
   .object({
     uploader: uploaderSchema,
     note: z.string().optional().default(""),
     fileName: z.string().min(1),
+    fileBase64: z.string().min(1).optional(),
     uploadId: z.string().min(1).optional(),
+    previewTaskId: z.string().min(1).optional(),
   })
-  .refine((value) => Boolean(value.uploadId), "uploadId is required");
+  .refine((value) => Boolean(value.uploadId || value.fileBase64), "uploadId or fileBase64 is required");
 
 export const ggCleaningQueueInputSchema = z.object({
   page: z.number().int().min(1).optional().default(1),

@@ -1,4 +1,4 @@
-import { env } from "../env";
+import { env, getAiRuntimeRequestConfig, type ToolScopedAiConfigKey } from "../env";
 
 export type ExecutorMessages = {
   system: string;
@@ -21,6 +21,25 @@ type ChatResponse = {
   output_text?: string;
 };
 
+type GeminiGenerateContentResponse = {
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+  };
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{
+        text?: string;
+      }>;
+    };
+    finishReason?: string;
+  }>;
+  promptFeedback?: {
+    blockReason?: string;
+  };
+};
+
 export type LlmCallUsage = {
   promptTokens: number;
   completionTokens: number;
@@ -34,10 +53,15 @@ export type ExecuteOptions<T> = {
   maxRetries?: number;
   requestTimeoutMs?: number;
   aiModel?: string;
+  toolKey?: ToolScopedAiConfigKey;
   useConfiguredTemperature?: boolean;
 };
 
 type ResponseFormatMode = "json_object" | "json_schema";
+
+function getGeminiNativeBaseUrl(baseUrl: string) {
+  return String(baseUrl || "").replace(/\/openai$/i, "");
+}
 
 export class AiExecutor {
   private async sleep(ms: number) {
@@ -143,14 +167,34 @@ export class AiExecutor {
     throw new Error(`LLM 返回为空: ${JSON.stringify(json).slice(0, 400)}`);
   }
 
-  private async callLLMOnce(
+  private extractGeminiContent(json: GeminiGenerateContentResponse): string {
+    const joined = (json.candidates?.[0]?.content?.parts || [])
+      .map((item) => (typeof item?.text === "string" ? item.text : ""))
+      .join("")
+      .trim();
+    if (joined) return joined;
+
+    const finishReason = String(json.candidates?.[0]?.finishReason || "").trim();
+    const blockReason = String(json.promptFeedback?.blockReason || "").trim();
+    if (blockReason) {
+      throw new Error(`Gemini 阻止回答: ${blockReason}`);
+    }
+    if (finishReason) {
+      throw new Error(`Gemini 返回为空: ${finishReason}`);
+    }
+    throw new Error(`Gemini 返回为空: ${JSON.stringify(json).slice(0, 400)}`);
+  }
+
+  private async callOpenAiCompatibleOnce(
+    requestConfig: ReturnType<typeof getAiRuntimeRequestConfig>,
     messages: ExecutorMessages,
     formatMode: ResponseFormatMode,
-    allowTemperature = false,
-    allowResponseFormat = true,
-    allowMaxCompletionTokens = true,
-    requestTimeoutMs = env.aiRequestTimeoutMs,
-    aiModel = env.aiModel,
+    allowTemperature: boolean,
+    allowResponseFormat: boolean,
+    allowMaxCompletionTokens: boolean,
+    requestTimeoutMs: number,
+    aiModel: string,
+    toolKey: ToolScopedAiConfigKey,
   ): Promise<{ content: string; usage: LlmCallUsage }> {
     const payload: Record<string, unknown> = {
       model: aiModel,
@@ -176,15 +220,15 @@ export class AiExecutor {
     const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
     let response: Response;
     try {
-      response = await fetch(`${env.aiBaseUrl}/chat/completions`, {
+      response = await fetch(`${requestConfig.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${env.aiApiKey}`,
+          Authorization: `Bearer ${requestConfig.apiKey}`,
         },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
     } finally {
       clearTimeout(timer);
     }
@@ -193,13 +237,13 @@ export class AiExecutor {
 
     if (!response.ok) {
       if (allowTemperature && this.shouldFallbackWithoutTemperature(response.status, body)) {
-        return this.callLLMOnce(messages, formatMode, false, allowResponseFormat, allowMaxCompletionTokens, requestTimeoutMs, aiModel);
+        return this.callLLMOnce(messages, formatMode, false, allowResponseFormat, allowMaxCompletionTokens, requestTimeoutMs, aiModel, toolKey);
       }
       if (allowResponseFormat && this.shouldFallbackWithoutResponseFormat(response.status, body)) {
-        return this.callLLMOnce(messages, formatMode, allowTemperature, false, allowMaxCompletionTokens, requestTimeoutMs, aiModel);
+        return this.callLLMOnce(messages, formatMode, allowTemperature, false, allowMaxCompletionTokens, requestTimeoutMs, aiModel, toolKey);
       }
       if (allowMaxCompletionTokens && this.shouldFallbackWithoutMaxCompletionTokens(response.status, body)) {
-        return this.callLLMOnce(messages, formatMode, allowTemperature, allowResponseFormat, false, requestTimeoutMs, aiModel);
+        return this.callLLMOnce(messages, formatMode, allowTemperature, allowResponseFormat, false, requestTimeoutMs, aiModel, toolKey);
       }
       if (this.shouldFallbackToJsonObject(response.status, body, formatMode)) {
         return this.callLLMOnce(
@@ -210,6 +254,7 @@ export class AiExecutor {
           allowMaxCompletionTokens,
           requestTimeoutMs,
           aiModel,
+          toolKey,
         );
       }
       throw new Error(`LLM 请求失败: ${response.status} ${body}`);
@@ -241,10 +286,131 @@ export class AiExecutor {
     return { content, usage };
   }
 
+  private async callGeminiNativeOnce(
+    requestConfig: ReturnType<typeof getAiRuntimeRequestConfig>,
+    messages: ExecutorMessages,
+    allowTemperature: boolean,
+    allowResponseFormat: boolean,
+    allowMaxCompletionTokens: boolean,
+    requestTimeoutMs: number,
+    aiModel: string,
+  ): Promise<{ content: string; usage: LlmCallUsage }> {
+    const payload: Record<string, unknown> = {
+      systemInstruction: {
+        parts: [{ text: messages.system }],
+      },
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: messages.user }],
+        },
+      ],
+    };
+
+    const generationConfig: Record<string, unknown> = {};
+    if (allowResponseFormat) {
+      generationConfig.responseMimeType = "application/json";
+    }
+    if (allowTemperature) {
+      generationConfig.temperature = env.aiTemperature;
+    }
+    if (allowMaxCompletionTokens && env.aiMaxOutputTokens > 0) {
+      generationConfig.maxOutputTokens = env.aiMaxOutputTokens;
+    }
+    if (Object.keys(generationConfig).length) {
+      payload.generationConfig = generationConfig;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
+    let response: Response;
+    try {
+      response = await fetch(
+        `${getGeminiNativeBaseUrl(requestConfig.baseUrl)}/models/${encodeURIComponent(aiModel)}:generateContent?key=${encodeURIComponent(requestConfig.apiKey)}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        },
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+
+    const body = await response.text();
+    if (!response.ok) {
+      if (allowTemperature && this.shouldFallbackWithoutTemperature(response.status, body)) {
+        return this.callGeminiNativeOnce(requestConfig, messages, false, allowResponseFormat, allowMaxCompletionTokens, requestTimeoutMs, aiModel);
+      }
+      if (allowResponseFormat && this.shouldFallbackWithoutResponseFormat(response.status, body)) {
+        return this.callGeminiNativeOnce(requestConfig, messages, allowTemperature, false, allowMaxCompletionTokens, requestTimeoutMs, aiModel);
+      }
+      if (allowMaxCompletionTokens && this.shouldFallbackWithoutMaxCompletionTokens(response.status, body)) {
+        return this.callGeminiNativeOnce(requestConfig, messages, allowTemperature, allowResponseFormat, false, requestTimeoutMs, aiModel);
+      }
+      throw new Error(`LLM 请求失败: ${response.status} ${body}`);
+    }
+
+    let json: GeminiGenerateContentResponse;
+    try {
+      json = JSON.parse(body) as GeminiGenerateContentResponse;
+    } catch {
+      throw new Error(`Gemini 返回非 JSON: ${body.slice(0, 240)}`);
+    }
+
+    const content = this.extractGeminiContent(json);
+    const usage: LlmCallUsage = {
+      promptTokens: json.usageMetadata?.promptTokenCount ?? 0,
+      completionTokens: json.usageMetadata?.candidatesTokenCount ?? 0,
+      totalTokens: json.usageMetadata?.totalTokenCount ?? 0,
+    };
+    return { content, usage };
+  }
+
+  private async callLLMOnce(
+    messages: ExecutorMessages,
+    formatMode: ResponseFormatMode,
+    allowTemperature = false,
+    allowResponseFormat = true,
+    allowMaxCompletionTokens = true,
+    requestTimeoutMs = env.aiRequestTimeoutMs,
+    aiModel = env.aiModel,
+    toolKey: ToolScopedAiConfigKey = "quality-about",
+  ): Promise<{ content: string; usage: LlmCallUsage }> {
+    const requestConfig = getAiRuntimeRequestConfig(toolKey);
+    const resolvedModel = aiModel || requestConfig.aiModel;
+    if (requestConfig.provider === "gemini") {
+      return this.callGeminiNativeOnce(
+        requestConfig,
+        messages,
+        allowTemperature,
+        allowResponseFormat,
+        allowMaxCompletionTokens,
+        requestTimeoutMs,
+        resolvedModel,
+      );
+    }
+    return this.callOpenAiCompatibleOnce(
+      requestConfig,
+      messages,
+      formatMode,
+      allowTemperature,
+      allowResponseFormat,
+      allowMaxCompletionTokens,
+      requestTimeoutMs,
+      resolvedModel,
+      toolKey,
+    );
+  }
+
   async callLLM(
     messages: ExecutorMessages,
     requestTimeoutMs?: number,
     aiModel = env.aiModel,
+    toolKey: ToolScopedAiConfigKey = "quality-about",
     useConfiguredTemperature = false,
   ): Promise<{ content: string; usage: LlmCallUsage }> {
     const maxRetries = env.aiHttpMaxRetries;
@@ -261,6 +427,7 @@ export class AiExecutor {
           true,
           requestTimeoutMs ?? env.aiRequestTimeoutMs,
           aiModel,
+          toolKey,
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -283,8 +450,9 @@ export class AiExecutor {
   async execute<T>(options: ExecuteOptions<T>): Promise<{ result: T; usage: LlmCallUsage }> {
     const maxRetries = options.maxRetries ?? env.aiExecutorMaxRetries;
     const init = await options.buildMessages();
-    const aiModel = options.aiModel || env.aiModel;
-    const initial = await this.callLLM(init, options.requestTimeoutMs, aiModel, options.useConfiguredTemperature === true);
+    const toolKey = options.toolKey || "quality-about";
+    const aiModel = options.aiModel || getAiRuntimeRequestConfig(toolKey).aiModel;
+    const initial = await this.callLLM(init, options.requestTimeoutMs, aiModel, toolKey, options.useConfiguredTemperature === true);
     let candidate = initial.content;
     const usage: LlmCallUsage = {
       promptTokens: initial.usage.promptTokens,
@@ -304,6 +472,7 @@ export class AiExecutor {
           repair,
           options.requestTimeoutMs,
           aiModel,
+          toolKey,
           options.useConfiguredTemperature === true,
         );
         candidate = repaired.content;
@@ -315,6 +484,7 @@ export class AiExecutor {
           init,
           options.requestTimeoutMs,
           aiModel,
+          toolKey,
           options.useConfiguredTemperature === true,
         );
         candidate = retried.content;
