@@ -866,7 +866,7 @@ export function FaqOutputPage() {
                     <td title={formatElapsedExecutionDuration(item)}>
                       {formatElapsedExecutionDuration(item)}
                     </td>
-                    <td title={formatDateTime(item.createdAt || item.startedAt)}>{formatDateTime(item.createdAt || item.startedAt)}</td>
+                    <td title={formatDateTime(item.startedAt || item.createdAt)}>{formatDateTime(item.startedAt || item.createdAt)}</td>
                     <td className="queue-action-cell">
                       <div className="queue-action-group">
                         <button

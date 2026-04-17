@@ -1542,6 +1542,15 @@ async function getGenerationQueueCount(scType: string) {
 }
 
 function mapGenerationQueueRow(row: Record<string, unknown>) {
+  const formatQueueTime = (value: unknown) => {
+    if (!value) return "";
+    if (value instanceof Date) return formatChinaIsoOffset(value);
+    const text = String(value || "").trim();
+    if (!text) return "";
+    const normalized = text.includes("T") ? text : text.replace(" ", "T");
+    const withZone = /(?:Z|[+-]\d{2}:\d{2})$/i.test(normalized) ? normalized : `${normalized}Z`;
+    return formatChinaIsoOffset(new Date(withZone));
+  };
   const hasResultFilePath = Boolean(String(row.result_file_path || ""));
   const hasResultFileBase64 = Number(row.has_result_file_base64 || 0) > 0;
   const hasInputFileBase64 = Number(row.has_input_file_base64 || 0) > 0;
@@ -1567,9 +1576,9 @@ function mapGenerationQueueRow(row: Record<string, unknown>) {
     resultFilePath: String(row.result_file_path || ""),
     canDownload: hasResultFilePath || Boolean(row.result_file_name || row.status === "done" || row.status === "failed"),
     canDownloadFieldExtract: hasResultFilePath || hasResultFileBase64 || hasInputFilePath || hasInputFileBase64,
-    createdAt: formatChinaIsoOffset(row.created_at instanceof Date ? row.created_at : new Date(String(row.created_at || ""))),
-    startedAt: formatChinaIsoOffset(row.started_at instanceof Date ? row.started_at : row.started_at ? new Date(String(row.started_at)) : null),
-    finishedAt: formatChinaIsoOffset(row.finished_at instanceof Date ? row.finished_at : row.finished_at ? new Date(String(row.finished_at)) : null),
+    createdAt: formatQueueTime(row.created_at),
+    startedAt: formatQueueTime(row.started_at),
+    finishedAt: formatQueueTime(row.finished_at),
     routeSummary: (row.route_summary_json as RouteSummaryRow[] | null) || [],
   };
 }
