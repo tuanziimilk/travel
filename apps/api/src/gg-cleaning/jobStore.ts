@@ -1,12 +1,15 @@
 import { desc, eq, gte } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import { access, readFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import * as XLSX from "xlsx";
 import { db } from "../db/client";
 import { ggCleaningJobs } from "../db/schema";
 import { makeId } from "../utils/id";
 import { apiRuntimePath } from "../utils/runtimePaths";
 import { formatChinaIsoOffset } from "../utils/time";
+import { executeGgCleaning, executeGgCleaningByPath, executeGgCleaningChunkRows } from "./engine";
+import { getCompletedGgCleaningUpload, iterateGgCleaningUploadChunks } from "./uploadStore";
 
 const ERROR_REASON_MAX_LENGTH = 512;
 const queueCountCacheTtlMs = 15 * 1000;
@@ -14,6 +17,24 @@ let ensureGgCleaningJobsTablePromise: Promise<void> | null = null;
 const ggQueueCountCache = new Map<string, { expiresAt: number; value: number }>();
 
 async function resolveReadableResultPath(filePath: string | null | undefined) {
+  const candidates = [String(filePath || "")].filter(Boolean);
+  const legacyPrefix = "/app/.runtime/";
+  const currentRuntimePrefix = apiRuntimePath().replace(/\\/g, "/");
+  if (filePath?.startsWith(legacyPrefix)) {
+    candidates.push(path.join(currentRuntimePrefix, filePath.slice(legacyPrefix.length)));
+  }
+  for (const candidate of candidates) {
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+      // Try the next historical runtime location.
+    }
+  }
+  return candidates[0] || "";
+}
+
+async function resolveReadableInputPath(filePath: string | null | undefined) {
   const candidates = [String(filePath || "")].filter(Boolean);
   const legacyPrefix = "/app/.runtime/";
   const currentRuntimePrefix = apiRuntimePath().replace(/\\/g, "/");
@@ -456,6 +477,9 @@ export async function getGgCleaningJobDownloadPayload(jobId: string, options?: {
   } else if (row.resultFileBase64) {
     fileBuffer = Buffer.from(row.resultFileBase64, "base64");
   }
+  if (!fileBuffer || isLegacyGgResultBuffer(fileBuffer)) {
+    fileBuffer = await rebuildMerchantOnlyGgResult(row);
+  }
   if (!fileBuffer) {
     throw new Error(row.errorReason || "Current task has no downloadable result yet.");
   }
@@ -464,4 +488,78 @@ export async function getGgCleaningJobDownloadPayload(jobId: string, options?: {
     contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     buffer: fileBuffer,
   };
+}
+
+function isLegacyGgResultBuffer(fileBuffer: Buffer) {
+  try {
+    const workbook = XLSX.read(fileBuffer, { type: "buffer", bookSheets: true });
+    return workbook.SheetNames.includes("debug_output");
+  } catch {
+    return false;
+  }
+}
+
+async function rebuildMerchantOnlyGgResult(row: Awaited<ReturnType<typeof getGgCleaningJobById>>) {
+  let rebuiltBuffer: Buffer | null = null;
+  try {
+    const uploadId = String(row.inputFilePath || "").trim();
+    if (uploadId && !uploadId.includes("/") && !uploadId.includes("\\")) {
+      const uploaded = await getCompletedGgCleaningUpload(uploadId);
+      const result =
+        uploaded.kind === "file-chunks" && uploaded.rawFilePath
+          ? await executeGgCleaningByPath({
+              fileName: uploaded.fileName,
+              filePath: uploaded.rawFilePath,
+            })
+          : await executeGgCleaningChunkRows({
+              rawRowChunks: (async function* () {
+                for await (const chunk of iterateGgCleaningUploadChunks(uploaded.id)) {
+                  yield chunk.rows;
+                }
+              })(),
+              columns: uploaded.columns,
+              sampleRawRows: uploaded.sampleRows,
+              totalRows: uploaded.uploadedRowCount,
+              groupedRows: uploaded.groupCount,
+              chunkCount: uploaded.chunkCount,
+              oversizedGroupCount: uploaded.oversizedGroupCount,
+            });
+      rebuiltBuffer = result.workbookBuffer;
+    } else if (row.inputFilePath) {
+      rebuiltBuffer = (
+        await executeGgCleaningByPath({
+          fileName: row.inputFileName,
+          filePath: await resolveReadableInputPath(row.inputFilePath),
+        })
+      ).workbookBuffer;
+    } else if (row.inputFileBase64) {
+      const rebuilt = executeGgCleaning({
+        fileName: row.inputFileName,
+        fileBase64: row.inputFileBase64,
+      });
+      rebuiltBuffer = rebuilt.workbookBase64 ? Buffer.from(rebuilt.workbookBase64, "base64") : null;
+    }
+  } catch {
+    rebuiltBuffer = null;
+  }
+
+  if (!rebuiltBuffer) {
+    throw new Error("GG 清洗结果文件仍为旧格式，且无法从原始输入重建，请重新上传后再运行。");
+  }
+
+  const resultFilePath =
+    row.resultFilePath && row.resultFilePath.trim()
+      ? row.resultFilePath
+      : path.join(apiRuntimePath("gg-cleaning-results"), `${row.id}.xlsx`);
+  await mkdir(path.dirname(resultFilePath), { recursive: true });
+  await writeFile(resultFilePath, rebuiltBuffer);
+  await db
+    .update(ggCleaningJobs)
+    .set({
+      resultFilePath,
+      resultFileBase64: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(ggCleaningJobs.id, row.id));
+  return rebuiltBuffer;
 }
