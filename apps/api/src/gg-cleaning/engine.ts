@@ -340,17 +340,23 @@ type FactFallbackClues = {
 };
 
 const AFFIRMATIVE_PREFIX = /^(?:yes|yeah|ja|si|sí|tak|oui|네|예)\b/i;
-const NEGATIVE_PREFIX = /^(?:no|nee|nein|nie|non|아니|없습니다|없다|없음)\b/i;
+const NEGATIVE_PREFIX = /^(?:no|nee|nein|nie|non|geen|aucun|aucune|brak|아니|없습니다|없다|없음)\b/i;
 const LEAD_NEGATIVE_CUE_PATTERNS = [
   /^(?:no|nee|nein|non)\b/i,
+  /^(?:kein|keine|keinen|keinem|keiner)\b/i,
   /^\bgeen\b/i,
+  /^\b(?:aucun|aucune)\b/i,
+  /^\bbrak\b/i,
   /^\bniet\b/i,
   /^\bgeen\s+(?:specifieke|vaste|publieke)\b/i,
   /^\b(?:biedt|offre|propose)\s+niet\b/i,
+  /^\bno\s+(?:hay|ofrece|tiene|dispone)\b/i,
   /^\bop basis van\b.{0,35}\bgeen\b/i,
   /^\b(?:uit|op)\s+de beschikbare informatie\b.{0,40}\bgeen\b/i,
   /^\bil n['’]est pas\b/i,
   /^\bpas de\b/i,
+  /\bne\s+(?:mentionne|propose|confirme|dispose)\s+pas\b/i,
+  /\bne\s+y\s+a\s+pas\b/i,
 ];
 const AFFIRMATIVE_PREFIX_DISQUALIFIER_PATTERNS = [
   /\bmaar\b/i,
@@ -384,10 +390,15 @@ const GENERIC_NEGATIVE_PATTERNS = [
   /\bkeine(?:n|m|)?\b.{0,40}\b(?:hinweise|informationen|rabatt|programm|preisgarantie|geschenkkarten|familienrabatt)\b/i,
   /\bkein(?:en|em|e)?\b.{0,40}\b(?:rabatt|programm|angebot|preisgarantie)\b/i,
   /\bnicht\b.{0,25}\b(?:verfugbar|verfuegbar|bestatigt|bestätigt|explizit|direkt)\b/i,
+  /\baucune?\b.{0,40}\b(?:information|preuve|confirmation|indication)\b.{0,20}\b(?:directe|publique|sp[ée]cifique)?\b/i,
+  /\bpas d['’]?(?:information|preuve|confirmation)\b.{0,30}\b(?:sp[ée]cifique|publique|directe)?\b/i,
+  /\bbrak\b.{0,35}\b(?:publicznie dost[eę]pnych|jednoznacznych|konkretnych)?\b.{0,20}\b(?:informacji|dowod[oó]w|potwierdzenia)\b/i,
   /\bbrak\b.{0,30}\b(?:informacji|potwierdzenia|danych)\b/i,
   /\bnie\b.{0,35}(?:ma|mozna potwierdzic|można potwierdzić|mo[żz]na potwierdzi[ćc]|wymienia|promuje|oferuje|potwierdzają|potwierdzajacych|potwierdzających)/i,
   /\bno hay\b.{0,35}\b(?:informacion|información|evidencia|confirmacion|confirmación)\b/i,
   /\bno se\b.{0,35}\b(?:menciona|encontraron resultados|confirma)\b/i,
+  /\bno\b.{0,35}\b(?:hay|existe|se encuentra)\b.{0,25}\b(?:informaci[oó]n|evidencia|confirmaci[oó]n|indicios)\b/i,
+  /\bsin\b.{0,25}\b(?:evidencia|confirmaci[oó]n|informaci[oó]n)\b.{0,20}\b(?:clara|espec[ií]fica|p[uú]blica)?\b/i,
   /\b공식적으로\b.{0,20}\b(?:없|않)\S*/i,
   /\b제공하지 않\S*/i,
   /\b운영하고 있지 않\S*/i,
@@ -410,12 +421,23 @@ const GENERIC_AMBIGUOUS_PATTERNS = [
 
 const GENERIC_BENEFIT_PATTERNS = [
   /\bdiscounts?\b/i,
+  /\bsavings?\b/i,
   /\boffers?\b/i,
+  /\boffres?\b/i,
+  /\boferty\b/i,
+  /\bofertas?\b/i,
   /\bbenefits?\b/i,
+  /\bbeneficios?\b/i,
+  /\bavantages?\b/i,
+  /\bkorzy[śs]ci\b/i,
   /\bprograms?\b/i,
   /\bpromotions?\b/i,
+  /\bpromoties?\b/i,
+  /\bpromocj\w*\b/i,
   /\bcoupon\b/i,
+  /\bcupon(?:es)?\b/i,
   /\bcode\b/i,
+  /\bc[oó]digos?\b.{0,8}\bpromo\b/i,
   /\bvoucher\b/i,
   /\breward\b/i,
   /\bpoints?\b/i,
@@ -426,9 +448,20 @@ const GENERIC_BENEFIT_PATTERNS = [
   /\bspecial pricing\b/i,
   /\bwaived?\b.{0,12}\bfees?\b/i,
   /\brabatt\b/i,
+  /\brabatte?\b/i,
   /\bangebot\b/i,
+  /\baanbiedingen?\b/i,
+  /\bvorteile?\b/i,
+  /\bsonderpreise?\b/i,
   /\brabat\b/i,
+  /\brabaty\b/i,
   /\bzniżk\w*\b/i,
+  /\bkortingen?\b/i,
+  /\bvoordelen?\b/i,
+  /\br[ée]ductions?\b/i,
+  /\bremises?\b/i,
+  /\btarifs?\b/i,
+  /\bdescuentos?\b/i,
   /优惠/,
   /折扣/,
   /할인/,
@@ -3231,7 +3264,8 @@ function explainExistence(factType: string, snippet: string): SentenceEvidence {
     !NEGATIVE_PREFIX.test(text) &&
     hasPattern(text, GENERIC_BENEFIT_PATTERNS) &&
     !hasPattern(text, GENERIC_NEGATIVE_PATTERNS) &&
-    !hasPattern(text, LEAD_NEGATIVE_CUE_PATTERNS)
+    !hasPattern(text, LEAD_NEGATIVE_CUE_PATTERNS) &&
+    !hasPattern(text, VALUE_HARD_EMPTY_PATTERNS[factType] || [])
   ) {
     return {
       existence: "yes",
@@ -3258,6 +3292,7 @@ function explainExistence(factType: string, snippet: string): SentenceEvidence {
       factType === "military" ||
       !hasPattern(text, GENERIC_AMBIGUOUS_PATTERNS)
     ) &&
+    !hasPattern(text, VALUE_HARD_EMPTY_PATTERNS[factType] || []) &&
     !hasPattern(text, VALUE_FACT_SPECIFIC_SKIP_PATTERNS[factType] || []) &&
     !(factType === "child" && hasPattern(text, CHILD_NON_DISCOUNT_CONTEXT_PATTERNS))
   ) {
