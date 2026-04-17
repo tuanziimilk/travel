@@ -1050,7 +1050,8 @@ export async function createGenerationJob(input: {
     inputFileName: input.inputFileName,
     inputFileBase64: input.inputFileBase64,
     status: "queued",
-    startedAt: new Date(),
+    elapsedExecutionMs: 0,
+    startedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     errorReason: null,
@@ -1059,9 +1060,35 @@ export async function createGenerationJob(input: {
   return { jobId: id };
 }
 
+function getElapsedExecutionSnapshot(
+  row:
+    | {
+        elapsedExecutionMs?: number | null;
+        startedAt?: Date | null;
+      }
+    | undefined,
+  now = new Date(),
+) {
+  const baseElapsedMs = Number(row?.elapsedExecutionMs || 0);
+  if (!row?.startedAt) return { baseElapsedMs, settledElapsedMs: baseElapsedMs };
+  const startedAtMs = row.startedAt.getTime();
+  const nowMs = now.getTime();
+  if (!Number.isFinite(startedAtMs) || !Number.isFinite(nowMs)) {
+    return { baseElapsedMs, settledElapsedMs: baseElapsedMs };
+  }
+  return {
+    baseElapsedMs,
+    settledElapsedMs: Math.max(baseElapsedMs, baseElapsedMs + Math.max(0, nowMs - startedAtMs)),
+  };
+}
+
 export async function markGenerationJobQueued(jobId: string) {
   clearGenerationHistoryCaches();
   const persisted = await getPersistedGenerationSummary(jobId);
+  const rows = await db.select().from(contentGenerationJobs).where(eq(contentGenerationJobs.id, jobId));
+  const row = rows[0];
+  const now = new Date();
+  const { settledElapsedMs } = getElapsedExecutionSnapshot(row, now);
   await db
     .update(contentGenerationJobs)
     .set({
@@ -1079,6 +1106,8 @@ export async function markGenerationJobQueued(jobId: string) {
       resultFilePath: null,
       routeSummaryJson: null,
       rowResultsJson: null,
+      elapsedExecutionMs: settledElapsedMs,
+      startedAt: null,
       finishedAt: null,
     })
     .where(eq(contentGenerationJobs.id, jobId));
@@ -1119,13 +1148,9 @@ export async function listQueuedGenerationJobs(scType = "faq") {
 }
 
 export async function recoverInterruptedGenerationJobs(scType = "faq") {
-  await db
-    .update(contentGenerationJobs)
-    .set({
-      status: "queued",
-      errorReason: null,
-      finishedAt: null,
-    })
+  const runningRows = await db
+    .select()
+    .from(contentGenerationJobs)
     .where(
       and(
         eq(contentGenerationJobs.scType, scType),
@@ -1133,6 +1158,24 @@ export async function recoverInterruptedGenerationJobs(scType = "faq") {
         isNull(contentGenerationJobs.finishedAt),
       ),
     );
+
+  if (!runningRows.length) return;
+  const now = new Date();
+  await Promise.all(
+    runningRows.map((row) => {
+      const { settledElapsedMs } = getElapsedExecutionSnapshot(row, now);
+      return db
+        .update(contentGenerationJobs)
+        .set({
+          status: "queued",
+          errorReason: null,
+          elapsedExecutionMs: settledElapsedMs,
+          startedAt: null,
+          finishedAt: null,
+        })
+        .where(eq(contentGenerationJobs.id, row.id));
+    }),
+  );
 }
 
 export async function completeGenerationJob(input: {
@@ -1158,6 +1201,10 @@ export async function completeGenerationJob(input: {
 }) {
   clearGenerationHistoryCaches();
   scheduleMaterializedHistorySummaryRefresh("faq");
+  const rows = await db.select().from(contentGenerationJobs).where(eq(contentGenerationJobs.id, input.jobId));
+  const row = rows[0];
+  const now = new Date();
+  const { settledElapsedMs } = getElapsedExecutionSnapshot(row, now);
   await db
     .update(contentGenerationJobs)
     .set({
@@ -1179,15 +1226,16 @@ export async function completeGenerationJob(input: {
       routeSummaryJson: input.routeSummary,
       rowResultsJson: input.rowResults,
       errorReason: input.errorReason || null,
-      finishedAt: new Date(),
+      elapsedExecutionMs: settledElapsedMs,
+      finishedAt: now,
     })
     .where(eq(contentGenerationJobs.id, input.jobId));
 
   if (!input.resultFilePath && !input.resultFileBase64) {
-    const rows = await db.select().from(contentGenerationJobs).where(eq(contentGenerationJobs.id, input.jobId));
-    const row = rows[0];
-    if (row && (row.status === "done" || row.status === "failed")) {
-      await rebuildGenerationResultArtifact(row);
+    const refreshedRows = await db.select().from(contentGenerationJobs).where(eq(contentGenerationJobs.id, input.jobId));
+    const refreshedRow = refreshedRows[0];
+    if (refreshedRow && (refreshedRow.status === "done" || refreshedRow.status === "failed")) {
+      await rebuildGenerationResultArtifact(refreshedRow);
     }
   }
 }
@@ -1225,6 +1273,10 @@ export async function updateGenerationJobProgress(input: {
 export async function failGenerationJob(jobId: string, message: string) {
   clearGenerationHistoryCaches();
   scheduleMaterializedHistorySummaryRefresh("faq");
+  const rows = await db.select().from(contentGenerationJobs).where(eq(contentGenerationJobs.id, jobId));
+  const row = rows[0];
+  const now = new Date();
+  const { settledElapsedMs } = getElapsedExecutionSnapshot(row, now);
   await db
     .update(contentGenerationJobs)
     .set({
@@ -1232,7 +1284,8 @@ export async function failGenerationJob(jobId: string, message: string) {
       errorReason: message,
       rowResultsJson: [{ rowIndex: 0, status: "error", subclass: "", factType: "", routeKey: "", error: message }],
       resultFilePath: null,
-      finishedAt: new Date(),
+      elapsedExecutionMs: settledElapsedMs,
+      finishedAt: now,
     })
     .where(eq(contentGenerationJobs.id, jobId));
 }
@@ -1273,6 +1326,7 @@ function mapGenerationQueueRow(row: Record<string, unknown>) {
     skippedRows: Number(row.skipped_rows || 0),
     totalTokensSum: Number(row.total_tokens_sum || 0),
     estimatedCostUsdSum: Number(row.estimated_cost_usd_sum || 0),
+    elapsedExecutionMs: Number(row.elapsed_execution_ms || 0),
     aiModel: String(row.ai_model || ""),
     errorReason: String(row.error_reason || ""),
     resultFileName: String(row.result_file_name || ""),
@@ -1340,6 +1394,7 @@ export async function listGenerationJobs(page: number, pageSize: number, scType 
           skipped_rows,
           total_tokens_sum,
           estimated_cost_usd_sum,
+          elapsed_execution_ms,
           ai_model,
           error_reason,
           result_file_name,
@@ -1651,6 +1706,7 @@ export async function getGenerationJobStatus(jobId: string) {
     completionTokensSum: row.completionTokensSum,
     totalTokensSum: row.totalTokensSum,
     estimatedCostUsdSum: Number(row.estimatedCostUsdSum || 0),
+    elapsedExecutionMs: Number(row.elapsedExecutionMs || 0),
     aiModel: row.aiModel,
     errorReason: row.errorReason || "",
     createdAt: formatChinaIsoOffset(row.createdAt),

@@ -1,4 +1,5 @@
 import {
+  bigint,
   mysqlTable,
   varchar,
   timestamp,
@@ -144,7 +145,8 @@ export const contentGenerationJobs = mysqlTable("content_generation_jobs", {
   routeSnapshot: json("route_snapshot"),
   outputSchemaSnapshot: json("output_schema_snapshot"),
   resultFilePath: varchar("result_file_path", { length: 255 }),
-  startedAt: timestamp("started_at").defaultNow().notNull(),
+  elapsedExecutionMs: bigint("elapsed_execution_ms", { mode: "number" }).notNull().default(0),
+  startedAt: timestamp("started_at"),
   finishedAt: timestamp("finished_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")

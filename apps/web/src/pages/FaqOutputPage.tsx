@@ -45,6 +45,7 @@ type QueueRow = {
   skippedRows: number;
   totalTokensSum: number;
   estimatedCostUsdSum: number;
+  elapsedExecutionMs?: number;
   errorReason: string;
   resultFileName?: string;
   resultFilePath?: string;
@@ -101,6 +102,26 @@ function formatDateTime(value?: string | Date | null) {
   return formatChinaDateTime(value);
 }
 
+function formatElapsedExecutionDuration(item: {
+  elapsedExecutionMs?: number;
+  startedAt?: string | Date | null;
+  finishedAt?: string | Date | null;
+}) {
+  const persistedMs = Math.max(0, Number(item.elapsedExecutionMs || 0));
+  const startMs = item.startedAt ? new Date(item.startedAt).getTime() : Number.NaN;
+  const endMs = item.finishedAt ? new Date(item.finishedAt).getTime() : Date.now();
+  const incrementalMs = Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs ? endMs - startMs : 0;
+  const totalMs = Math.max(0, persistedMs + incrementalMs);
+  if (!totalMs) return "-";
+  const totalSeconds = Math.floor(totalMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
 function formatJobId(value: string) {
   if (!value) return "-";
   if (value.length <= 12) return value;
@@ -127,7 +148,6 @@ function getReadableFaqOutputError(error: unknown) {
 
 function getDisplayJobStatus(item: {
   status: string;
-  startedAt?: string | Date | null;
   successRows: number;
   failedRows: number;
 }) {
@@ -136,10 +156,6 @@ function getDisplayJobStatus(item: {
   }
   if (item.status === "done" || item.status === "failed" || item.status === "cancelled" || item.status === "running") {
     return item.status;
-  }
-  const processedRows = Number(item.successRows || 0) + Number(item.failedRows || 0);
-  if ((item.status === "queued" || item.status === "pending") && (processedRows > 0 || Boolean(item.startedAt))) {
-    return "running";
   }
   return item.status;
 }
@@ -892,10 +908,10 @@ export function FaqOutputPage() {
                     </td>
                     <td title={String(item.totalTokensSum)}>{item.totalTokensSum}</td>
                     <td title={formatUsd(item.estimatedCostUsdSum)}>{formatUsd(item.estimatedCostUsdSum)}</td>
-                    <td title={formatDuration(item.createdAt || item.startedAt, item.finishedAt)}>
-                      {formatDuration(item.createdAt || item.startedAt, item.finishedAt)}
+                    <td title={formatElapsedExecutionDuration(item)}>
+                      {formatElapsedExecutionDuration(item)}
                     </td>
-                    <td title={formatDateTime(item.createdAt || item.startedAt)}>{formatDateTime(item.createdAt || item.startedAt)}</td>
+                    <td title={formatDateTime(item.startedAt || item.createdAt)}>{formatDateTime(item.startedAt || item.createdAt)}</td>
                     <td className="queue-action-cell">
                       <div className="queue-action-group">
                         <button
