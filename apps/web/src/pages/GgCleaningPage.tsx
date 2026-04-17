@@ -184,7 +184,6 @@ export function GgCleaningPage() {
   const queuePageSize = 8;
   const [uploader, setUploader] = useState<(typeof uploaderOptions)[number]>("Ella");
   const [note, setNote] = useState("");
-  const [includeDebugSheet, setIncludeDebugSheet] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadedFileId, setUploadedFileId] = useState("");
   const [directFileBase64, setDirectFileBase64] = useState("");
@@ -357,8 +356,8 @@ export function GgCleaningPage() {
     try {
       await downloadCenter.createDownloadTask({
         toolType: "gg-cleaning",
-        sourceLabel: includeDebugSheet ? "GG 清洗完整结果" : "GG 清洗商家结果",
-        create: () => createGlobalDownloadTask({ kind: "gg-cleaning", jobId, includeDebug: includeDebugSheet }),
+        sourceLabel: "GG 清洗商家结果",
+        create: () => createGlobalDownloadTask({ kind: "gg-cleaning", jobId }),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "下载结果失败，请稍后重试。");
@@ -376,7 +375,7 @@ export function GgCleaningPage() {
     <div className="grid translation-page">
       <section className="section-header">
         <h2>GG 采集数据清洗工具</h2>
-        <p>上传采集结果表后，系统会自动按文件类型和大小选择最合适的解析方式，并继续输出 `merchant_output` 与 `debug_output`。</p>
+        <p>上传采集结果表后，系统会自动按文件类型和大小选择最合适的解析方式，并输出 `merchant_output`。</p>
       </section>
 
       <div className="card translation-main-card">
@@ -515,10 +514,6 @@ export function GgCleaningPage() {
             </div>
           </div>
           <div className="upload-actions" style={{ gap: 12, alignItems: "center" }}>
-            <label className="muted" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-              <input type="checkbox" checked={includeDebugSheet} onChange={(event) => setIncludeDebugSheet(event.target.checked)} />
-              Include `debug_output` (sheet2)
-            </label>
             <button className="btn-ghost output-inline-btn" type="button" onClick={() => void queueQuery.refetch()}>
             刷新列表
           </button>

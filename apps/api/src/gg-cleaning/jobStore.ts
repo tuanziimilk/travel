@@ -2,7 +2,6 @@ import { desc, eq, gte } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
-import * as XLSX from "xlsx";
 import { db } from "../db/client";
 import { ggCleaningJobs } from "../db/schema";
 import { makeId } from "../utils/id";
@@ -10,7 +9,6 @@ import { apiRuntimePath } from "../utils/runtimePaths";
 import { formatChinaIsoOffset } from "../utils/time";
 
 const ERROR_REASON_MAX_LENGTH = 512;
-const merchantOnlyTrimMaxBytes = 32 * 1024 * 1024;
 const queueCountCacheTtlMs = 15 * 1000;
 let ensureGgCleaningJobsTablePromise: Promise<void> | null = null;
 const ggQueueCountCache = new Map<string, { expiresAt: number; value: number }>();
@@ -449,18 +447,8 @@ export async function getGgCleaningJobDownloadMeta(jobId: string) {
   };
 }
 
-function buildMerchantOnlyWorkbookBuffer(fileBuffer: Buffer) {
-  const workbook = XLSX.read(fileBuffer, { type: "buffer" });
-  const merchantSheet = workbook.Sheets.merchant_output || workbook.Sheets[workbook.SheetNames[0] || ""];
-  if (!merchantSheet) throw new Error("GG result workbook does not contain merchant_output.");
-  const trimmedWorkbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(trimmedWorkbook, merchantSheet, "merchant_output");
-  return XLSX.write(trimmedWorkbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
-}
-
 export async function getGgCleaningJobDownloadPayload(jobId: string, options?: { includeDebug?: boolean }) {
   const row = await getGgCleaningJobById(jobId);
-  const includeDebug = Boolean(options?.includeDebug);
   const fileNameBase = (row.resultFileName || `gg-cleaning-${row.id}.xlsx`).replace(/\.xlsx$/i, "");
   let fileBuffer: Buffer | null = null;
   if (row.resultFilePath) {
@@ -471,13 +459,9 @@ export async function getGgCleaningJobDownloadPayload(jobId: string, options?: {
   if (!fileBuffer) {
     throw new Error(row.errorReason || "Current task has no downloadable result yet.");
   }
-  const canTrimMerchantOnly = !includeDebug && fileBuffer.length <= merchantOnlyTrimMaxBytes;
-  const containsDebugSheet = includeDebug || !canTrimMerchantOnly;
-  const preferredFileName = containsDebugSheet ? `${fileNameBase}.xlsx` : `${fileNameBase}-merchant-only.xlsx`;
   return {
-    fileName: preferredFileName,
+    fileName: `${fileNameBase}.xlsx`,
     contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    buffer: canTrimMerchantOnly ? buildMerchantOnlyWorkbookBuffer(fileBuffer) : fileBuffer,
-    containsDebugSheet,
+    buffer: fileBuffer,
   };
 }

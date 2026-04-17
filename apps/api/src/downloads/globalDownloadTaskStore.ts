@@ -115,8 +115,7 @@ async function getCategoryCalibrationMeta(jobId: string) {
 function buildGgCleaningFileName(input: { jobId: string; uploader: string; rowCount: number; includeDebug?: boolean }) {
   const uploader = sanitizeFileNameSegment(input.uploader, "unknown");
   const rowCount = Math.max(0, Number(input.rowCount || 0));
-  const variant = input.includeDebug ? "完整结果" : "商家结果";
-  return `GG清洗_${uploader}_${rowCount}行_${variant}_${formatChinaDownloadTimestamp()}_${shortDownloadId(input.jobId, "job")}.xlsx`;
+  return `GG清洗_${uploader}_${rowCount}行_商家结果_${formatChinaDownloadTimestamp()}_${shortDownloadId(input.jobId, "job")}.xlsx`;
 }
 
 function buildTranslationFileName(input: { jobId: string; uploader: string; targetLanguage: string; rowCount: number }) {
@@ -252,13 +251,13 @@ async function prepareGlobalDownloadTask(
       resultFilePath: null,
     });
 
-    let prepared: { fileName: string; buffer: Buffer; contentType: string; containsDebugSheet?: boolean };
+    let prepared: { fileName: string; buffer: Buffer; contentType: string };
     if (input.kind === "quality-batch") {
       prepared = await prepareQualityBatchDownload(input.jobId);
     } else if (input.kind === "gg-cleaning") {
       prepared = await getGgCleaningJobDownloadPayload(input.jobId, { includeDebug: input.includeDebug });
       const meta = await getGgCleaningMeta(input.jobId);
-      prepared = { ...prepared, fileName: buildGgCleaningFileName({ jobId: input.jobId, ...meta, includeDebug: input.includeDebug || prepared.containsDebugSheet }) };
+      prepared = { ...prepared, fileName: buildGgCleaningFileName({ jobId: input.jobId, ...meta }) };
     } else if (input.kind === "translation-batch") {
       prepared = await prepareTranslationBatchDownload(input.jobId);
       const meta = await getTranslationMeta(input.jobId);
@@ -300,7 +299,7 @@ export async function createGlobalDownloadTask(input: {
   includeDebug?: boolean;
 }) {
   const id = makeId();
-  const variant = input.kind === "gg-cleaning" && input.includeDebug ? "gg-cleaning-full" : input.kind;
+  const variant = input.kind;
   await pool.execute(
     `
       INSERT INTO content_generation_download_tasks

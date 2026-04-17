@@ -4551,15 +4551,14 @@ function toDebugRows(decisions: DecisionRow[]): DebugRow[] {
   }));
 }
 
-function buildWorkbookBuffer(merchantRows: MerchantRow[], debugRows: DebugRow[]) {
+function buildWorkbookBuffer(merchantRows: MerchantRow[]) {
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(merchantRows, { header: MERCHANT_HEADERS }), "merchant_output");
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(debugRows, { header: DEBUG_HEADERS }), "debug_output");
   return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }
 
-function buildWorkbookBase64(merchantRows: MerchantRow[], debugRows: DebugRow[]) {
-  return buildWorkbookBuffer(merchantRows, debugRows).toString("base64");
+function buildWorkbookBase64(merchantRows: MerchantRow[]) {
+  return buildWorkbookBuffer(merchantRows).toString("base64");
 }
 
 export function previewGgCleaningFile(input: { fileName: string; fileBase64: string }, options?: { skipFileSizeLimit?: boolean }): GgCleaningPreview {
@@ -4587,7 +4586,7 @@ export function executeGgCleaning(input: { fileName: string; fileBase64: string 
   const decisions = buildDecisionRowsFromGroups(grouped.groups);
   const merchantRows = toMerchantRows(decisions);
   const debugRows = toDebugRows(decisions);
-  const workbookBase64 = buildWorkbookBase64(merchantRows, debugRows);
+  const workbookBase64 = buildWorkbookBase64(merchantRows);
   const preview = previewGgCleaningFile(input, options);
   return {
     preview,
@@ -4786,7 +4785,7 @@ export async function executeGgCleaningByPath(
     preview,
     merchantRows,
     debugRows,
-    workbookBuffer: buildWorkbookBuffer(merchantRows, debugRows),
+    workbookBuffer: buildWorkbookBuffer(merchantRows),
     summary: {
       inputMode: preview.inputMode,
       totalRows: preview.totalRows,
@@ -4862,7 +4861,7 @@ export async function executeGgCleaningChunkRows(input: {
     preview,
     merchantRows,
     debugRows,
-    workbookBuffer: buildWorkbookBuffer(merchantRows, debugRows),
+    workbookBuffer: buildWorkbookBuffer(merchantRows),
     summary: {
       inputMode: preview.inputMode,
       totalRows: preview.totalRows,

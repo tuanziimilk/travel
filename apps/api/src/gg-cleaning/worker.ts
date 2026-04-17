@@ -150,7 +150,7 @@ async function processJob(jobId: string) {
       failedRows: result.summary.failedRows,
       resultFileName,
       resultFilePath,
-      rowResults: result.debugRows.slice(0, 50),
+      rowResults: null,
       summary: result.summary,
     });
   } catch {
