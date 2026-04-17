@@ -4,7 +4,7 @@ import { join } from "node:path";
 import * as XLSX from "xlsx";
 import { z } from "zod";
 import { faqOutputUploadMaxFileBytes, faqOutputUploadMaxRows, type ScType, type Uploader } from "@about-demo/trpc";
-import { env } from "../env";
+import { env, getAiRuntimeRequestConfig, getAiUnitCostForTool } from "../env";
 import { aiExecutor } from "../skills/aiExecutor";
 import { resolveSkillRoot } from "../skills/skillPath";
 import { skillRegistry } from "../skills/skillRegistry";
@@ -181,9 +181,10 @@ function parseFaqOutputFile(fileName: string, fileBase64: string) {
 }
 
 function estimateCostUsd(promptTokens: number, completionTokens: number) {
+  const unitCost = getAiUnitCostForTool("output-faq");
   const usd =
-    (promptTokens / 1_000_000) * env.aiInputCostPer1M +
-    (completionTokens / 1_000_000) * env.aiOutputCostPer1M;
+    (promptTokens / 1_000_000) * unitCost.inputPer1M +
+    (completionTokens / 1_000_000) * unitCost.outputPer1M;
   return Math.round(usd * 1_000_000) / 1_000_000;
 }
 
@@ -713,7 +714,7 @@ async function executeFaqOutputGeneration(
       completionTokensSum: progressState.completionTokensSum,
       totalTokensSum: progressState.totalTokensSum,
       estimatedCostUsdSum: Math.round(progressState.estimatedCostUsdSum * 1_000_000) / 1_000_000,
-      aiModel: env.aiModel,
+      aiModel: getAiRuntimeRequestConfig("output-faq").aiModel,
     };
     progressWrite = progressWrite.then(() => updateGenerationJobProgress(snapshot));
     return progressWrite;
@@ -735,6 +736,7 @@ async function executeFaqOutputGeneration(
       const executed = await aiExecutor.execute<FaqGenerationResponse>({
         maxRetries: env.aiExecutorMaxRetries,
         requestTimeoutMs: env.aiRequestTimeoutMsBatch,
+        toolKey: "output-faq",
         buildMessages: () => prompt,
         validate: (candidate) => validateGenerationCandidate(candidate, item.subclass),
         buildRepairMessages: (candidate, errors) => buildRepairMessages(candidate, errors, item.subclass),
@@ -775,7 +777,7 @@ async function executeFaqOutputGeneration(
         totalTokens: executed.usage.totalTokens,
         estimatedCostUsd,
         elapsedMs: Date.now() - startedAt,
-        aiModel: env.aiModel,
+        aiModel: getAiRuntimeRequestConfig("output-faq").aiModel,
         validationLog,
       });
 
@@ -823,7 +825,7 @@ async function executeFaqOutputGeneration(
           discountDetails: extractionRow.discount_details,
           url: extractionRow.url,
           elapsedMs: Date.now() - startedAt,
-          aiModel: `${env.aiModel}:fallback`,
+          aiModel: `${getAiRuntimeRequestConfig("output-faq").aiModel}:fallback`,
           validationLog: null,
         });
 
@@ -888,7 +890,7 @@ async function executeFaqOutputGeneration(
     completionTokensSum: completionTokens,
     totalTokensSum: totalTokens,
     estimatedCostUsdSum: estimatedCostUsd,
-    aiModel: env.aiModel,
+    aiModel: getAiRuntimeRequestConfig("output-faq").aiModel,
     resultFileName,
     resultFileBase64: null,
     routeSummary,

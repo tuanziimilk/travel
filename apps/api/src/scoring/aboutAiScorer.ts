@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ManualScoreInput, type OutputMode, ScoreOutput } from "@about-demo/trpc";
-import { env } from "../env";
+import { env, getAiRuntimeRequestConfig, getAiUnitCostForTool, type ToolScopedAiConfigKey } from "../env";
 import { skillRegistry } from "../skills/skillRegistry";
 import { aiExecutor } from "../skills/aiExecutor";
 import { getActiveQualitySkill } from "../skills/skillRouter";
@@ -500,6 +500,7 @@ export async function scoreAboutByAiWithMeta(
 ): Promise<ScoreWithMetaResult> {
   const startedAt = Date.now();
   const moduleId = input.moduleId || "about";
+  const toolKey: ToolScopedAiConfigKey = moduleId === "faq" ? "quality-faq" : "quality-about";
   const outputMode = options?.outputMode ?? "full";
   const skill = await skillRegistry.getModuleSkill(moduleId);
   const activeQualitySkill = await getActiveQualitySkill({ scType: moduleId });
@@ -514,6 +515,7 @@ export async function scoreAboutByAiWithMeta(
   const executed = await aiExecutor.execute<ValidatedScorePayload>({
     maxRetries: env.aiExecutorMaxRetries,
     requestTimeoutMs: options?.requestTimeoutMs,
+    toolKey,
     buildMessages: () => prompt,
     validate: (candidate) => validateCandidate(candidate, input, outputMode),
     buildRepairMessages: (candidate, errors) => buildRepairPrompt(prompt.system, candidate, errors),
@@ -523,9 +525,11 @@ export async function scoreAboutByAiWithMeta(
   const promptTokens = executed.usage.promptTokens;
   const completionTokens = executed.usage.completionTokens;
   const totalTokens = executed.usage.totalTokens;
+  const unitCost = getAiUnitCostForTool(toolKey);
+  const runtimeRequest = getAiRuntimeRequestConfig(toolKey);
   const estimatedCostUsd =
-    (promptTokens / 1_000_000) * env.aiInputCostPer1M +
-    (completionTokens / 1_000_000) * env.aiOutputCostPer1M;
+    (promptTokens / 1_000_000) * unitCost.inputPer1M +
+    (completionTokens / 1_000_000) * unitCost.outputPer1M;
 
   return {
     output: executed.result.output,
@@ -536,7 +540,7 @@ export async function scoreAboutByAiWithMeta(
       completionTokens,
       totalTokens,
       estimatedCostUsd: Math.round(estimatedCostUsd * 1_000_000) / 1_000_000,
-      aiModel: env.aiModel,
+      aiModel: runtimeRequest.aiModel,
       moduleId,
       skillSource: activeQualitySkill.document.source,
       outputMode,
