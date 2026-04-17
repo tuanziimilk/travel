@@ -211,7 +211,9 @@ export function UploadPage() {
     return Math.max(1, Math.ceil(total / queuePageSize));
   }, [queueQuery.data?.total]);
 
-  const queueRows = queueQuery.data?.rows ?? [];
+  const isQueuePagePlaceholder = Boolean(queueQuery.isPlaceholderData);
+  const isQueuePageLoading = queueQuery.isFetching && isQueuePagePlaceholder;
+  const queueRows = isQueuePagePlaceholder ? [] : (queueQuery.data?.rows ?? []);
   const detailRow = useMemo(() => queueRows.find((item) => item.id === detailJobId) ?? null, [detailJobId, queueRows]);
   const detailJsonResult = detailResultQuery.data && "summary" in detailResultQuery.data ? detailResultQuery.data : null;
   const detailSummary = detailJsonResult?.summary ?? null;
@@ -535,12 +537,17 @@ export function UploadPage() {
                   </tr>
                 );
               })}
-              {queueRows.length === 0 && !queueQuery.error && (
+              {isQueuePageLoading && (
+                <tr>
+                  <td colSpan={9}>正在加载第 {queuePage} 页任务...</td>
+                </tr>
+              )}
+              {queueRows.length === 0 && !isQueuePageLoading && !queueQuery.error && (
                 <tr>
                   <td colSpan={9}>暂无任务</td>
                 </tr>
               )}
-              {queueRows.length === 0 && queueQuery.error && (
+              {queueRows.length === 0 && !isQueuePageLoading && queueQuery.error && (
                 <tr>
                   <td colSpan={9}>队列暂时加载失败，正在重试，不代表历史任务已消失。</td>
                 </tr>
@@ -549,11 +556,11 @@ export function UploadPage() {
           </table>
         </div>
         <div className="upload-actions" style={{ marginTop: 10, justifyContent: "space-between" }}>
-          <button className="btn-ghost" type="button" onClick={() => void queueQuery.refetch()}>
-            刷新队列
+          <button className="btn-ghost" type="button" disabled={isQueuePageLoading} onClick={() => void queueQuery.refetch()}>
+            {isQueuePageLoading ? `加载第 ${queuePage} 页...` : "刷新队列"}
           </button>
           <div className="upload-actions" style={{ gap: 8 }}>
-            <button className="btn-ghost" type="button" disabled={queuePage <= 1} onClick={() => setQueuePage((prev) => Math.max(1, prev - 1))}>
+            <button className="btn-ghost" type="button" disabled={queuePage <= 1 || isQueuePageLoading} onClick={() => setQueuePage((prev) => Math.max(1, prev - 1))}>
               上一页
             </button>
             <span style={{ fontWeight: 900, minWidth: 72, textAlign: "center" }}>
@@ -562,7 +569,7 @@ export function UploadPage() {
             <button
               className="btn-ghost"
               type="button"
-              disabled={queuePage >= queueTotalPages}
+              disabled={queuePage >= queueTotalPages || isQueuePageLoading}
               onClick={() => setQueuePage((prev) => Math.min(queueTotalPages, prev + 1))}
             >
               下一页

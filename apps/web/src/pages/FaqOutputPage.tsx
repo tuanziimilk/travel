@@ -60,6 +60,18 @@ type QueueRow = {
 type DownloadVariant = "main" | "field_extract";
 
 const faqOutputUploadLimitMb = Math.round(faqOutputUploadMaxFileBytes / 1024 / 1024);
+const faqOutputApiBase = (() => {
+  const trpcUrl = import.meta.env.VITE_TRPC_URL || "/trpc";
+  if (/^https?:\/\//i.test(trpcUrl)) {
+    try {
+      return new URL(trpcUrl).origin;
+    } catch {
+      return trpcUrl.replace(/\/trpc\/?$/, "");
+    }
+  }
+  if (typeof window !== "undefined") return window.location.origin;
+  return trpcUrl.replace(/\/trpc\/?$/, "");
+})();
 
 const faqOutputTemplateCsv = [
   "term_id,country,domain,term_name,fact_type,supported,status,discount_type,discount_value,currency,discount_details,url",
@@ -79,6 +91,29 @@ const queueStatusText: Record<string, string> = {
 
 function normalizeHeader(value: string) {
   return String(value || "").trim().toLowerCase();
+}
+
+async function downloadFileFromResponse(response: Response, fallbackFileName: string) {
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(payload?.error || `HTTP ${response.status}`);
+    }
+    throw new Error(`HTTP ${response.status}`);
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("content-disposition") || "";
+  const fileNameMatch = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^"]+)"?/i);
+  const fileName = fileNameMatch?.[1] ? decodeURIComponent(fileNameMatch[1]) : fileNameMatch?.[2] || fallbackFileName;
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 function formatUsd(value?: number | string | null) {

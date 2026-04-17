@@ -108,6 +108,9 @@ export function FaqUploadPage() {
     if (!total) return 1;
     return Math.max(1, Math.ceil(total / queuePageSize));
   }, [queueQuery.data?.total]);
+  const isQueuePagePlaceholder = Boolean(queueQuery.isPlaceholderData);
+  const isQueuePageLoading = queueQuery.isFetching && isQueuePagePlaceholder;
+  const queueRows = isQueuePagePlaceholder ? [] : (queueQuery.data?.rows ?? []);
 
   async function toBase64(fileObj: File) {
     const buffer = await fileObj.arrayBuffer();
@@ -344,7 +347,7 @@ export function FaqUploadPage() {
               </tr>
             </thead>
             <tbody>
-              {(queueQuery.data?.rows ?? []).map((item) => (
+              {queueRows.map((item) => (
                 <tr key={item.id}>
                   <td title={item.id}>{formatJobId(item.id)}</td>
                   <td>{queueStatusText[item.status] ?? item.status}</td>
@@ -380,12 +383,17 @@ export function FaqUploadPage() {
                   </td>
                 </tr>
               ))}
-              {(queueQuery.data?.rows?.length ?? 0) === 0 && !queueQuery.error && (
+              {isQueuePageLoading && (
+                <tr>
+                  <td colSpan={11}>正在加载第 {queuePage} 页任务...</td>
+                </tr>
+              )}
+              {queueRows.length === 0 && !isQueuePageLoading && !queueQuery.error && (
                 <tr>
                   <td colSpan={11}>暂无任务</td>
                 </tr>
               )}
-              {(queueQuery.data?.rows?.length ?? 0) === 0 && queueQuery.error && (
+              {queueRows.length === 0 && !isQueuePageLoading && queueQuery.error && (
                 <tr>
                   <td colSpan={11}>队列暂时加载失败，正在重试，不代表历史任务已消失。</td>
                 </tr>
@@ -394,11 +402,11 @@ export function FaqUploadPage() {
         </table>
 
         <div className="upload-actions" style={{ marginTop: 16, justifyContent: "space-between" }}>
-          <button className="btn-ghost" type="button" onClick={() => void queueQuery.refetch()}>
-            刷新队列
+          <button className="btn-ghost" type="button" disabled={isQueuePageLoading} onClick={() => void queueQuery.refetch()}>
+            {isQueuePageLoading ? `加载第 ${queuePage} 页...` : "刷新队列"}
           </button>
           <div className="upload-actions" style={{ gap: 8 }}>
-            <button className="btn-ghost" type="button" disabled={queuePage <= 1} onClick={() => setQueuePage((value) => Math.max(1, value - 1))}>
+            <button className="btn-ghost" type="button" disabled={queuePage <= 1 || isQueuePageLoading} onClick={() => setQueuePage((value) => Math.max(1, value - 1))}>
               上一页
             </button>
             <span style={{ fontWeight: 900, minWidth: 72, textAlign: "center" }}>
@@ -407,7 +415,7 @@ export function FaqUploadPage() {
             <button
               className="btn-ghost"
               type="button"
-              disabled={queuePage >= queueTotalPages}
+              disabled={queuePage >= queueTotalPages || isQueuePageLoading}
               onClick={() => setQueuePage((value) => Math.min(queueTotalPages, value + 1))}
             >
               下一页
