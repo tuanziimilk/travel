@@ -12,19 +12,12 @@ import {
   recoverInterruptedGgCleaningJobs,
   updateGgCleaningJobProgress,
 } from "./jobStore";
-import {
-  getCompletedGgCleaningUpload,
-  getGgCleaningUploadPreviewCache,
-  iterateGgCleaningUploadChunks,
-  saveGgCleaningUploadPreviewCache,
-} from "./uploadStore";
-import { apiRuntimePath } from "../utils/runtimePaths";
-import { createGgCleaningPreviewTask, getGgCleaningPreviewTask } from "./previewTaskStore";
-import { env } from "../env";
+import { getCompletedGgCleaningUpload, iterateGgCleaningUploadChunks, toGgUploadClientError } from "./uploadStore";
+import { resolveApiRuntimePath } from "../utils/runtimePaths";
 
 let loopStarted = false;
 let activeJobId = "";
-const GG_RESULT_DIR = apiRuntimePath("gg-cleaning-results");
+const GG_RESULT_DIR = resolveApiRuntimePath("gg-cleaning-results");
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -194,8 +187,17 @@ export async function previewGgCleaning(input: { fileName: string; fileBase64?: 
   if (input.uploadId) {
     return resolveUploadedPreview(input.uploadId, input.fileName);
   }
-  if (!input.fileBase64) {
-    throw new Error("GG 清洗预览缺少文件内容。");
+  let uploaded;
+  try {
+    uploaded = await getCompletedGgCleaningUpload(input.uploadId);
+  } catch (error) {
+    throw new Error(toGgUploadClientError(error));
+  }
+  if (uploaded.kind === "file-chunks" && uploaded.rawFilePath) {
+    return previewGgCleaningFileByPath({
+      fileName: uploaded.fileName || input.fileName,
+      filePath: uploaded.rawFilePath,
+    });
   }
   return previewGgCleaningFile({
     fileName: input.fileName,
@@ -240,6 +242,26 @@ export async function startGgCleaningJob(input: {
       fileBase64: input.fileBase64,
     });
   }
+  let uploaded;
+  try {
+    uploaded = await getCompletedGgCleaningUpload(input.uploadId);
+  } catch (error) {
+    throw new Error(toGgUploadClientError(error));
+  }
+  const preview =
+    uploaded.kind === "file-chunks" && uploaded.rawFilePath
+      ? await previewGgCleaningFileByPath({
+          fileName: uploaded.fileName || input.fileName,
+          filePath: uploaded.rawFilePath,
+        })
+      : await previewGgCleaningChunkRows({
+          columns: uploaded.columns,
+          sampleRawRows: uploaded.sampleRows,
+          totalRows: uploaded.uploadedRowCount,
+          groupedRows: uploaded.groupCount,
+          chunkCount: uploaded.chunkCount,
+          oversizedGroupCount: uploaded.oversizedGroupCount,
+        });
 
   const created = await createGgCleaningJob({
     uploader: input.uploader,

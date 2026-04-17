@@ -3301,6 +3301,402 @@ describe("gg cleaning engine", () => {
     expect(noResult.debugRows[0].final_supported).toBe("no");
   });
 
+  it("detects FR existing customer yes from loyal-customer benefits in the lead sentence", () => {
+    const result = runEval([
+      {
+        term_id: "fr-existing-yes",
+        country: "FR",
+        term_name: "Courir",
+        domain: "courir.com",
+        subclass: "existing customer",
+        source_type: "searchlab",
+        snippet: "Oui, les clients fideles peuvent profiter d'offres exclusives et de reductions reservees aux membres. Des promotions generales existent aussi.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("yes");
+  });
+
+  it("keeps FR existing customer no when the lead sentence says no standing loyal-customer offer", () => {
+    const result = runEval([
+      {
+        term_id: "fr-existing-no",
+        country: "FR",
+        term_name: "Brandless",
+        domain: "brandless.fr",
+        subclass: "existing customer",
+        source_type: "searchlab",
+        snippet: "La marque ne propose pas de reduction specifique pour les clients existants. Des promotions saisonnieres peuvent apparaitre plus tard.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("detects FR loyalty program yes/no from programme de fidelite wording", () => {
+    const yesResult = runEval([
+      {
+        term_id: "fr-loyalty-yes",
+        country: "FR",
+        term_name: "Air Europa",
+        domain: "aireuropa.com",
+        subclass: "loyalty program",
+        source_type: "searchlab",
+        snippet: "Le programme de fidelite permet de cumuler des points a chaque achat et d'obtenir des avantages membres.",
+      },
+    ]);
+    const noResult = runEval([
+      {
+        term_id: "fr-loyalty-no",
+        country: "FR",
+        term_name: "Example",
+        domain: "example.fr",
+        subclass: "loyalty program",
+        source_type: "searchlab",
+        snippet: "Il n'existe pas de programme de fidelite classique. Le site partage parfois des codes promo sur les reseaux sociaux.",
+      },
+    ]);
+
+    expect(yesResult.debugRows[0].final_supported).toBe("yes");
+    expect(noResult.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps FR price guarantee no when the first sentence rejects a best-price guarantee", () => {
+    const result = runEval([
+      {
+        term_id: "fr-price-no",
+        country: "FR",
+        term_name: "Pedalmoto",
+        domain: "pedalmoto.fr",
+        subclass: "price guarantee",
+        source_type: "searchlab",
+        snippet: "Pedalmoto ne propose pas de garantie du meilleur prix ni d'alignement tarifaire. La boutique peut tout de meme lancer des promotions ponctuelles.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("detects FR gift card yes/no from carte cadeau wording", () => {
+    const yesResult = runEval([
+      {
+        term_id: "fr-gift-yes",
+        country: "FR",
+        term_name: "Sephora",
+        domain: "sephora.fr",
+        subclass: "gift card",
+        source_type: "searchlab",
+        snippet: "Des cartes cadeaux et e-cartes cadeaux sont disponibles a l'achat sur le site et peuvent etre envoyees par email.",
+      },
+    ]);
+    const noResult = runEval([
+      {
+        term_id: "fr-gift-no",
+        country: "FR",
+        term_name: "Sample",
+        domain: "sample.fr",
+        subclass: "gift card",
+        source_type: "searchlab",
+        snippet: "La marque ne propose pas de cartes cadeaux officielles. Elle mentionne seulement des idees d'emballage cadeau.",
+      },
+    ]);
+
+    expect(yesResult.debugRows[0].final_supported).toBe("yes");
+    expect(noResult.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("detects FR gift card yes for cheque cadeau wording and no for not-explicitly-indicated wording", () => {
+    const yesResult = runEval([
+      {
+        term_id: "fr-gift-cheque-yes",
+        country: "FR",
+        term_name: "LADC",
+        domain: "ladc.be",
+        subclass: "gift card",
+        source_type: "searchlab",
+        snippet: "LADC propose des cheques cadeaux en ligne valables exclusivement sur leur site et envoyes automatiquement par e-mail apres l'achat.",
+      },
+    ]);
+    const noResult = runEval([
+      {
+        term_id: "fr-gift-not-indicated-no",
+        country: "FR",
+        term_name: "Puff Store",
+        domain: "puff-store.fr",
+        subclass: "gift card",
+        source_type: "searchlab",
+        snippet: "Il n'est pas explicitement indique que le site propose des cartes cadeaux. Le site se concentre sur la vente de cigarettes electroniques et de promotions classiques.",
+      },
+    ]);
+
+    expect(yesResult.debugRows[0].final_supported).toBe("yes");
+    expect(noResult.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps FR app no when there is no dedicated shopping app or app-only benefit", () => {
+    const result = runEval([
+      {
+        term_id: "fr-app-no",
+        country: "FR",
+        term_name: "Maisons",
+        domain: "maisons.fr",
+        subclass: "app",
+        source_type: "searchlab",
+        snippet: "La marque ne dispose pas d'une application mobile dediee et ne propose pas de reduction specifique via l'application.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps FR app no for no-specific-app wording from residual samples", () => {
+    const result = runEval([
+      {
+        term_id: "fr-app-residual-no",
+        country: "FR",
+        term_name: "Shobi",
+        domain: "shobi.fr",
+        subclass: "app",
+        source_type: "searchlab",
+        snippet: "Il n'existe pas d'application mobile specifique pour shobi.fr qui proposerait des reductions. Les promotions passent par le site officiel et la newsletter.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps FR family no when the lead sentence says there is no specific family discount", () => {
+    const result = runEval([
+      {
+        term_id: "fr-family-no",
+        country: "FR",
+        term_name: "Museum",
+        domain: "museum.fr",
+        subclass: "family",
+        source_type: "searchlab",
+        snippet: "Le site ne propose pas de reduction specifique pour les familles. Il peut seulement y avoir des promotions generales a certaines dates.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps FR family no for no-explicit-family-discount wording from residual samples", () => {
+    const result = runEval([
+      {
+        term_id: "fr-family-residual-no",
+        country: "FR",
+        term_name: "LADC",
+        domain: "ladc.be",
+        subclass: "family",
+        source_type: "searchlab",
+        snippet: "Le site ne mentionne pas explicitement de reductions specifiques pour les familles. Il propose seulement des promotions generales sur des vetements pour femmes, hommes et enfants.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps FR family no for plural dedicated-family wording from residual samples", () => {
+    const result = runEval([
+      {
+        term_id: "fr-family-residual-no-2",
+        country: "FR",
+        term_name: "LT Labo",
+        domain: "ltlabo.com",
+        subclass: "family",
+        source_type: "searchlab",
+        snippet:
+          "LT LABO ne propose pas de reductions specifiques dediees aux familles. Le site renvoie plutot vers son programme de fidelite et ses promotions generales.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("detects FR referral yes from public parrainage rewards", () => {
+    const result = runEval([
+      {
+        term_id: "fr-referral-yes",
+        country: "FR",
+        term_name: "HelloFresh",
+        domain: "hellofresh.fr",
+        subclass: "referral",
+        source_type: "searchlab",
+        snippet: "Le programme de parrainage permet au client et a son ami de recevoir une reduction apres une premiere commande validee.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("yes");
+  });
+
+  it("keeps FR referral no for affiliate or ambassador programs aimed at creators", () => {
+    const result = runEval([
+      {
+        term_id: "fr-referral-affiliate-no",
+        country: "FR",
+        term_name: "Maxikits",
+        domain: "maxikits.com",
+        subclass: "referral",
+        source_type: "searchlab",
+        snippet: "Maxikits propose un programme d'affiliation destine aux createurs de contenu et influenceurs pour percevoir des commissions, plutot qu'un programme de parrainage client classique.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps FR birthday no for explicit no-birthday-offer wording", () => {
+    const result = runEval([
+      {
+        term_id: "fr-birthday-no",
+        country: "FR",
+        term_name: "Noelie",
+        domain: "noelie.fr",
+        subclass: "birthday",
+        source_type: "searchlab",
+        snippet: "La marque ne propose pas de reduction specifique d'anniversaire. Des jeux concours peuvent exister sans coupon anniversaire direct.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("detects FR price guarantee yes for meilleur-prix wording and no for no-explicit-guarantee wording", () => {
+    const yesResult = runEval([
+      {
+        term_id: "fr-price-best-yes",
+        country: "FR",
+        term_name: "Bain Depot",
+        domain: "baindepot.com",
+        subclass: "price guarantee",
+        source_type: "searchlab",
+        snippet: "Bain Depot affiche une politique \"Mieux que le meilleur prix\" et s'engage a egaler le prix d'un concurrent admissible.",
+      },
+    ]);
+    const noResult = runEval([
+      {
+        term_id: "fr-price-explicit-no",
+        country: "FR",
+        term_name: "Oh Feliz",
+        domain: "ohfeliz.fr",
+        subclass: "price guarantee",
+        source_type: "searchlab",
+        snippet: "Le site ne mentionne pas de garantie explicite du meilleur prix ni d'alignement tarifaire. Il propose seulement des promotions generales sur certaines marques.",
+      },
+    ]);
+
+    expect(yesResult.debugRows[0].final_supported).toBe("yes");
+    expect(noResult.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("detects FR clearance yes from destockage and outlet wording", () => {
+    const result = runEval([
+      {
+        term_id: "fr-clearance-yes",
+        country: "FR",
+        term_name: "Outlet Shop",
+        domain: "outletshop.fr",
+        subclass: "clearance",
+        source_type: "searchlab",
+        snippet: "Une section destockage outlet propose des fins de serie avec remises importantes jusqu'a 60%.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("yes");
+  });
+
+  it("keeps FR child no for no-specific-child-discount wording from residual samples", () => {
+    const result = runEval([
+      {
+        term_id: "fr-child-residual-no",
+        country: "FR",
+        term_name: "LT Labo",
+        domain: "ltlabo.com",
+        subclass: "child",
+        source_type: "searchlab",
+        snippet: "LT Labo ne mentionne pas explicitement de reductions specifiques pour les enfants sur son site officiel. La marque se concentre sur des complements alimentaires pour adultes.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps FR child no for plural child-discount wording and no child pricing policy", () => {
+    const result = runEval([
+      {
+        term_id: "fr-child-residual-no-2",
+        country: "FR",
+        term_name: "Chayra Beauty",
+        domain: "laparisiennekbeauty.com",
+        subclass: "child",
+        source_type: "searchlab",
+        snippet:
+          "Le site ne propose pas de reductions specifiques pour les enfants et aucune politique tarifaire pour enfants n'est mentionnee. Les produits sont destines au maquillage.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps FR birthday no when the text says there is no explicit birthday perk and only brand anniversaries or event solutions", () => {
+    const result = runEval([
+      {
+        term_id: "fr-birthday-residual-no",
+        country: "FR",
+        term_name: "Tout et Bon",
+        domain: "toutetbon.fr",
+        subclass: "birthday",
+        source_type: "searchlab",
+        snippet: "Le site ne mentionne pas explicitement d'avantage specifique pour les anniversaires. Il propose des solutions adaptees pour les anniversaires en entreprise, et non une reduction d'anniversaire client.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps FR birthday no for dedicated-birthday-wording from residual samples", () => {
+    const result = runEval([
+      {
+        term_id: "fr-birthday-residual-no-2",
+        country: "FR",
+        term_name: "LT Labo",
+        domain: "ltlabo.com",
+        subclass: "birthday",
+        source_type: "searchlab",
+        snippet:
+          "Le site ne mentionne pas explicitement d'avantage specifique, comme un cadeau ou une reduction, dedie aux anniversaires. Le programme met surtout en avant le parrainage et la newsletter.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps FR return yes when a return policy exists even if mail returns are paid", () => {
+    const result = runEval([
+      {
+        term_id: "fr-return-policy-yes",
+        country: "FR",
+        term_name: "M416GelBlaster",
+        domain: "m416gelblaster.fr",
+        subclass: "return",
+        source_type: "searchlab",
+        snippet: "Le marchand accepte les retours sous 30 jours. Le retour par la poste est payant et les frais de retour sont a votre charge.",
+      },
+      {
+        term_id: "fr-return-policy-yes",
+        country: "FR",
+        term_name: "M416GelBlaster",
+        domain: "m416gelblaster.fr",
+        subclass: "return",
+        source_type: "aimode",
+        snippet: "Une politique de retour est disponible et le remboursement est traite apres validation du retour.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("yes");
+  });
+
   it("detects NL newsletter yes with euro sign-up discount", () => {
     const result = runEval([
       {

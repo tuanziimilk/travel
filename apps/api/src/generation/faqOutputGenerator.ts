@@ -21,7 +21,12 @@ import {
   recoverInterruptedGenerationJobs,
   updateGenerationJobProgress,
 } from "./faqOutputJobStore";
-import { listPersistedGenerationRows, listPersistedSuccessRowIndexes, persistGenerationRow } from "./faqOutputRowStore";
+import {
+  type GenerationValidationLog,
+  listPersistedGenerationRows,
+  listPersistedSuccessRowIndexes,
+  persistGenerationRow,
+} from "./faqOutputRowStore";
 
 const BOARD_NAME_FIELD = "板块名称" as const;
 
@@ -277,10 +282,10 @@ export function finalizeGenerationItem(item: FaqOutputItem, row: FaqOutputInputR
   const normalized = withGenerationDefaults(item, subclass);
   return {
     ContentType: "faq",
-    Country: normalizeCountryCode(normalized.Country || row.country),
-    TermID: normalized.TermID || row.term_id,
-    TermName: normalized.TermName || row.term_name,
-    Domain: normalized.Domain || row.domain,
+    Country: normalizeCountryCode(row.country),
+    TermID: row.term_id,
+    TermName: row.term_name,
+    Domain: row.domain,
     Source: normalized.Source || "AI",
     Subclass: subclass,
     [BOARD_NAME_FIELD]: "faq",
@@ -288,6 +293,37 @@ export function finalizeGenerationItem(item: FaqOutputItem, row: FaqOutputInputR
     "Brief Introduction": normalized["Brief Introduction"] || "",
     "Href Kw": normalized["Href Kw"] || "",
     "Href Url": normalized["Href Url"] || "",
+  };
+}
+
+export function buildPassthroughValidationLog(item: FaqOutputItem, row: FaqOutputInputRow): GenerationValidationLog | null {
+  const mismatches = [
+    {
+      field: "Country" as const,
+      inputValue: normalizeCountryCode(row.country),
+      modelValue: String(item.Country || ""),
+    },
+    {
+      field: "TermID" as const,
+      inputValue: row.term_id,
+      modelValue: String(item.TermID || ""),
+    },
+    {
+      field: "TermName" as const,
+      inputValue: row.term_name,
+      modelValue: String(item.TermName || ""),
+    },
+    {
+      field: "Domain" as const,
+      inputValue: row.domain,
+      modelValue: String(item.Domain || ""),
+    },
+  ].filter((item) => item.modelValue !== "" && item.modelValue !== item.inputValue);
+
+  if (!mismatches.length) return null;
+  return {
+    hasPassthroughMismatch: true,
+    passthroughMismatches: mismatches,
   };
 }
 
@@ -724,6 +760,7 @@ async function executeFaqOutputGeneration(
         buildRepairMessages: (candidate, errors) => buildRepairMessages(candidate, errors, item.subclass),
       });
 
+      const validationLog = buildPassthroughValidationLog(executed.result.faq_output, item.row);
       const finalized = finalizeGenerationItem(executed.result.faq_output, item.row, item.subclass);
       const fieldExtract = finalizeFieldExtract(executed.result.field_extract);
       const extractionRow = buildExtractionRow(item.row, fieldExtract);
@@ -759,6 +796,7 @@ async function executeFaqOutputGeneration(
         estimatedCostUsd,
         elapsedMs: Date.now() - startedAt,
         aiModel: getAiRuntimeRequestConfig("output-faq").aiModel,
+        validationLog,
       });
 
       progressState.successRows += 1;
@@ -806,6 +844,7 @@ async function executeFaqOutputGeneration(
           url: extractionRow.url,
           elapsedMs: Date.now() - startedAt,
           aiModel: `${getAiRuntimeRequestConfig("output-faq").aiModel}:fallback`,
+          validationLog: null,
         });
 
         progressState.successRows += 1;
@@ -832,6 +871,7 @@ async function executeFaqOutputGeneration(
         discountDetails: item.row.discount_details,
         url: item.row.url,
         errorReason: message,
+        validationLog: null,
       });
 
       progressState.failedRows += 1;

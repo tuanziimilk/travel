@@ -2,8 +2,7 @@ import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ggCleaningUploadMaxFileBytes } from "@about-demo/trpc";
 import { makeId } from "../utils/id";
-import { apiRuntimePath } from "../utils/runtimePaths";
-import type { GgCleaningPreview } from "./engine";
+import { resolveApiRuntimePath } from "../utils/runtimePaths";
 
 export type GgCleaningUploadRow = Record<string, unknown>;
 
@@ -40,7 +39,7 @@ type StoredChunkFile = {
   rows: GgCleaningUploadRow[];
 };
 
-const GG_UPLOAD_DIR = apiRuntimePath("gg-cleaning-uploads");
+const GG_UPLOAD_DIR = resolveApiRuntimePath("gg-cleaning-uploads");
 
 function uploadDirOf(uploadId: string) {
   return path.join(GG_UPLOAD_DIR, uploadId);
@@ -66,6 +65,21 @@ async function readMeta(uploadId: string): Promise<UploadMeta> {
 
 async function writeMeta(meta: UploadMeta) {
   await writeFile(metaPathOf(meta.id), JSON.stringify(meta, null, 2), "utf8");
+}
+
+function isMissingUploadMetaError(error: unknown) {
+  const err = error as NodeJS.ErrnoException | undefined;
+  if (!err || typeof err !== "object") return false;
+  if (err.code !== "ENOENT") return false;
+  const message = typeof err.message === "string" ? err.message : "";
+  return message.includes("gg-cleaning-uploads") || message.includes("meta.json");
+}
+
+export function toGgUploadClientError(error: unknown) {
+  if (isMissingUploadMetaError(error)) {
+    return "GG 上传会话已失效，可能是服务重启或上传目录切换导致，请重新上传文件后再试。";
+  }
+  return error instanceof Error ? error.message : String(error);
 }
 
 function collectColumns(rows: GgCleaningUploadRow[]) {

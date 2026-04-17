@@ -347,6 +347,10 @@ export const generationStatusInputSchema = z.object({
   jobId: z.string(),
 });
 
+export const generationValidationLogsInputSchema = z.object({
+  jobId: z.string(),
+});
+
 export const generationRetryInputSchema = z.object({
   jobId: z.string(),
 });

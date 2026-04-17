@@ -58,6 +58,7 @@ type QueueRow = {
 };
 
 type DownloadVariant = "main" | "field_extract";
+
 const faqOutputUploadLimitMb = Math.round(faqOutputUploadMaxFileBytes / 1024 / 1024);
 
 const faqOutputTemplateCsv = [
@@ -280,7 +281,6 @@ export function FaqOutputPage() {
   const [resultNotice, setResultNotice] = useState("");
   const [currentJobId, setCurrentJobId] = useState("");
   const [downloadingStates, setDownloadingStates] = useState<Record<string, DownloadVariant | undefined>>({});
-  const downloadCenter = useDownloadCenter();
   const [routePreviewRows, setRoutePreviewRows] = useState<RoutePreviewRow[]>([]);
   const [showRouteDetails, setShowRouteDetails] = useState(false);
   const [queuePage, setQueuePage] = useState(1);
@@ -554,12 +554,14 @@ export function FaqOutputPage() {
     setError("");
     setDownloadingStates((current) => ({ ...current, [jobId]: variant }));
     try {
-      await downloadCenter.createDownloadTask({
-        toolType: "faq-output",
-        sourceLabel: variant === "field_extract" ? "FAQ 提取结果" : "FAQ 输出结果",
-        create: () => createFaqJobDownloadTask(jobId, variant),
-        autoDownload: true,
+      const url = new URL(`${faqOutputApiBase}/generation/jobs/${encodeURIComponent(jobId)}/download`);
+      url.searchParams.set("variant", variant);
+      const response = await fetch(url.toString(), {
+        method: "GET",
+        credentials: "include",
       });
+      const fallbackFileName = variant === "field_extract" ? `faq-field-extract-${jobId}.xlsx` : `faq-output-${jobId}.xlsx`;
+      await downloadFileFromResponse(response, fallbackFileName);
     } catch (err) {
       const message = getReadableFaqOutputError(err);
       setError(variant === "field_extract" ? `下载提取文件失败：${message}` : `下载结果文件失败：${message}`);
@@ -826,10 +828,9 @@ export function FaqOutputPage() {
             <tbody>
               {queueRows.map((item) => {
                 const hasResult = Boolean(item.resultFilePath) || item.canDownload || Boolean(item.resultFileName) || item.status === "done" || item.status === "failed";
+                const canDownloadFieldExtract = Boolean(item.canDownloadFieldExtract);
                 const itemProgress = getExecutionProgress(item);
                 const displayStatus = getDisplayJobStatus(item);
-                const isTerminalStatus = displayStatus === "done" || displayStatus === "failed" || displayStatus === "cancelled";
-                const canDownloadFieldExtract = isTerminalStatus && Boolean(item.canDownloadFieldExtract);
                 const activeDownloadVariant = downloadingStates[item.id];
                 return (
                   <tr key={item.id}>
@@ -870,7 +871,7 @@ export function FaqOutputPage() {
                           className="btn-ghost faq-queue-action-btn faq-queue-action-btn-secondary"
                           type="button"
                           disabled={!canDownloadFieldExtract || Boolean(activeDownloadVariant)}
-                          title={canDownloadFieldExtract ? "下载提取表" : isTerminalStatus ? "历史任务未保留提取表，无法下载" : "任务完成后才能下载提取表"}
+                          title={canDownloadFieldExtract ? "下载提取表" : "历史任务未保留提取表，无法下载"}
                           onClick={() => void downloadJobResult(item.id, "field_extract")}
                         >
                           {activeDownloadVariant === "field_extract" ? "下载中..." : "下载提取"}

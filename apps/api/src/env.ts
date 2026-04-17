@@ -203,9 +203,7 @@ export const env = {
   apiPort: Number(process.env.API_PORT || 3001),
   webOrigin: process.env.WEB_ORIGIN || "http://localhost:5173",
   databaseUrl: process.env.DATABASE_URL || "",
-  runWorkers: (process.env.RUN_WORKERS || "false").toLowerCase() === "true",
 
-  // Legacy getters retained for compatibility with existing code paths.
   get aiBaseUrl() {
     return getAiRuntimeRequestConfig("quality-about").baseUrl;
   },

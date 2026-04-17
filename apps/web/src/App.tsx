@@ -3,7 +3,6 @@ import * as Select from "@radix-ui/react-select";
 import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import {
-  aiModelOptions,
   categoryCalibrationDefaultAiModel,
   translationDefaultAiModel,
   type AiModel,
@@ -229,8 +228,8 @@ export default function App() {
     : toolScopedKey
       ? aiConfigQuery.data?.aiModel || fallbackModelByTool[toolScopedKey]
       : "";
-  const modelsByProvider = aiConfigQuery.data?.availableModelsByProvider || fallbackModelsByProvider;
-  const modelOptions = isAiSwitchDisabledWorkspace ? ["无需AI"] : modelsByProvider[currentProvider] || fallbackModelsByProvider[currentProvider] || [];
+  const modelsByProvider = aiConfigQuery.data?.availableModelsByProvider || { openai: [], gemini: [] };
+  const modelOptions = isAiSwitchDisabledWorkspace ? ["无需AI"] : modelsByProvider[currentProvider] || [];
   const providerOptions = aiConfigQuery.data?.availableProviders || ["openai", "gemini"];
 
   const handleModelChange = (value: string) => {
@@ -242,7 +241,7 @@ export default function App() {
   const handleProviderChange = (value: string) => {
     if (!toolScopedKey || aiConfigSetMutation.isPending) return;
     const provider = value as AiProvider;
-    const nextModel = ((modelsByProvider[provider] || fallbackModelsByProvider[provider] || [])[0] as AiModel | undefined);
+    const nextModel = ((modelsByProvider[provider] || [])[0] as AiModel | undefined);
     aiConfigSetMutation.mutate({
       toolKey: toolScopedKey,
       provider,

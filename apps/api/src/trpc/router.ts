@@ -21,6 +21,7 @@ import {
   generationResultInputSchema,
   generationRetryInputSchema,
   generationStatusInputSchema,
+  generationValidationLogsInputSchema,
   generationRunInputSchema,
   ggCleaningPreviewInputSchema,
   ggCleaningPreviewTaskStatusInputSchema,
@@ -86,6 +87,7 @@ import {
   getGenerationHistorySummary,
   getGenerationJobResult,
   getGenerationJobStatus,
+  getGenerationValidationLogs,
   listGenerationHistoryRows,
   listGenerationJobs,
 } from "../generation/faqOutputJobStore";
@@ -320,6 +322,9 @@ export const appRouter = t.router({
     }),
     status: t.procedure.input(generationStatusInputSchema).query(({ input }) => {
       return getGenerationJobStatus(input.jobId);
+    }),
+    validationLogs: t.procedure.input(generationValidationLogsInputSchema).query(({ input }) => {
+      return getGenerationValidationLogs(input.jobId);
     }),
     retry: t.procedure.input(generationRetryInputSchema).mutation(({ input }) => {
       return retryFaqOutputGeneration(input.jobId);

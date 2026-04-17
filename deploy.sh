@@ -19,6 +19,7 @@ set +o allexport
 SERVER_USER="${DEPLOY_SERVER_USER:?Missing DEPLOY_SERVER_USER in .env}"
 SERVER_HOST="${DEPLOY_SERVER_HOST:?Missing DEPLOY_SERVER_HOST in .env}"
 SERVER_DIR="${DEPLOY_SERVER_DIR:?Missing DEPLOY_SERVER_DIR in .env}"
+DEPLOY_MIN_FREE_MB="${DEPLOY_MIN_FREE_MB:-4096}"
 SSH_KEY_RAW="${DEPLOY_SSH_KEY:-}"
 SSH_KEY=""
 TEMP_SSH_KEY=""
@@ -88,6 +89,13 @@ fi
 # Step 1: Export committed source code to a remote temp directory
 # ============================================================
 log "Preparing remote temp dir -> ${SERVER_USER}@${SERVER_HOST}:${REMOTE_TMP_DIR}"
+log "Checking remote disk headroom"
+REMOTE_AVAIL_KB="$(ssh_run "df -Pk '${SERVER_DIR%/*}' | awk 'NR==2 {print \$4}'")"
+[ -n "${REMOTE_AVAIL_KB}" ] || err "Failed to read remote free disk space"
+REMOTE_AVAIL_MB="$((REMOTE_AVAIL_KB / 1024))"
+if [ "${REMOTE_AVAIL_MB}" -lt "${DEPLOY_MIN_FREE_MB}" ]; then
+  err "Remote free disk ${REMOTE_AVAIL_MB}MB is below safety threshold ${DEPLOY_MIN_FREE_MB}MB. Stop deploy and clean disk first."
+fi
 ssh_run "rm -rf '${REMOTE_TMP_DIR}' && mkdir -p '${REMOTE_TMP_DIR}'"
 
 log "Uploading committed files from HEAD"
@@ -142,7 +150,7 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
-docker compose --env-file .env up --build -d
+docker compose --env-file .env up --build -d --remove-orphans
 
 echo ""
 echo "============ Extract web dist ============"

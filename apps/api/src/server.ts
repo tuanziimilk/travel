@@ -22,9 +22,13 @@ import {
   warmGenerationHistoryCaches,
 } from "./generation/faqOutputJobStore";
 import { getGgCleaningJobDownloadPayload } from "./gg-cleaning/jobStore";
-import { appendGgCleaningUploadChunk, appendGgCleaningUploadFileChunk, completeGgCleaningUpload, initGgCleaningUpload } from "./gg-cleaning/uploadStore";
-import { startIngestRecoveryScheduler } from "./jobs/ingestWorker";
-import { createGlobalDownloadTask, getGlobalDownloadTask, getGlobalDownloadTaskFile } from "./downloads/globalDownloadTaskStore";
+import {
+  appendGgCleaningUploadChunk,
+  appendGgCleaningUploadFileChunk,
+  completeGgCleaningUpload,
+  initGgCleaningUpload,
+  toGgUploadClientError,
+} from "./gg-cleaning/uploadStore";
 
 const app = express();
 app.use(cors({ origin: env.webOrigin }));
@@ -38,7 +42,7 @@ app.post("/gg-cleaning/uploads/init", async (req, res) => {
     if (!Number.isFinite(fileSize) || fileSize <= 0) throw new Error("fileSize must be a positive number.");
     res.json(await initGgCleaningUpload(fileName, fileSize));
   } catch (error) {
-    res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+    res.status(400).json({ error: toGgUploadClientError(error) });
   }
 });
 
@@ -53,7 +57,7 @@ app.post("/gg-cleaning/uploads/:uploadId/chunk", async (req, res) => {
     if (!rows?.length) throw new Error("rows is required.");
     res.json(await appendGgCleaningUploadChunk({ uploadId, chunkIndex, rows, groupCount }));
   } catch (error) {
-    res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+    res.status(400).json({ error: toGgUploadClientError(error) });
   }
 });
 
@@ -66,7 +70,7 @@ app.post("/gg-cleaning/uploads/:uploadId/file-chunk/:chunkIndex", express.raw({ 
     if (!Buffer.isBuffer(req.body) || req.body.length === 0) throw new Error("chunk body is required.");
     res.json(await appendGgCleaningUploadFileChunk({ uploadId, chunkIndex, buffer: req.body }));
   } catch (error) {
-    res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+    res.status(400).json({ error: toGgUploadClientError(error) });
   }
 });
 
@@ -79,7 +83,7 @@ app.post("/gg-cleaning/uploads/:uploadId/complete", async (req, res) => {
     if (!uploadId) throw new Error("uploadId is required.");
     res.json(await completeGgCleaningUpload({ uploadId, chunkCount, groupCount, oversizedGroupCount }));
   } catch (error) {
-    res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+    res.status(400).json({ error: toGgUploadClientError(error) });
   }
 });
 

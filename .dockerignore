@@ -5,6 +5,10 @@ node_modules
 # 构建产物（镜像内重新构建）
 apps/api/dist
 apps/web/dist
+dist
+build
+apps/api/.runtime
+.runtime
 
 # 环境变量（通过 docker-compose 注入，不打包进镜像）
 .env
@@ -23,10 +27,17 @@ apps/web/dist
 
 # 日志与临时文件
 *.log
+logs/
+temp/
+tmp/
 tmp/
 apps/api/tmp-*
-apps/api/.runtime/
-**/.runtime/
+uploads/
+storage/
+coverage/
+.cache/
+.turbo/
+.next/
 
 # 测试
 coverage/

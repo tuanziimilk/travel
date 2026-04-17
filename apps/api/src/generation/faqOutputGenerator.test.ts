@@ -1,7 +1,13 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildFallbackQuestion, finalizeGenerationItem, normalizeCountryCode, validateGenerationCandidate } from "./faqOutputGenerator";
+import {
+  buildFallbackQuestion,
+  buildPassthroughValidationLog,
+  finalizeGenerationItem,
+  normalizeCountryCode,
+  validateGenerationCandidate,
+} from "./faqOutputGenerator";
 import { skillRegistry } from "../skills/skillRegistry";
 import { resolveSkillRoot } from "../skills/skillPath";
 import { faqOutputSubclasses, normalizeFaqSubclassFromFactType, resolveSkillRoute, toFaqOutputSkillSlug } from "../skills/skillRouter";
@@ -132,6 +138,123 @@ describe("faq output generation candidate validation", () => {
       expect(finalized.Titile1).toBe("Does {Mer.} offer free returns?");
       expect(finalized["Brief Introduction"]).toContain("[Brand]");
       expect(finalized["Href Kw"]).toBe("{Brand} returns");
+    }
+  });
+
+  it("forces passthrough fields to use uploaded row values even when the model rewrites them", () => {
+    const candidate = JSON.stringify({
+      faq_output: {
+        ContentType: "faq",
+        Country: "us",
+        TermID: "rewritten-id",
+        TermName: "Argos Ltd",
+        Domain: "rewritten.example",
+        Source: "AI",
+        Subclass: "gift card",
+        [boardField]: "faq",
+        Titile1: "Does {Mer.} offer gift cards?",
+        "Brief Introduction": "No. {Mer.} does not clearly advertise its own gift cards.",
+        "Href Kw": "",
+        "Href Url": "",
+      },
+      field_extract: {
+        supported: "no",
+        discount_type: "other",
+        discount_value: "",
+        currency: "",
+      },
+    });
+
+    const result = validateGenerationCandidate(candidate, "gift card");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const validationLog = buildPassthroughValidationLog(result.value!.faq_output, {
+        term_id: "456",
+        country: "UK",
+        domain: "argos.co.uk",
+        term_name: "Argos",
+        fact_type: "gift_card",
+        supported: "unknown",
+        status: "active",
+        discount_type: "",
+        discount_value: "",
+        currency: "",
+        discount_details: "",
+        url: "",
+      });
+      const finalized = finalizeGenerationItem(
+        result.value!.faq_output,
+        {
+          term_id: "456",
+          country: "UK",
+          domain: "argos.co.uk",
+          term_name: "Argos",
+          fact_type: "gift_card",
+          supported: "unknown",
+          status: "active",
+          discount_type: "",
+          discount_value: "",
+          currency: "",
+          discount_details: "",
+          url: "",
+        },
+        "gift card",
+      );
+
+      expect(finalized.Country).toBe("UK");
+      expect(finalized.TermID).toBe("456");
+      expect(finalized.TermName).toBe("Argos");
+      expect(finalized.Domain).toBe("argos.co.uk");
+      expect(finalized.Titile1).toBe("Does {Mer.} offer gift cards?");
+      expect(validationLog).toEqual({
+        hasPassthroughMismatch: true,
+        passthroughMismatches: [
+          { field: "Country", inputValue: "UK", modelValue: "us" },
+          { field: "TermID", inputValue: "456", modelValue: "rewritten-id" },
+          { field: "TermName", inputValue: "Argos", modelValue: "Argos Ltd" },
+          { field: "Domain", inputValue: "argos.co.uk", modelValue: "rewritten.example" },
+        ],
+      });
+    }
+  });
+
+  it("returns null validation log when passthrough fields are unchanged", () => {
+    const candidate = JSON.stringify({
+      faq_output: {
+        ContentType: "faq",
+        Country: "UK",
+        TermID: "456",
+        TermName: "Argos",
+        Domain: "argos.co.uk",
+        Source: "AI",
+        Subclass: "return",
+        [boardField]: "faq",
+        Titile1: "Does {Mer.} offer free returns?",
+        "Brief Introduction": "No. {Mer.} does not offer free returns by default.",
+        "Href Kw": "",
+        "Href Url": "",
+      },
+    });
+
+    const result = validateGenerationCandidate(candidate, "return");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const validationLog = buildPassthroughValidationLog(result.value!.faq_output, {
+        term_id: "456",
+        country: "UK",
+        domain: "argos.co.uk",
+        term_name: "Argos",
+        fact_type: "return_policy",
+        supported: "unknown",
+        status: "active",
+        discount_type: "",
+        discount_value: "",
+        currency: "",
+        discount_details: "",
+        url: "",
+      });
+
+      expect(validationLog).toBeNull();
     }
   });
 
