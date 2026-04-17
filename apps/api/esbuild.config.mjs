@@ -11,12 +11,12 @@ await build({
   external: ["mysql2"],
   banner: {
     js: [
-      `import { createRequire } from "module";`,
-      `import { fileURLToPath } from "url";`,
-      `import { dirname as pathDirname } from "path";`,
-      `const require = createRequire(import.meta.url);`,
-      `const __filename = fileURLToPath(import.meta.url);`,
-      `const __dirname = pathDirname(__filename);`,
+      `import { createRequire as __codexCreateRequire } from "module";`,
+      `import { fileURLToPath as __codexFileURLToPath } from "url";`,
+      `import { dirname as __codexPathDirname } from "path";`,
+      `const require = __codexCreateRequire(import.meta.url);`,
+      `const __filename = __codexFileURLToPath(import.meta.url);`,
+      `const __dirname = __codexPathDirname(__filename);`,
     ].join("\n"),
   },
 });

@@ -1,22 +1,20 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-const moduleRelativeRuntimeDir = path.resolve(moduleDir, "..", "..", ".runtime");
+const workspaceRuntimeDir = path.resolve(process.cwd(), "apps", "api", ".runtime");
+const processRuntimeDir = path.resolve(process.cwd(), ".runtime");
 
 export function resolveApiRuntimeDir() {
   const envRuntimeDir = process.env.API_RUNTIME_DIR?.trim();
   if (envRuntimeDir) return envRuntimeDir;
 
   const candidates = [
-    path.resolve(process.cwd(), "apps", "api", ".runtime"),
-    path.resolve(process.cwd(), ".runtime"),
-    moduleRelativeRuntimeDir,
+    workspaceRuntimeDir,
+    processRuntimeDir,
   ];
 
   const existing = candidates.find((candidate) => existsSync(candidate));
-  return existing || moduleRelativeRuntimeDir;
+  return existing || workspaceRuntimeDir;
 }
 
 export function resolveApiRuntimePath(...segments: string[]) {
