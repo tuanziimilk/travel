@@ -3478,6 +3478,22 @@ describe("gg cleaning engine", () => {
     expect(result.debugRows[0].final_supported).toBe("no");
   });
 
+  it("keeps FR family no for no-explicit-family-discount wording from residual samples", () => {
+    const result = runEval([
+      {
+        term_id: "fr-family-residual-no",
+        country: "FR",
+        term_name: "LADC",
+        domain: "ladc.be",
+        subclass: "family",
+        source_type: "searchlab",
+        snippet: "Le site ne mentionne pas explicitement de reductions specifiques pour les familles. Il propose seulement des promotions generales sur des vetements pour femmes, hommes et enfants.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
   it("detects FR referral yes from public parrainage rewards", () => {
     const result = runEval([
       {
@@ -3568,6 +3584,38 @@ describe("gg cleaning engine", () => {
     ]);
 
     expect(result.debugRows[0].final_supported).toBe("yes");
+  });
+
+  it("keeps FR child no for no-specific-child-discount wording from residual samples", () => {
+    const result = runEval([
+      {
+        term_id: "fr-child-residual-no",
+        country: "FR",
+        term_name: "LT Labo",
+        domain: "ltlabo.com",
+        subclass: "child",
+        source_type: "searchlab",
+        snippet: "LT Labo ne mentionne pas explicitement de reductions specifiques pour les enfants sur son site officiel. La marque se concentre sur des complements alimentaires pour adultes.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps FR birthday no when the text says there is no explicit birthday perk and only brand anniversaries or event solutions", () => {
+    const result = runEval([
+      {
+        term_id: "fr-birthday-residual-no",
+        country: "FR",
+        term_name: "Tout et Bon",
+        domain: "toutetbon.fr",
+        subclass: "birthday",
+        source_type: "searchlab",
+        snippet: "Le site ne mentionne pas explicitement d'avantage specifique pour les anniversaires. Il propose des solutions adaptees pour les anniversaires en entreprise, et non une reduction d'anniversaire client.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
   });
 
   it("keeps FR return yes when a return policy exists even if mail returns are paid", () => {
