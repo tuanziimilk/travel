@@ -252,13 +252,13 @@ async function prepareGlobalDownloadTask(
       resultFilePath: null,
     });
 
-    let prepared: { fileName: string; buffer: Buffer; contentType: string };
+    let prepared: { fileName: string; buffer: Buffer; contentType: string; containsDebugSheet?: boolean };
     if (input.kind === "quality-batch") {
       prepared = await prepareQualityBatchDownload(input.jobId);
     } else if (input.kind === "gg-cleaning") {
       prepared = await getGgCleaningJobDownloadPayload(input.jobId, { includeDebug: input.includeDebug });
       const meta = await getGgCleaningMeta(input.jobId);
-      prepared = { ...prepared, fileName: buildGgCleaningFileName({ jobId: input.jobId, ...meta, includeDebug: input.includeDebug }) };
+      prepared = { ...prepared, fileName: buildGgCleaningFileName({ jobId: input.jobId, ...meta, includeDebug: input.includeDebug || prepared.containsDebugSheet }) };
     } else if (input.kind === "translation-batch") {
       prepared = await prepareTranslationBatchDownload(input.jobId);
       const meta = await getTranslationMeta(input.jobId);

@@ -10,6 +10,7 @@ import { apiRuntimePath } from "../utils/runtimePaths";
 import { formatChinaIsoOffset } from "../utils/time";
 
 const ERROR_REASON_MAX_LENGTH = 512;
+const merchantOnlyTrimMaxBytes = 32 * 1024 * 1024;
 const queueCountCacheTtlMs = 15 * 1000;
 let ensureGgCleaningJobsTablePromise: Promise<void> | null = null;
 const ggQueueCountCache = new Map<string, { expiresAt: number; value: number }>();
@@ -461,7 +462,6 @@ export async function getGgCleaningJobDownloadPayload(jobId: string, options?: {
   const row = await getGgCleaningJobById(jobId);
   const includeDebug = Boolean(options?.includeDebug);
   const fileNameBase = (row.resultFileName || `gg-cleaning-${row.id}.xlsx`).replace(/\.xlsx$/i, "");
-  const preferredFileName = includeDebug ? `${fileNameBase}.xlsx` : `${fileNameBase}-merchant-only.xlsx`;
   let fileBuffer: Buffer | null = null;
   if (row.resultFilePath) {
     fileBuffer = await readFile(await resolveReadableResultPath(row.resultFilePath));
@@ -471,9 +471,13 @@ export async function getGgCleaningJobDownloadPayload(jobId: string, options?: {
   if (!fileBuffer) {
     throw new Error(row.errorReason || "Current task has no downloadable result yet.");
   }
+  const canTrimMerchantOnly = !includeDebug && fileBuffer.length <= merchantOnlyTrimMaxBytes;
+  const containsDebugSheet = includeDebug || !canTrimMerchantOnly;
+  const preferredFileName = containsDebugSheet ? `${fileNameBase}.xlsx` : `${fileNameBase}-merchant-only.xlsx`;
   return {
     fileName: preferredFileName,
     contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    buffer: includeDebug ? fileBuffer : buildMerchantOnlyWorkbookBuffer(fileBuffer),
+    buffer: canTrimMerchantOnly ? buildMerchantOnlyWorkbookBuffer(fileBuffer) : fileBuffer,
+    containsDebugSheet,
   };
 }
