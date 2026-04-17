@@ -6340,6 +6340,24 @@ pre {
   justify-content: flex-start;
 }
 
+.faq-queue-table .queue-action-group {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.faq-queue-action-btn,
+.faq-queue-action-btn-secondary {
+  width: 100%;
+  min-width: 74px;
+}
+
+.faq-queue-action-btn-secondary:disabled {
+  background: #e6e6e6;
+  color: #666;
+}
+
 @media (max-width: 1180px) {
   .faq-queue-table {
     min-width: 980px;

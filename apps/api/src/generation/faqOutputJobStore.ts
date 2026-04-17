@@ -557,6 +557,15 @@ const extractionSheetHeaders = [
   "url",
 ] as const;
 
+const failureSheetHeaders = ["rowIndex", "factType", "subclass", "routeKey", "error"] as const;
+const faqDownloadSheetNames = {
+  output: "FAQ_output",
+  extract: "field_extract",
+  failures: "failures",
+} as const;
+
+type GenerationDownloadVariant = "main" | "field_extract" | "full";
+
 function normalize(value: unknown) {
   return String(value || "").trim();
 }
@@ -569,6 +578,108 @@ function normalizeHeader(value: string) {
   return String(value || "")
     .trim()
     .toLowerCase();
+}
+
+function isLikelyXlsxBuffer(buffer: Buffer | null | undefined) {
+  if (!buffer || buffer.length < 4) return false;
+  return buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04;
+}
+
+function cloneSheet(workbook: XLSX.WorkBook, sheetName: string) {
+  const sheet = workbook.Sheets[sheetName];
+  if (!sheet) return null;
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as unknown[][];
+  return XLSX.utils.aoa_to_sheet(rows);
+}
+
+function buildWorkbookForVariant(sourceBuffer: Buffer, variant: GenerationDownloadVariant) {
+  const sourceWorkbook = XLSX.read(sourceBuffer, { type: "buffer" });
+  const nextWorkbook = XLSX.utils.book_new();
+
+  if (variant === "field_extract") {
+    const extractSheet = cloneSheet(sourceWorkbook, faqDownloadSheetNames.extract);
+    if (!extractSheet) {
+      throw new Error("Current FAQ output task has no field_extract sheet yet.");
+    }
+    XLSX.utils.book_append_sheet(nextWorkbook, extractSheet, faqDownloadSheetNames.extract);
+    return XLSX.write(nextWorkbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+  }
+
+  const outputSheet = cloneSheet(sourceWorkbook, faqDownloadSheetNames.output);
+  if (!outputSheet) {
+    throw new Error("Current FAQ output task has no FAQ_output sheet yet.");
+  }
+  XLSX.utils.book_append_sheet(nextWorkbook, outputSheet, faqDownloadSheetNames.output);
+
+  const failuresSheet = cloneSheet(sourceWorkbook, faqDownloadSheetNames.failures);
+  if (failuresSheet) {
+    XLSX.utils.book_append_sheet(nextWorkbook, failuresSheet, faqDownloadSheetNames.failures);
+  } else {
+    XLSX.utils.book_append_sheet(
+      nextWorkbook,
+      XLSX.utils.json_to_sheet([], { header: [...failureSheetHeaders] }),
+      faqDownloadSheetNames.failures,
+    );
+  }
+
+  if (variant === "full") {
+    const extractSheet = cloneSheet(sourceWorkbook, faqDownloadSheetNames.extract);
+    if (extractSheet) {
+      XLSX.utils.book_append_sheet(nextWorkbook, extractSheet, faqDownloadSheetNames.extract);
+    }
+  }
+
+  return XLSX.write(nextWorkbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+}
+
+async function buildWorkbookFromPersistedRows(jobId: string, variant: GenerationDownloadVariant) {
+  const persistedRows = await listPersistedGenerationRows(jobId);
+  if (!persistedRows.length || variant === "field_extract") {
+    return null;
+  }
+
+  const workbook = XLSX.utils.book_new();
+  const successRows = persistedRows.filter((item) => item.status === "success");
+  const failureRows = persistedRows.filter((item) => item.status === "error");
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.json_to_sheet(
+      successRows.map((item) => ({
+        ContentType: "faq",
+        Country: item.country,
+        TermID: item.termId,
+        TermName: item.termName,
+        Domain: item.domain,
+        Source: item.source || "AI",
+        Subclass: item.subclass,
+        [generationBoardNameField]: item.boardName || "faq",
+        Titile1: item.title1,
+        "Brief Introduction": item.briefIntroduction,
+        "Href Kw": item.hrefKw,
+        "Href Url": item.hrefUrl,
+      })),
+      { header: [...outputHeaders] },
+    ),
+    faqDownloadSheetNames.output,
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.json_to_sheet(
+      failureRows.map((item) => ({
+        rowIndex: item.rowIndex,
+        factType: item.factType,
+        subclass: item.subclass,
+        routeKey: item.routeKey,
+        error: item.errorReason,
+      })),
+      { header: [...failureSheetHeaders] },
+    ),
+    faqDownloadSheetNames.failures,
+  );
+
+  return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }
 
 function getWorkbookCacheKey(row: {
@@ -727,7 +838,7 @@ async function rebuildGenerationResultArtifact(row: typeof contentGenerationJobs
       })),
       { header: [...outputHeaders] },
     ),
-    "FAQ_output",
+    faqDownloadSheetNames.output,
   );
   XLSX.utils.book_append_sheet(
     workbook,
@@ -748,7 +859,7 @@ async function rebuildGenerationResultArtifact(row: typeof contentGenerationJobs
       }),
       { header: [...extractionSheetHeaders] },
     ),
-    "field_extract",
+    faqDownloadSheetNames.extract,
   );
   XLSX.utils.book_append_sheet(
     workbook,
@@ -761,7 +872,7 @@ async function rebuildGenerationResultArtifact(row: typeof contentGenerationJobs
         error: item.errorReason,
       })),
     ),
-    "failures",
+    faqDownloadSheetNames.failures,
   );
 
   const fileName = row.resultFileName || `faq-output-${row.id}.xlsx`;
@@ -1117,6 +1228,7 @@ export async function listGenerationJobs(page: number, pageSize: number, scType 
         error_reason,
         result_file_name,
         result_file_path,
+        input_file_base64 IS NOT NULL AS has_input_file,
         route_summary_json,
         created_at,
         started_at,
@@ -1150,6 +1262,7 @@ export async function listGenerationJobs(page: number, pageSize: number, scType 
       resultFileName: String(row.result_file_name || ""),
       resultFilePath: String(row.result_file_path || ""),
       canDownload: Boolean(row.result_file_path || row.result_file_name || row.status === "done" || row.status === "failed"),
+      canDownloadFieldExtract: Boolean(row.result_file_path || row.has_input_file),
       createdAt: formatChinaIsoOffset(row.created_at instanceof Date ? row.created_at : new Date(String(row.created_at || ""))),
       startedAt: formatChinaIsoOffset(row.started_at instanceof Date ? row.started_at : row.started_at ? new Date(String(row.started_at)) : null),
       finishedAt: formatChinaIsoOffset(row.finished_at instanceof Date ? row.finished_at : row.finished_at ? new Date(String(row.finished_at)) : null),
@@ -1339,10 +1452,11 @@ export async function getGenerationJobResult(jobId: string) {
   };
 }
 
-export async function getGenerationJobDownloadPayload(jobId: string) {
+export async function getGenerationJobDownloadPayload(jobId: string, options?: { variant?: GenerationDownloadVariant }) {
   const rows = await db.select().from(contentGenerationJobs).where(eq(contentGenerationJobs.id, jobId));
   const row = rows[0];
   if (!row) throw new Error("Current FAQ output task was not found.");
+  const variant = options?.variant || "main";
 
   const rebuiltResult =
     !row.resultFilePath && !row.resultFileBase64 && (row.status === "done" || row.status === "failed")
@@ -1358,20 +1472,38 @@ export async function getGenerationJobDownloadPayload(jobId: string) {
     }
   }
   if (!fileBuffer && row.resultFileBase64) {
-    fileBuffer = Buffer.from(row.resultFileBase64, "base64");
+    const base64Buffer = Buffer.from(row.resultFileBase64, "base64");
+    if (isLikelyXlsxBuffer(base64Buffer)) {
+      fileBuffer = base64Buffer;
+    }
+  }
+  if (!fileBuffer) {
+    const persistedBuffer = await buildWorkbookFromPersistedRows(row.id, variant);
+    if (persistedBuffer && isLikelyXlsxBuffer(persistedBuffer)) {
+      fileBuffer = persistedBuffer;
+    }
   }
   if (!fileBuffer && rebuiltResult?.xlsxBase64) {
-    fileBuffer = Buffer.from(rebuiltResult.xlsxBase64, "base64");
+    const rebuiltBuffer = Buffer.from(rebuiltResult.xlsxBase64, "base64");
+    if (isLikelyXlsxBuffer(rebuiltBuffer)) {
+      fileBuffer = rebuiltBuffer;
+    }
   }
 
   if (!fileBuffer) {
     throw new Error(row.errorReason || "Current FAQ output task has no downloadable result yet.");
   }
 
+  const trimmedBuffer = buildWorkbookForVariant(fileBuffer, variant);
+  const baseName = rebuiltResult?.fileName || row.resultFileName || `faq-output-${row.id}.xlsx`;
+  const fileExt = path.extname(baseName) || ".xlsx";
+  const fileStem = path.basename(baseName, fileExt);
+  const fileName = variant === "field_extract" ? `${fileStem}-field-extract${fileExt}` : variant === "full" ? `${fileStem}-full${fileExt}` : baseName;
+
   return {
-    fileName: rebuiltResult?.fileName || row.resultFileName || `faq-output-${row.id}.xlsx`,
+    fileName,
     contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    buffer: fileBuffer,
+    buffer: trimmedBuffer,
   };
 }
 

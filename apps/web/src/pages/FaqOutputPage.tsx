@@ -49,10 +49,13 @@ type QueueRow = {
   resultFileName?: string;
   resultFilePath?: string;
   canDownload?: boolean;
+  canDownloadFieldExtract?: boolean;
   createdAt?: string | null;
   startedAt?: string | null;
   finishedAt?: string | null;
 };
+
+type DownloadVariant = "main" | "field_extract";
 
 const faqOutputUploadLimitMb = Math.round(faqOutputUploadMaxFileBytes / 1024 / 1024);
 const faqOutputApiBase = (() => {
@@ -320,7 +323,7 @@ export function FaqOutputPage() {
   const [error, setError] = useState("");
   const [resultNotice, setResultNotice] = useState("");
   const [currentJobId, setCurrentJobId] = useState("");
-  const [downloadingJobId, setDownloadingJobId] = useState("");
+  const [downloadingStates, setDownloadingStates] = useState<Record<string, DownloadVariant | undefined>>({});
   const [routePreviewRows, setRoutePreviewRows] = useState<RoutePreviewRow[]>([]);
   const [showRouteDetails, setShowRouteDetails] = useState(false);
   const [queuePage, setQueuePage] = useState(1);
@@ -585,20 +588,27 @@ export function FaqOutputPage() {
     URL.revokeObjectURL(url);
   }
 
-  async function downloadJobResult(jobId: string) {
+  async function downloadJobResult(jobId: string, variant: DownloadVariant) {
     setError("");
-    setDownloadingJobId(jobId);
+    setDownloadingStates((current) => ({ ...current, [jobId]: variant }));
     try {
       const url = new URL(`${faqOutputApiBase}/generation/jobs/${encodeURIComponent(jobId)}/download`);
+      url.searchParams.set("variant", variant);
       const response = await fetch(url.toString(), {
         method: "GET",
         credentials: "include",
       });
-      await downloadFileFromResponse(response, `faq-output-${jobId}.xlsx`);
+      const fallbackFileName = variant === "field_extract" ? `faq-field-extract-${jobId}.xlsx` : `faq-output-${jobId}.xlsx`;
+      await downloadFileFromResponse(response, fallbackFileName);
     } catch (err) {
-      setError(getReadableFaqOutputError(err));
+      const message = getReadableFaqOutputError(err);
+      setError(variant === "field_extract" ? `下载提取文件失败：${message}` : `下载结果文件失败：${message}`);
     } finally {
-      setDownloadingJobId("");
+      setDownloadingStates((current) => {
+        const next = { ...current };
+        delete next[jobId];
+        return next;
+      });
     }
   }
 
@@ -856,8 +866,10 @@ export function FaqOutputPage() {
             <tbody>
               {queueRows.map((item) => {
                 const hasResult = Boolean(item.resultFilePath) || item.canDownload || Boolean(item.resultFileName) || item.status === "done" || item.status === "failed";
+                const canDownloadFieldExtract = Boolean(item.canDownloadFieldExtract);
                 const itemProgress = getExecutionProgress(item);
                 const displayStatus = getDisplayJobStatus(item);
+                const activeDownloadVariant = downloadingStates[item.id];
                 return (
                   <tr key={item.id}>
                     <td title={item.id}>{formatJobId(item.id)}</td>
@@ -888,10 +900,19 @@ export function FaqOutputPage() {
                         <button
                           className="btn-ghost faq-queue-action-btn"
                           type="button"
-                          disabled={!hasResult || downloadingJobId === item.id}
-                          onClick={() => void downloadJobResult(item.id)}
+                          disabled={!hasResult || Boolean(activeDownloadVariant)}
+                          onClick={() => void downloadJobResult(item.id, "main")}
                         >
-                          {downloadingJobId === item.id ? "下载中..." : "下载"}
+                          {activeDownloadVariant === "main" ? "下载中..." : "下载结果"}
+                        </button>
+                        <button
+                          className="btn-ghost faq-queue-action-btn faq-queue-action-btn-secondary"
+                          type="button"
+                          disabled={!canDownloadFieldExtract || Boolean(activeDownloadVariant)}
+                          title={canDownloadFieldExtract ? "下载提取表" : "历史任务未保留提取表，无法下载"}
+                          onClick={() => void downloadJobResult(item.id, "field_extract")}
+                        >
+                          {activeDownloadVariant === "field_extract" ? "下载中..." : "下载提取"}
                         </button>
                       </div>
                     </td>
