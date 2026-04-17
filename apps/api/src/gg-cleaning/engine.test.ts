@@ -3494,6 +3494,23 @@ describe("gg cleaning engine", () => {
     expect(result.debugRows[0].final_supported).toBe("no");
   });
 
+  it("keeps FR family no for plural dedicated-family wording from residual samples", () => {
+    const result = runEval([
+      {
+        term_id: "fr-family-residual-no-2",
+        country: "FR",
+        term_name: "LT Labo",
+        domain: "ltlabo.com",
+        subclass: "family",
+        source_type: "searchlab",
+        snippet:
+          "LT LABO ne propose pas de reductions specifiques dediees aux familles. Le site renvoie plutot vers son programme de fidelite et ses promotions generales.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
   it("detects FR referral yes from public parrainage rewards", () => {
     const result = runEval([
       {
@@ -3602,6 +3619,23 @@ describe("gg cleaning engine", () => {
     expect(result.debugRows[0].final_supported).toBe("no");
   });
 
+  it("keeps FR child no for plural child-discount wording and no child pricing policy", () => {
+    const result = runEval([
+      {
+        term_id: "fr-child-residual-no-2",
+        country: "FR",
+        term_name: "Chayra Beauty",
+        domain: "laparisiennekbeauty.com",
+        subclass: "child",
+        source_type: "searchlab",
+        snippet:
+          "Le site ne propose pas de reductions specifiques pour les enfants et aucune politique tarifaire pour enfants n'est mentionnee. Les produits sont destines au maquillage.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
   it("keeps FR birthday no when the text says there is no explicit birthday perk and only brand anniversaries or event solutions", () => {
     const result = runEval([
       {
@@ -3612,6 +3646,23 @@ describe("gg cleaning engine", () => {
         subclass: "birthday",
         source_type: "searchlab",
         snippet: "Le site ne mentionne pas explicitement d'avantage specifique pour les anniversaires. Il propose des solutions adaptees pour les anniversaires en entreprise, et non une reduction d'anniversaire client.",
+      },
+    ]);
+
+    expect(result.debugRows[0].final_supported).toBe("no");
+  });
+
+  it("keeps FR birthday no for dedicated-birthday-wording from residual samples", () => {
+    const result = runEval([
+      {
+        term_id: "fr-birthday-residual-no-2",
+        country: "FR",
+        term_name: "LT Labo",
+        domain: "ltlabo.com",
+        subclass: "birthday",
+        source_type: "searchlab",
+        snippet:
+          "Le site ne mentionne pas explicitement d'avantage specifique, comme un cadeau ou une reduction, dedie aux anniversaires. Le programme met surtout en avant le parrainage et la newsletter.",
       },
     ]);
 
