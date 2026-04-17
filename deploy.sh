@@ -74,6 +74,11 @@ fi
 SSH_OPTS="-o StrictHostKeyChecking=no ${SSH_KEY:+-i ${SSH_KEY}}"
 ssh_run() { ssh ${SSH_OPTS} "${SERVER_USER}@${SERVER_HOST}" "$@"; }
 
+CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+if [ "${CURRENT_BRANCH}" != "main" ] && [ "${ALLOW_NON_MAIN_DEPLOY:-false}" != "true" ]; then
+  err "Refusing deploy from branch '${CURRENT_BRANCH}'. Merge the intended changes into 'main' before deploying."
+fi
+
 COMMIT_SHA="$(git rev-parse HEAD)"
 COMMIT_SHORT="$(git rev-parse --short HEAD)"
 REMOTE_TMP_DIR="${SERVER_DIR}.deploy-tmp-${COMMIT_SHORT}-$$"

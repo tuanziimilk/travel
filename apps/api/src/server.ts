@@ -6,6 +6,7 @@ import { env } from "./env";
 import { appRouter } from "./trpc/router";
 import { createContext } from "./trpc/context";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
+import { createGlobalDownloadTask, getGlobalDownloadTask, getGlobalDownloadTaskFile } from "./downloads/globalDownloadTaskStore";
 import {
   appendCategoryCalibrationUploadChunk,
   completeCategoryCalibrationUpload,
@@ -29,6 +30,7 @@ import {
   initGgCleaningUpload,
   toGgUploadClientError,
 } from "./gg-cleaning/uploadStore";
+import { startIngestRecoveryScheduler } from "./jobs/ingestWorker";
 
 const app = express();
 app.use(cors({ origin: env.webOrigin }));

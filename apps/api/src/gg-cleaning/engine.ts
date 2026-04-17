@@ -1783,6 +1783,8 @@ const EXISTING_CUSTOMER_HARD_POSITIVE_PATTERNS = [
   /\bclients? fid[èe]les\b.{0,35}\b(?:profiter de|recevoir|obtenir)\b.{0,25}\b(?:r[ée]ductions?|offres?|avantages?)\b/i,
   /\bvaste klanten(?:bestand)?\b.{0,35}\b(?:exclusieve )?(?:actiecodes?|kortingscodes?|aanbiedingen)\b/i,
   /\bbestaande klanten\b.{0,35}\b(?:kunnen )?(?:profiteren van|ontvangen|krijgen)\b.{0,25}\b(?:kortingen|actiecodes?|aanbiedingen)\b/i,
+  /\bprogram\w*\s+lojalno[śs]ciow\w*\b.{0,80}\b(?:sta[łl]ych|lojalnych)\s+klient[oó]w\b/i,
+  /\b(?:sta[łl]ych|lojalnych)\s+klient[oó]w\b.{0,80}\b(?:specjalne\s+rabaty|rabat\w*|zni[żz]k\w*|wczesniejszy|wcze[śs]niejszy)\b/i,
   /现有客户.{0,24}(?:折扣|优惠|续订优惠|专用)/,
   /现有订阅者.{0,24}(?:折扣|优惠|优惠码)/,
   /回头客.{0,24}(?:折扣|优惠|优惠码)/,

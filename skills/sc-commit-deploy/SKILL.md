@@ -13,11 +13,12 @@ description: 用于本项目的代码提交、deploy.sh 部署、上线复核与
 - 用户要求“按这个项目的标准提交流程走一遍”
 
 ## Default Workflow
-1. 先检查 `git status --short`，确认工作区里哪些改动属于本次任务，哪些不是。
-2. 运行“本次改动对应的最小必要验证”，不要默认跑全量重测试。
-3. 只在确认本次相关改动可提交后执行 `git add` 和 `git commit`。
-4. 仅从仓库根目录执行 `bash ./deploy.sh`。
-5. 部署完成后至少复核：
+1. 先检查 `git branch --show-current` 和 `git status --short`，确认当前分支、工作区里哪些改动属于本次任务，哪些不是。
+2. 若当前不在 `main`，先把本次要上线的 feature/hotfix 分支合并或 cherry-pick 到 `main`，不要直接从功能分支提交部署。
+3. 运行“本次改动对应的最小必要验证”，不要默认跑全量重测试。
+4. 只在确认本次相关改动可提交后执行 `git add` 和 `git commit`。
+5. 仅从仓库根目录的 `main` 分支执行 `bash ./deploy.sh`。
+6. 部署完成后至少复核：
    - API 健康
    - `docker compose ps`
    - migrate 日志
@@ -29,6 +30,10 @@ description: 用于本项目的代码提交、deploy.sh 部署、上线复核与
    - 残余风险或未验证项
 
 ## Hard Rules
+- `main` 是唯一集成与部署分支；功能分支只能用于开发、修复和比对，不能直接部署到服务器。
+- 切换或合并分支前，先确认当前工作区没有会丢失的未提交改动；需要保留时先 commit 或 stash，并明确记录来源分支。
+- 合并多个分支时，优先把最新需要上线的分支最后合入；若发生冲突，可按用户指令以最新提交为主，但必须复核最终 diff 和运行相关验证。
+- 部署前必须确认目标分支是 `main`，且要上线的 feature/hotfix 分支 HEAD 已被 `main` 包含。
 - 绝不能在存在未提交改动时声称“已部署最新代码”；[`deploy.sh`](D:/python-tool/SC-quality-scoring/deploy.sh) 只会部署 committed `HEAD`。
 - 绝不能从 `apps/api`、`apps/web` 等子目录猜测部署；正式入口只有仓库根目录的 [`deploy.sh`](D:/python-tool/SC-quality-scoring/deploy.sh)。
 - 部署后不能只看脚本返回成功；必须补健康检查和关键链路复核。
@@ -50,6 +55,8 @@ description: 用于本项目的代码提交、deploy.sh 部署、上线复核与
 
 ## Deployment Checklist
 - 执行前确认当前分支、`git status`、目标 commit。
+- 确认 `git branch --show-current` 输出为 `main`。
+- 若本次来自其他分支，确认 `git merge-base --is-ancestor <branch> main` 成功。
 - 在仓库根目录运行 [`deploy.sh`](D:/python-tool/SC-quality-scoring/deploy.sh)。
 - 部署后按需查看：
   - `docker compose ps`

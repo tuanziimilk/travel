@@ -22,3 +22,5 @@ export function resolveApiRuntimeDir() {
 export function resolveApiRuntimePath(...segments: string[]) {
   return path.join(resolveApiRuntimeDir(), ...segments);
 }
+
+export const apiRuntimePath = resolveApiRuntimePath;

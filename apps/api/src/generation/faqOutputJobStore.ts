@@ -624,6 +624,8 @@ const faqDownloadSheetNames = {
 } as const;
 
 type GenerationDownloadVariant = "main" | "field_extract" | "full";
+type GenerationDownloadTaskVariant = GenerationDownloadVariant | "history_xlsx" | "history_csv";
+type GenerationDownloadTaskStatus = "queued" | "preparing" | "ready" | "failed" | "expired";
 
 function normalize(value: unknown) {
   return String(value || "").trim();
@@ -637,108 +639,6 @@ function normalizeHeader(value: string) {
   return String(value || "")
     .trim()
     .toLowerCase();
-}
-
-function isLikelyXlsxBuffer(buffer: Buffer | null | undefined) {
-  if (!buffer || buffer.length < 4) return false;
-  return buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04;
-}
-
-function cloneSheet(workbook: XLSX.WorkBook, sheetName: string) {
-  const sheet = workbook.Sheets[sheetName];
-  if (!sheet) return null;
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as unknown[][];
-  return XLSX.utils.aoa_to_sheet(rows);
-}
-
-function buildWorkbookForVariant(sourceBuffer: Buffer, variant: GenerationDownloadVariant) {
-  const sourceWorkbook = XLSX.read(sourceBuffer, { type: "buffer" });
-  const nextWorkbook = XLSX.utils.book_new();
-
-  if (variant === "field_extract") {
-    const extractSheet = cloneSheet(sourceWorkbook, faqDownloadSheetNames.extract);
-    if (!extractSheet) {
-      throw new Error("Current FAQ output task has no field_extract sheet yet.");
-    }
-    XLSX.utils.book_append_sheet(nextWorkbook, extractSheet, faqDownloadSheetNames.extract);
-    return XLSX.write(nextWorkbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
-  }
-
-  const outputSheet = cloneSheet(sourceWorkbook, faqDownloadSheetNames.output);
-  if (!outputSheet) {
-    throw new Error("Current FAQ output task has no FAQ_output sheet yet.");
-  }
-  XLSX.utils.book_append_sheet(nextWorkbook, outputSheet, faqDownloadSheetNames.output);
-
-  const failuresSheet = cloneSheet(sourceWorkbook, faqDownloadSheetNames.failures);
-  if (failuresSheet) {
-    XLSX.utils.book_append_sheet(nextWorkbook, failuresSheet, faqDownloadSheetNames.failures);
-  } else {
-    XLSX.utils.book_append_sheet(
-      nextWorkbook,
-      XLSX.utils.json_to_sheet([], { header: [...failureSheetHeaders] }),
-      faqDownloadSheetNames.failures,
-    );
-  }
-
-  if (variant === "full") {
-    const extractSheet = cloneSheet(sourceWorkbook, faqDownloadSheetNames.extract);
-    if (extractSheet) {
-      XLSX.utils.book_append_sheet(nextWorkbook, extractSheet, faqDownloadSheetNames.extract);
-    }
-  }
-
-  return XLSX.write(nextWorkbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
-}
-
-async function buildWorkbookFromPersistedRows(jobId: string, variant: GenerationDownloadVariant) {
-  const persistedRows = await listPersistedGenerationRows(jobId);
-  if (!persistedRows.length || variant === "field_extract") {
-    return null;
-  }
-
-  const workbook = XLSX.utils.book_new();
-  const successRows = persistedRows.filter((item) => item.status === "success");
-  const failureRows = persistedRows.filter((item) => item.status === "error");
-
-  XLSX.utils.book_append_sheet(
-    workbook,
-    XLSX.utils.json_to_sheet(
-      successRows.map((item) => ({
-        ContentType: "faq",
-        Country: item.country,
-        TermID: item.termId,
-        TermName: item.termName,
-        Domain: item.domain,
-        Source: item.source || "AI",
-        Subclass: item.subclass,
-        [generationBoardNameField]: item.boardName || "faq",
-        Titile1: item.title1,
-        "Brief Introduction": item.briefIntroduction,
-        "Href Kw": item.hrefKw,
-        "Href Url": item.hrefUrl,
-      })),
-      { header: [...outputHeaders] },
-    ),
-    faqDownloadSheetNames.output,
-  );
-
-  XLSX.utils.book_append_sheet(
-    workbook,
-    XLSX.utils.json_to_sheet(
-      failureRows.map((item) => ({
-        rowIndex: item.rowIndex,
-        factType: item.factType,
-        subclass: item.subclass,
-        routeKey: item.routeKey,
-        error: item.errorReason,
-      })),
-      { header: [...failureSheetHeaders] },
-    ),
-    faqDownloadSheetNames.failures,
-  );
-
-  return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }
 
 function getWorkbookCacheKey(row: {
@@ -1641,66 +1541,135 @@ async function getGenerationQueueCount(scType: string) {
   return { total, totalIsEstimated: false };
 }
 
-  const [rows] = await pool.query<RowDataPacket[]>(
-    `
-      SELECT
-        id,
-        status,
-        sc_type,
-        uploader,
-        note,
-        input_file_name,
-        total_rows,
-        executable_rows,
-        success_rows,
-        failed_rows,
-        skipped_rows,
-        total_tokens_sum,
-        estimated_cost_usd_sum,
-        ai_model,
-        error_reason,
-        result_file_name,
-        result_file_path,
-        input_file_base64 IS NOT NULL AS has_input_file,
-        route_summary_json,
-        created_at,
-        started_at,
-        finished_at
-      FROM content_generation_jobs
-      WHERE sc_type = ?
-      ORDER BY created_at DESC
-      LIMIT ? OFFSET ?
-    `,
-    [scType, safePageSize, start],
-  );
+function mapGenerationQueueRow(row: Record<string, unknown>) {
+  const hasResultFilePath = Boolean(String(row.result_file_path || ""));
+  const hasResultFileBase64 = Number(row.has_result_file_base64 || 0) > 0;
+  const hasInputFileBase64 = Number(row.has_input_file_base64 || 0) > 0;
+  const hasInputFilePath = Number(row.has_input_file_path || 0) > 0;
+  return {
+    id: String(row.id || ""),
+    status: String(row.status || ""),
+    scType: String(row.sc_type || ""),
+    uploader: String(row.uploader || ""),
+    note: String(row.note || ""),
+    inputFileName: String(row.input_file_name || ""),
+    totalRows: Number(row.total_rows || 0),
+    executableRows: Number(row.executable_rows || 0),
+    successRows: Number(row.success_rows || 0),
+    failedRows: Number(row.failed_rows || 0),
+    skippedRows: Number(row.skipped_rows || 0),
+    totalTokensSum: Number(row.total_tokens_sum || 0),
+    estimatedCostUsdSum: Number(row.estimated_cost_usd_sum || 0),
+    elapsedExecutionMs: Number(row.elapsed_execution_ms || 0),
+    aiModel: String(row.ai_model || ""),
+    errorReason: String(row.error_reason || ""),
+    resultFileName: String(row.result_file_name || ""),
+    resultFilePath: String(row.result_file_path || ""),
+    canDownload: hasResultFilePath || Boolean(row.result_file_name || row.status === "done" || row.status === "failed"),
+    canDownloadFieldExtract: hasResultFilePath || hasResultFileBase64 || hasInputFilePath || hasInputFileBase64,
+    createdAt: formatChinaIsoOffset(row.created_at instanceof Date ? row.created_at : new Date(String(row.created_at || ""))),
+    startedAt: formatChinaIsoOffset(row.started_at instanceof Date ? row.started_at : row.started_at ? new Date(String(row.started_at)) : null),
+    finishedAt: formatChinaIsoOffset(row.finished_at instanceof Date ? row.finished_at : row.finished_at ? new Date(String(row.finished_at)) : null),
+    routeSummary: (row.route_summary_json as RouteSummaryRow[] | null) || [],
+  };
+}
+
+function getCachedGenerationHistoryCount(input: HistoryFilters) {
+  const cacheKey = buildGenerationCountCacheKey(input);
+  const cached = getHistoryCacheValue<number>(generationHistoryCountCache, cacheKey);
+  return typeof cached === "number" ? cached : null;
+}
+
+function primeGenerationHistoryCount(input: HistoryFilters, whereSql: string, params: unknown[]) {
+  const cacheKey = buildGenerationCountCacheKey(input);
+  if (generationHistoryCountInFlight.has(cacheKey)) {
+    return generationHistoryCountInFlight.get(cacheKey)!;
+  }
+  const promise = pool
+    .query<RowDataPacket[]>(
+      `
+        SELECT COUNT(*) AS total_count
+        FROM content_generation_jobs j FORCE INDEX (idx_generation_jobs_sc_type_id, idx_generation_jobs_sc_type_uploader_id)
+        INNER JOIN content_generation_job_rows r FORCE INDEX (idx_generation_rows_status_country_subclass_job_row) ON r.job_id = j.id
+        ${whereSql}
+      `,
+      params,
+    )
+    .then(([countRows]) => {
+      const total = Number((countRows[0] as Record<string, unknown> | undefined)?.total_count || 0);
+      setTimedCacheValue(generationHistoryCountCache, cacheKey, total, generationCountCacheTtlMs);
+      return total;
+    })
+    .finally(() => {
+      generationHistoryCountInFlight.delete(cacheKey);
+    });
+  generationHistoryCountInFlight.set(cacheKey, promise);
+  return promise;
+}
+
+export async function listGenerationJobs(page: number, pageSize: number, scType = "faq") {
+  const startedAt = Date.now();
+  const safePage = Math.max(1, Number(page || 1));
+  const safePageSize = Math.max(1, Number(pageSize || 20));
+  const start = (safePage - 1) * safePageSize;
+  const [rawRows, countInfo] = await Promise.all([
+    pool.query<RowDataPacket[]>(
+      `
+        SELECT
+          id,
+          status,
+          sc_type,
+          uploader,
+          note,
+          input_file_name,
+          total_rows,
+          executable_rows,
+          success_rows,
+          failed_rows,
+          skipped_rows,
+          total_tokens_sum,
+          estimated_cost_usd_sum,
+          elapsed_execution_ms,
+          ai_model,
+          error_reason,
+          result_file_name,
+          result_file_path,
+          route_summary_json,
+          CASE WHEN result_file_base64 IS NULL OR result_file_base64 = '' THEN 0 ELSE 1 END AS has_result_file_base64,
+          CASE WHEN input_file_path IS NULL OR input_file_path = '' THEN 0 ELSE 1 END AS has_input_file_path,
+          CASE WHEN input_file_base64 IS NULL OR input_file_base64 = '' THEN 0 ELSE 1 END AS has_input_file_base64,
+          created_at,
+          started_at,
+          finished_at
+        FROM content_generation_jobs FORCE INDEX (idx_generation_jobs_sc_type_id)
+        WHERE sc_type = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT ? OFFSET ?
+      `,
+      [scType, safePageSize + 1, start],
+    ),
+    getGenerationQueueCount(scType),
+  ]);
+
+  const rows = rawRows[0].slice(0, safePageSize);
+  const hasMore = rawRows[0].length > safePageSize;
+  const total = countInfo.total;
+  const totalIsEstimated = countInfo.totalIsEstimated;
+
+  logGenerationPerf("queue", {
+    scType,
+    page: safePage,
+    pageSize: safePageSize,
+    rows: rows.length,
+    total,
+    durationMs: Date.now() - startedAt,
+  });
 
   return {
     total,
-    rows: rows.map((row) => ({
-      id: String(row.id || ""),
-      status: String(row.status || ""),
-      scType: String(row.sc_type || ""),
-      uploader: String(row.uploader || ""),
-      note: String(row.note || ""),
-      inputFileName: String(row.input_file_name || ""),
-      totalRows: Number(row.total_rows || 0),
-      executableRows: Number(row.executable_rows || 0),
-      successRows: Number(row.success_rows || 0),
-      failedRows: Number(row.failed_rows || 0),
-      skippedRows: Number(row.skipped_rows || 0),
-      totalTokensSum: Number(row.total_tokens_sum || 0),
-      estimatedCostUsdSum: Number(row.estimated_cost_usd_sum || 0),
-      aiModel: String(row.ai_model || ""),
-      errorReason: String(row.error_reason || ""),
-      resultFileName: String(row.result_file_name || ""),
-      resultFilePath: String(row.result_file_path || ""),
-      canDownload: Boolean(row.result_file_path || row.result_file_name || row.status === "done" || row.status === "failed"),
-      canDownloadFieldExtract: Boolean(row.result_file_path || row.has_input_file),
-      createdAt: formatChinaIsoOffset(row.created_at instanceof Date ? row.created_at : new Date(String(row.created_at || ""))),
-      startedAt: formatChinaIsoOffset(row.started_at instanceof Date ? row.started_at : row.started_at ? new Date(String(row.started_at)) : null),
-      finishedAt: formatChinaIsoOffset(row.finished_at instanceof Date ? row.finished_at : row.finished_at ? new Date(String(row.finished_at)) : null),
-      routeSummary: (row.route_summary_json as RouteSummaryRow[] | null) || [],
-    })),
+    hasMore,
+    totalIsEstimated,
+    rows: rows.map((row) => mapGenerationQueueRow(row as unknown as Record<string, unknown>)),
   };
 }
 
@@ -1947,19 +1916,12 @@ export async function getGenerationJobDownloadPayload(jobId: string, options?: {
       fileBuffer = persistedBuffer;
     }
   }
-  if (!fileBuffer && rebuiltResult?.xlsxBase64) {
-    const rebuiltBuffer = Buffer.from(rebuiltResult.xlsxBase64, "base64");
-    if (isLikelyXlsxBuffer(rebuiltBuffer)) {
-      fileBuffer = rebuiltBuffer;
-    }
-  }
-
   if (!fileBuffer) {
     throw new Error(row.errorReason || "Current FAQ output task has no downloadable result yet.");
   }
 
   const trimmedBuffer = buildWorkbookForVariant(fileBuffer, variant);
-  const baseName = rebuiltResult?.fileName || row.resultFileName || `faq-output-${row.id}.xlsx`;
+  const baseName = row.resultFileName || `faq-output-${row.id}.xlsx`;
   const fileExt = path.extname(baseName) || ".xlsx";
   const fileStem = path.basename(baseName, fileExt);
   const fileName = variant === "field_extract" ? `${fileStem}-field-extract${fileExt}` : variant === "full" ? `${fileStem}-full${fileExt}` : baseName;

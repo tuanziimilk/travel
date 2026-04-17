@@ -3,6 +3,7 @@ import path from "node:path";
 import { ggCleaningUploadMaxFileBytes } from "@about-demo/trpc";
 import { makeId } from "../utils/id";
 import { resolveApiRuntimePath } from "../utils/runtimePaths";
+import type { GgCleaningPreview } from "./engine";
 
 export type GgCleaningUploadRow = Record<string, unknown>;
 

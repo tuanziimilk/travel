@@ -266,6 +266,7 @@ export const env = {
   translationMemoryLogIntervalMs: Math.max(10_000, Number(process.env.TRANSLATION_MEMORY_LOG_INTERVAL_MS || 30_000)),
   translationRealtimeTimeoutMs: Math.max(30_000, Number(process.env.TRANSLATION_REALTIME_TIMEOUT_MS || 1_800_000)),
   translationRealtimeMaxRetries: Math.max(0, Number(process.env.TRANSLATION_REALTIME_MAX_RETRIES || 1)),
+  runWorkers: (process.env.RUN_WORKERS || "false").toLowerCase() === "true",
   aiHttpMaxRetries: Math.max(0, Number(process.env.AI_HTTP_MAX_RETRIES || 2)),
   aiHttpRetryBaseMs: Math.max(100, Number(process.env.AI_HTTP_RETRY_BASE_MS || 500)),
   aiHttpRetryMaxMs: Math.max(500, Number(process.env.AI_HTTP_RETRY_MAX_MS || 5000)),

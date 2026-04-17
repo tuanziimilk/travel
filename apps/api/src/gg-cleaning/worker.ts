@@ -1,7 +1,8 @@
 import type { Uploader } from "@about-demo/trpc";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { executeGgCleaning, executeGgCleaningByPath, executeGgCleaningChunkRows, previewGgCleaningChunkRows, previewGgCleaningFile, previewGgCleaningFileByPathWithProgress } from "./engine";
+import { env } from "../env";
+import { executeGgCleaning, executeGgCleaningByPath, executeGgCleaningChunkRows, previewGgCleaningChunkRows, previewGgCleaningFile, previewGgCleaningFileByPath, previewGgCleaningFileByPathWithProgress } from "./engine";
 import {
   completeGgCleaningJob,
   createGgCleaningJob,
@@ -12,7 +13,8 @@ import {
   recoverInterruptedGgCleaningJobs,
   updateGgCleaningJobProgress,
 } from "./jobStore";
-import { getCompletedGgCleaningUpload, iterateGgCleaningUploadChunks, toGgUploadClientError } from "./uploadStore";
+import { getCompletedGgCleaningUpload, getGgCleaningUploadPreviewCache, iterateGgCleaningUploadChunks, saveGgCleaningUploadPreviewCache, toGgUploadClientError } from "./uploadStore";
+import { createGgCleaningPreviewTask, getGgCleaningPreviewTask } from "./previewTaskStore";
 import { resolveApiRuntimePath } from "../utils/runtimePaths";
 
 let loopStarted = false;
@@ -187,17 +189,8 @@ export async function previewGgCleaning(input: { fileName: string; fileBase64?: 
   if (input.uploadId) {
     return resolveUploadedPreview(input.uploadId, input.fileName);
   }
-  let uploaded;
-  try {
-    uploaded = await getCompletedGgCleaningUpload(input.uploadId);
-  } catch (error) {
-    throw new Error(toGgUploadClientError(error));
-  }
-  if (uploaded.kind === "file-chunks" && uploaded.rawFilePath) {
-    return previewGgCleaningFileByPath({
-      fileName: uploaded.fileName || input.fileName,
-      filePath: uploaded.rawFilePath,
-    });
+  if (!input.fileBase64) {
+    throw new Error("GG 清洗预览缺少文件内容。");
   }
   return previewGgCleaningFile({
     fileName: input.fileName,
@@ -242,27 +235,6 @@ export async function startGgCleaningJob(input: {
       fileBase64: input.fileBase64,
     });
   }
-  let uploaded;
-  try {
-    uploaded = await getCompletedGgCleaningUpload(input.uploadId);
-  } catch (error) {
-    throw new Error(toGgUploadClientError(error));
-  }
-  const preview =
-    uploaded.kind === "file-chunks" && uploaded.rawFilePath
-      ? await previewGgCleaningFileByPath({
-          fileName: uploaded.fileName || input.fileName,
-          filePath: uploaded.rawFilePath,
-        })
-      : await previewGgCleaningChunkRows({
-          columns: uploaded.columns,
-          sampleRawRows: uploaded.sampleRows,
-          totalRows: uploaded.uploadedRowCount,
-          groupedRows: uploaded.groupCount,
-          chunkCount: uploaded.chunkCount,
-          oversizedGroupCount: uploaded.oversizedGroupCount,
-        });
-
   const created = await createGgCleaningJob({
     uploader: input.uploader,
     note: input.note || "",
