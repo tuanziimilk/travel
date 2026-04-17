@@ -122,6 +122,21 @@ type PersistedHistoryRow = {
 
 let rowsTableEnsured = false;
 
+async function columnExists(tableName: string, columnName: string) {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = ?
+        AND column_name = ?
+      LIMIT 1
+    `,
+    [tableName, columnName],
+  );
+  return rows.length > 0;
+}
+
 async function ensureGenerationRowsTable() {
   if (rowsTableEnsured) return;
   await pool.query(`
@@ -167,10 +182,12 @@ async function ensureGenerationRowsTable() {
       KEY idx_generation_rows_status_country_subclass_job_row (status, country, subclass, job_id, row_index)
     )
   `);
-  await pool.query(`
-    ALTER TABLE content_generation_job_rows
-    ADD COLUMN IF NOT EXISTS validation_log_json json DEFAULT NULL
-  `);
+  if (!(await columnExists("content_generation_job_rows", "validation_log_json"))) {
+    await pool.query(`
+      ALTER TABLE content_generation_job_rows
+      ADD COLUMN validation_log_json json DEFAULT NULL
+    `);
+  }
   rowsTableEnsured = true;
 }
 
