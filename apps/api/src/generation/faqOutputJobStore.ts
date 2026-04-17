@@ -1544,7 +1544,7 @@ async function getGenerationQueueCount(scType: string) {
 function mapGenerationQueueRow(row: Record<string, unknown>) {
   const formatQueueTime = (value: unknown) => {
     if (!value) return "";
-    if (value instanceof Date) return formatChinaIsoOffset(value);
+    if (value instanceof Date) return formatChinaIsoOffset(new Date(value.getTime() + 8 * 60 * 60 * 1000));
     const text = String(value || "").trim();
     if (!text) return "";
     const normalized = text.includes("T") ? text : text.replace(" ", "T");
