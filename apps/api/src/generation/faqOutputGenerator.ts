@@ -13,6 +13,7 @@ import { getSkillRouteOverride, normalizeFaqSubclassFromFactType, resolveSkillRo
 import {
   completeGenerationJob,
   createGenerationJob,
+  deleteQueuedGenerationJob,
   failGenerationJob,
   getGenerationJobForRetry,
   listQueuedGenerationJobs,
@@ -957,6 +958,14 @@ export async function retryFaqOutputGeneration(jobId: string) {
   void triggerGenerationScheduler();
 
   return { jobId };
+}
+
+export async function deleteFaqOutputGeneration(jobId: string) {
+  generationJobInputs.delete(jobId);
+  activeGenerationJobs.delete(jobId);
+  const result = await deleteQueuedGenerationJob(jobId);
+  void triggerGenerationScheduler();
+  return result;
 }
 
 export function startGenerationWorker() {

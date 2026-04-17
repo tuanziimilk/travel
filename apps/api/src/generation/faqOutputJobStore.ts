@@ -1305,6 +1305,26 @@ export async function createGenerationJob(input: {
   return { jobId: id, inputFilePath };
 }
 
+export async function deleteQueuedGenerationJob(jobId: string) {
+  clearGenerationHistoryCaches();
+  scheduleMaterializedHistorySummaryRefresh("faq");
+  const rows = await db.select().from(contentGenerationJobs).where(eq(contentGenerationJobs.id, jobId));
+  const row = rows[0];
+  if (!row) throw new Error("FAQ 输出任务不存在。");
+  if (row.status !== "queued" && row.status !== "pending") {
+    throw new Error("仅支持删除尚未开始执行的 FAQ 输出任务。");
+  }
+
+  await db.delete(contentGenerationJobs).where(eq(contentGenerationJobs.id, jobId));
+
+  const inputFilePath = String(row.inputFilePath || "").trim();
+  const resultFilePath = String(row.resultFilePath || "").trim();
+  if (inputFilePath) await rm(inputFilePath, { force: true }).catch(() => undefined);
+  if (resultFilePath) await rm(resultFilePath, { force: true }).catch(() => undefined);
+
+  return { ok: true, jobId };
+}
+
 async function findRecentDuplicateGenerationJob(input: {
   scType: string;
   inputHash: string;

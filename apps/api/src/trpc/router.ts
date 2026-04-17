@@ -15,6 +15,7 @@ import {
   categoryCalibrationStatusInputSchema,
   batchStatusInputSchema,
   generationFrameworkGetInputSchema,
+  generationDeleteInputSchema,
   generationHistoryExportInputSchema,
   generationHistoryFilterSchema,
   generationQueueInputSchema,
@@ -79,7 +80,7 @@ import {
   listCategoryCalibrationJobs,
 } from "../category-calibration/jobStore";
 import { previewCategoryCalibration, startCategoryCalibrationJob } from "../category-calibration/worker";
-import { retryFaqOutputGeneration, startFaqOutputGeneration } from "../generation/faqOutputGenerator";
+import { deleteFaqOutputGeneration, retryFaqOutputGeneration, startFaqOutputGeneration } from "../generation/faqOutputGenerator";
 import { getGgCleaningJobResult, getGgCleaningJobStatus, listGgCleaningJobs } from "../gg-cleaning/jobStore";
 import { getGgCleaningPreviewTaskStatus, previewGgCleaning, startGgCleaningJob, startGgCleaningPreviewTask } from "../gg-cleaning/worker";
 import {
@@ -328,6 +329,9 @@ export const appRouter = t.router({
     }),
     retry: t.procedure.input(generationRetryInputSchema).mutation(({ input }) => {
       return retryFaqOutputGeneration(input.jobId);
+    }),
+    delete: t.procedure.input(generationDeleteInputSchema).mutation(({ input }) => {
+      return deleteFaqOutputGeneration(input.jobId);
     }),
     result: t.procedure.input(generationResultInputSchema).query(({ input }) => {
       return getGenerationJobResult(input.jobId);

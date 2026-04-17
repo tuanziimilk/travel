@@ -294,6 +294,7 @@ export function FaqOutputPage() {
   const [resultNotice, setResultNotice] = useState("");
   const [currentJobId, setCurrentJobId] = useState("");
   const [downloadingStates, setDownloadingStates] = useState<Record<string, DownloadVariant | undefined>>({});
+  const [deletingJobId, setDeletingJobId] = useState("");
   const [routePreviewRows, setRoutePreviewRows] = useState<RoutePreviewRow[]>([]);
   const [showRouteDetails, setShowRouteDetails] = useState(false);
   const [queuePage, setQueuePage] = useState(1);
@@ -319,6 +320,11 @@ export function FaqOutputPage() {
   );
 
   const runMutation = trpc.generation.run.useMutation({
+    onSuccess: async () => {
+      await queueQuery.refetch();
+    },
+  });
+  const deleteMutation = trpc.generation.delete.useMutation({
     onSuccess: async () => {
       await queueQuery.refetch();
     },
@@ -584,6 +590,18 @@ export function FaqOutputPage() {
     }
   }
 
+  async function deleteQueuedJob(jobId: string) {
+    setError("");
+    setDeletingJobId(jobId);
+    try {
+      await deleteMutation.mutateAsync({ jobId });
+    } catch (err) {
+      setError(getReadableFaqOutputError(err) || "删除 FAQ 输出任务失败。");
+    } finally {
+      setDeletingJobId("");
+    }
+  }
+
   async function runGeneration() {
     if (!selectedFile) {
       setError("请先上传 FAQ 输出源表。");
@@ -842,6 +860,8 @@ export function FaqOutputPage() {
                 const itemProgress = getExecutionProgress(item);
                 const displayStatus = getDisplayJobStatus(item);
                 const activeDownloadVariant = downloadingStates[item.id];
+                const canDeleteQueuedJob = item.status === "queued" || item.status === "pending";
+                const deletingThisJob = deletingJobId === item.id;
                 return (
                   <tr key={item.id}>
                     <td title={item.id}>{formatJobId(item.id)}</td>
@@ -886,6 +906,17 @@ export function FaqOutputPage() {
                         >
                           {activeDownloadVariant === "field_extract" ? "下载中..." : "下载提取"}
                         </button>
+                        {canDeleteQueuedJob ? (
+                          <button
+                            className="btn-ghost faq-queue-action-btn faq-queue-action-btn-secondary"
+                            type="button"
+                            disabled={deletingThisJob}
+                            title="删除尚未开始执行的 FAQ 输出任务"
+                            onClick={() => void deleteQueuedJob(item.id)}
+                          >
+                            {deletingThisJob ? "删除中..." : "删除"}
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>

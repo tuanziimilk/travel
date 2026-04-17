@@ -355,6 +355,10 @@ export const generationRetryInputSchema = z.object({
   jobId: z.string(),
 });
 
+export const generationDeleteInputSchema = z.object({
+  jobId: z.string(),
+});
+
 export const generationHistoryFilterSchema = z.object({
   scType: scTypeSchema.optional().default("faq"),
   country: z.string().optional().default(""),
