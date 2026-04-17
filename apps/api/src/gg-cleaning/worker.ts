@@ -12,11 +12,12 @@ import {
   recoverInterruptedGgCleaningJobs,
   updateGgCleaningJobProgress,
 } from "./jobStore";
-import { getCompletedGgCleaningUpload, iterateGgCleaningUploadChunks } from "./uploadStore";
+import { getCompletedGgCleaningUpload, iterateGgCleaningUploadChunks, toGgUploadClientError } from "./uploadStore";
+import { resolveApiRuntimePath } from "../utils/runtimePaths";
 
 let loopStarted = false;
 let activeJobId = "";
-const GG_RESULT_DIR = path.resolve(process.cwd(), ".runtime", "gg-cleaning-results");
+const GG_RESULT_DIR = resolveApiRuntimePath("gg-cleaning-results");
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -182,7 +183,12 @@ export async function previewGgCleaning(input: { fileName: string; fileBase64?: 
   if (!input.uploadId) {
     throw new Error("GG 清洗预览只支持分块上传后的文件，请先完成上传。");
   }
-  const uploaded = await getCompletedGgCleaningUpload(input.uploadId);
+  let uploaded;
+  try {
+    uploaded = await getCompletedGgCleaningUpload(input.uploadId);
+  } catch (error) {
+    throw new Error(toGgUploadClientError(error));
+  }
   if (uploaded.kind === "file-chunks" && uploaded.rawFilePath) {
     return previewGgCleaningFileByPath({
       fileName: uploaded.fileName || input.fileName,
@@ -209,7 +215,12 @@ export async function startGgCleaningJob(input: {
   if (!input.uploadId) {
     throw new Error("GG 清洗任务只支持分块上传后的文件，请先完成上传。");
   }
-  const uploaded = await getCompletedGgCleaningUpload(input.uploadId);
+  let uploaded;
+  try {
+    uploaded = await getCompletedGgCleaningUpload(input.uploadId);
+  } catch (error) {
+    throw new Error(toGgUploadClientError(error));
+  }
   const preview =
     uploaded.kind === "file-chunks" && uploaded.rawFilePath
       ? await previewGgCleaningFileByPath({

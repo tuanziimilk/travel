@@ -80,6 +80,7 @@ services:
     volumes:
       # skills 目录持久化挂载，支持在线编辑后重启生效
       - ./skills:/app/skills
+      - ./apps/api/.runtime:/app/.runtime
       - ./apps/api/.runtime:/app/apps/api/.runtime
     depends_on:
       mysql:

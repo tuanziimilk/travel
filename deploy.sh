@@ -142,7 +142,7 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
-docker compose --env-file .env up --build -d
+docker compose --env-file .env up --build -d --remove-orphans
 
 echo ""
 echo "============ Extract web dist ============"
