@@ -590,11 +590,23 @@ export function FaqOutputPage() {
     }
   }
 
-  async function deleteQueuedJob(jobId: string) {
+  async function deleteQueuedJob(item: Pick<QueueRow, "id" | "uploader" | "note">) {
     setError("");
-    setDeletingJobId(jobId);
+    const confirmed = window.confirm(
+      [
+        "确认删除这个尚未开始执行的 FAQ 输出任务吗？",
+        `任务 ID：${item.id}`,
+        `输出人：${item.uploader || "-"}`,
+        `批次备注：${item.note || "-"}`,
+        "",
+        "删除后无法恢复，请再次确认。",
+      ].join("\n"),
+    );
+    if (!confirmed) return;
+
+    setDeletingJobId(item.id);
     try {
-      await deleteMutation.mutateAsync({ jobId });
+      await deleteMutation.mutateAsync({ jobId: item.id });
     } catch (err) {
       setError(getReadableFaqOutputError(err) || "删除 FAQ 输出任务失败。");
     } finally {
@@ -912,7 +924,7 @@ export function FaqOutputPage() {
                             type="button"
                             disabled={deletingThisJob}
                             title="删除尚未开始执行的 FAQ 输出任务"
-                            onClick={() => void deleteQueuedJob(item.id)}
+                            onClick={() => void deleteQueuedJob(item)}
                           >
                             {deletingThisJob ? "删除中..." : "删除"}
                           </button>
