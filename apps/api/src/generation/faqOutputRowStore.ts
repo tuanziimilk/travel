@@ -422,6 +422,17 @@ export async function listPersistedSuccessRowIndexes(jobId: string) {
   return new Set(rows.filter((row) => row.status === "success").map((row) => row.rowIndex));
 }
 
+export async function deletePersistedGenerationRows(jobId: string) {
+  await ensureGenerationRowsTable();
+  await pool.query(
+    `
+      DELETE FROM content_generation_job_rows
+      WHERE job_id = ?
+    `,
+    [jobId],
+  );
+}
+
 export async function listPersistedHistoryRows(scType = "faq") {
   await ensureGenerationRowsTable();
   const [rows] = await pool.query<RowDataPacket[]>(

@@ -13,7 +13,7 @@ import { getSkillRouteOverride, normalizeFaqSubclassFromFactType, resolveSkillRo
 import {
   completeGenerationJob,
   createGenerationJob,
-  deleteQueuedGenerationJob,
+  deleteGenerationJob,
   failGenerationJob,
   getGenerationJobForRetry,
   listQueuedGenerationJobs,
@@ -584,9 +584,14 @@ type QueuedGenerationJobInput = {
 
 const activeGenerationJobs = new Set<string>();
 const generationJobInputs = new Map<string, QueuedGenerationJobInput>();
+const deletingGenerationJobs = new Set<string>();
 let generationSchedulerBootstrapped = false;
 let generationSchedulerRun = Promise.resolve();
 let generationWorkerStarted = false;
+
+function isGenerationJobDeleting(jobId: string) {
+  return deletingGenerationJobs.has(jobId);
+}
 
 function triggerGenerationScheduler() {
   if (!env.runWorkers) return Promise.resolve();
@@ -634,12 +639,19 @@ async function processGenerationQueue() {
 async function runQueuedGenerationJob(jobId: string, input: QueuedGenerationJobInput) {
   try {
     await markGenerationJobRunning(jobId);
+    if (isGenerationJobDeleting(jobId)) return;
     await executeFaqOutputGeneration(jobId, input);
   } catch (error) {
-    await failGenerationJob(jobId, error instanceof Error ? error.message : String(error));
+    if (!isGenerationJobDeleting(jobId)) {
+      await failGenerationJob(jobId, error instanceof Error ? error.message : String(error));
+    }
   } finally {
     activeGenerationJobs.delete(jobId);
     generationJobInputs.delete(jobId);
+    if (isGenerationJobDeleting(jobId)) {
+      await deleteGenerationJob(jobId).catch(() => undefined);
+      deletingGenerationJobs.delete(jobId);
+    }
     void triggerGenerationScheduler();
   }
 }
@@ -655,6 +667,7 @@ async function executeFaqOutputGeneration(
     inputFilePath?: string;
   },
 ) {
+  if (isGenerationJobDeleting(jobId)) return;
   const fileBuffer =
     input.fileBase64 != null
       ? Buffer.from(input.fileBase64, "base64")
@@ -722,6 +735,7 @@ async function executeFaqOutputGeneration(
   let progressWrite = Promise.resolve();
 
   const flushProgress = () => {
+    if (isGenerationJobDeleting(jobId)) return progressWrite;
     const snapshot = {
       jobId,
       totalRows: rows.length,
@@ -744,6 +758,7 @@ async function executeFaqOutputGeneration(
   const pendingRows = executableRows.filter((item) => !persistedSuccessIndexes.has(item.rowIndex));
 
   await runWithConcurrency(pendingRows, concurrency, async (item) => {
+    if (isGenerationJobDeleting(jobId)) return;
     const startedAt = Date.now();
     let skill = skillCache.get(item.subclass);
     try {
@@ -766,6 +781,8 @@ async function executeFaqOutputGeneration(
       const fieldExtract = finalizeFieldExtract(executed.result.field_extract);
       const extractionRow = buildExtractionRow(item.row, fieldExtract);
       const estimatedCostUsd = estimateCostUsd(executed.usage.promptTokens, executed.usage.completionTokens);
+
+      if (isGenerationJobDeleting(jobId)) return;
 
       await persistGenerationRow({
         jobId,
@@ -819,6 +836,8 @@ async function executeFaqOutputGeneration(
         });
         const extractionRow = buildExtractionRow(item.row, fallbackExtract);
 
+        if (isGenerationJobDeleting(jobId)) return;
+
         await persistGenerationRow({
           jobId,
           rowIndex: item.rowIndex,
@@ -853,6 +872,8 @@ async function executeFaqOutputGeneration(
         return;
       }
 
+      if (isGenerationJobDeleting(jobId)) return;
+
       await persistGenerationRow({
         jobId,
         rowIndex: item.rowIndex,
@@ -881,6 +902,7 @@ async function executeFaqOutputGeneration(
   });
 
   await progressWrite;
+  if (isGenerationJobDeleting(jobId)) return;
 
   const persistedAfterRun = await listPersistedGenerationRows(jobId);
   const persistedByRowIndex = new Map(persistedAfterRun.map((item) => [item.rowIndex, item]));
@@ -961,9 +983,16 @@ export async function retryFaqOutputGeneration(jobId: string) {
 }
 
 export async function deleteFaqOutputGeneration(jobId: string) {
-  generationJobInputs.delete(jobId);
-  activeGenerationJobs.delete(jobId);
-  const result = await deleteQueuedGenerationJob(jobId);
+  deletingGenerationJobs.add(jobId);
+  const isActive = activeGenerationJobs.has(jobId);
+  if (!isActive) {
+    generationJobInputs.delete(jobId);
+    deletingGenerationJobs.delete(jobId);
+  }
+  const result = await deleteGenerationJob(jobId);
+  if (!isActive) {
+    activeGenerationJobs.delete(jobId);
+  }
   void triggerGenerationScheduler();
   return result;
 }

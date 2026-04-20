@@ -58,7 +58,7 @@ type QueueRow = {
 };
 
 type DownloadVariant = "main" | "field_extract";
-type DeleteConfirmJob = Pick<QueueRow, "id" | "uploader" | "note">;
+type DeleteConfirmJob = Pick<QueueRow, "id" | "uploader" | "note" | "status" | "successRows" | "failedRows">;
 
 const faqOutputUploadLimitMb = Math.round(faqOutputUploadMaxFileBytes / 1024 / 1024);
 const faqOutputApiBase = (() => {
@@ -875,7 +875,7 @@ export function FaqOutputPage() {
                 const itemProgress = getExecutionProgress(item);
                 const displayStatus = getDisplayJobStatus(item);
                 const activeDownloadVariant = downloadingStates[item.id];
-                const canDeleteQueuedJob = item.status === "queued" || item.status === "pending";
+                const canDeleteJob = true;
                 const deletingThisJob = deletingJobId === item.id;
                 return (
                   <tr key={item.id}>
@@ -921,13 +921,21 @@ export function FaqOutputPage() {
                         >
                           {activeDownloadVariant === "field_extract" ? "下载中..." : "下载提取"}
                         </button>
-                        {canDeleteQueuedJob ? (
+                        {canDeleteJob ? (
                           <button
                             className="btn-ghost faq-queue-action-btn faq-queue-action-btn-secondary"
                             type="button"
                             disabled={deletingThisJob}
-                            title="删除尚未开始执行的 FAQ 输出任务"
-                            onClick={() => setPendingDeleteJob({ id: item.id, uploader: item.uploader, note: item.note })}
+                            title="删除 FAQ 输出任务及其结果"
+                            onClick={() =>
+                              setPendingDeleteJob({
+                                id: item.id,
+                                uploader: item.uploader,
+                                note: item.note,
+                                status: item.status,
+                                successRows: item.successRows,
+                                failedRows: item.failedRows,
+                              })}
                           >
                             {deletingThisJob ? "删除中..." : "删除"}
                           </button>
@@ -996,7 +1004,7 @@ export function FaqOutputPage() {
             <div className="history-detail-head faq-delete-confirm-head">
               <div>
                 <p className="faq-delete-confirm-kicker">Delete Check</p>
-                <h3 id="faq-delete-confirm-title">确认删除未开始任务？</h3>
+                <h3 id="faq-delete-confirm-title">确认删除 FAQ 输出任务？</h3>
               </div>
               <button className="history-detail-close" type="button" aria-label="关闭删除确认" onClick={() => setPendingDeleteJob(null)} disabled={Boolean(deletingJobId)}>
                 ×
@@ -1005,7 +1013,11 @@ export function FaqOutputPage() {
 
             <div className="faq-delete-confirm-body">
               <p className="faq-delete-confirm-copy">
-                这个 FAQ 输出任务还没有开始执行。删除后会从队列移除，且无法恢复。
+                {pendingDeleteJob.status === "queued" || pendingDeleteJob.status === "pending"
+                  ? "这个 FAQ 输出任务尚未开始执行。删除后会直接从队列移除，且无法恢复。"
+                  : pendingDeleteJob.status === "running"
+                    ? "这个 FAQ 输出任务正在执行中。删除后会停止后续处理，并同步清理已写入的结果、下载文件和库表记录。"
+                    : "这个 FAQ 输出任务已经产出结果。删除后会同步清理任务记录、结果行、下载文件和相关库数据，且无法恢复。"}
               </p>
 
               <div className="faq-delete-confirm-meta">
@@ -1020,6 +1032,16 @@ export function FaqOutputPage() {
                 <div className="faq-delete-confirm-meta-item faq-delete-confirm-meta-item-wide">
                   <span>批次备注</span>
                   <strong>{pendingDeleteJob.note || "-"}</strong>
+                </div>
+                <div className="faq-delete-confirm-meta-item">
+                  <span>当前状态</span>
+                  <strong>{queueStatusText[getDisplayJobStatus(pendingDeleteJob)] ?? pendingDeleteJob.status}</strong>
+                </div>
+                <div className="faq-delete-confirm-meta-item">
+                  <span>已产出</span>
+                  <strong>
+                    成功 {pendingDeleteJob.successRows || 0}，失败 {pendingDeleteJob.failedRows || 0}
+                  </strong>
                 </div>
               </div>
 
