@@ -4657,6 +4657,121 @@ pre {
   box-shadow: 6px 6px 0 var(--black);
 }
 
+.faq-delete-confirm-card {
+  width: min(560px, calc(100vw - 40px));
+  max-height: min(92vh, 680px);
+  padding: 0;
+  overflow: hidden;
+  background: #fff7d6;
+  background-image:
+    radial-gradient(rgba(0, 0, 0, 0.09) 1px, transparent 0),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.56), rgba(255, 255, 255, 0));
+  background-size: 16px 16px, 100% 100%;
+}
+
+.faq-delete-confirm-head {
+  margin: 0;
+  padding: 18px 20px 16px;
+  border-bottom: 4px solid var(--black);
+  background: linear-gradient(90deg, #ffe24a 0%, #ffe24a 62%, #ff8aa8 62%, #ff8aa8 100%);
+  position: static;
+}
+
+.faq-delete-confirm-head h3 {
+  margin: 2px 0 0;
+}
+
+.faq-delete-confirm-kicker {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.faq-delete-confirm-body {
+  padding: 20px;
+  display: grid;
+  gap: 16px;
+}
+
+.faq-delete-confirm-copy {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.6;
+}
+
+.faq-delete-confirm-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.faq-delete-confirm-meta-item {
+  border: 3px solid var(--black);
+  background: #ffffff;
+  box-shadow: 5px 5px 0 var(--black);
+  padding: 12px 12px 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.faq-delete-confirm-meta-item span {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #5f5f5f;
+}
+
+.faq-delete-confirm-meta-item strong {
+  font-size: 14px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.faq-delete-confirm-meta-item-wide {
+  grid-column: 1 / -1;
+  background: #f8fbff;
+}
+
+.faq-delete-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.faq-delete-confirm-actions .faq-poster-btn {
+  min-width: 120px;
+}
+
+.faq-delete-confirm-cancel {
+  background: #ffffff;
+}
+
+.faq-delete-confirm-submit {
+  background: var(--blue);
+}
+
+@media (max-width: 720px) {
+  .faq-delete-confirm-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .faq-delete-confirm-meta-item-wide {
+    grid-column: auto;
+  }
+
+  .faq-delete-confirm-actions {
+    flex-direction: column-reverse;
+  }
+
+  .faq-delete-confirm-actions .faq-poster-btn {
+    width: 100%;
+  }
+}
+
 .history-dashboard-filter .grid {
   margin-top: 4px;
 }

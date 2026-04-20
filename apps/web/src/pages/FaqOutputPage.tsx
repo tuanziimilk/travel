@@ -58,6 +58,7 @@ type QueueRow = {
 };
 
 type DownloadVariant = "main" | "field_extract";
+type DeleteConfirmJob = Pick<QueueRow, "id" | "uploader" | "note">;
 
 const faqOutputUploadLimitMb = Math.round(faqOutputUploadMaxFileBytes / 1024 / 1024);
 const faqOutputApiBase = (() => {
@@ -295,6 +296,7 @@ export function FaqOutputPage() {
   const [currentJobId, setCurrentJobId] = useState("");
   const [downloadingStates, setDownloadingStates] = useState<Record<string, DownloadVariant | undefined>>({});
   const [deletingJobId, setDeletingJobId] = useState("");
+  const [pendingDeleteJob, setPendingDeleteJob] = useState<DeleteConfirmJob | null>(null);
   const [routePreviewRows, setRoutePreviewRows] = useState<RoutePreviewRow[]>([]);
   const [showRouteDetails, setShowRouteDetails] = useState(false);
   const [queuePage, setQueuePage] = useState(1);
@@ -590,29 +592,30 @@ export function FaqOutputPage() {
     }
   }
 
-  async function deleteQueuedJob(item: Pick<QueueRow, "id" | "uploader" | "note">) {
+  async function confirmDeleteQueuedJob() {
+    if (!pendingDeleteJob) return;
     setError("");
-    const confirmed = window.confirm(
-      [
-        "确认删除这个尚未开始执行的 FAQ 输出任务吗？",
-        `任务 ID：${item.id}`,
-        `输出人：${item.uploader || "-"}`,
-        `批次备注：${item.note || "-"}`,
-        "",
-        "删除后无法恢复，请再次确认。",
-      ].join("\n"),
-    );
-    if (!confirmed) return;
-
-    setDeletingJobId(item.id);
+    setDeletingJobId(pendingDeleteJob.id);
     try {
-      await deleteMutation.mutateAsync({ jobId: item.id });
+      await deleteMutation.mutateAsync({ jobId: pendingDeleteJob.id });
+      setPendingDeleteJob(null);
     } catch (err) {
       setError(getReadableFaqOutputError(err) || "删除 FAQ 输出任务失败。");
     } finally {
       setDeletingJobId("");
     }
   }
+
+  useEffect(() => {
+    if (!pendingDeleteJob) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !deletingJobId) {
+        setPendingDeleteJob(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [pendingDeleteJob, deletingJobId]);
 
   async function runGeneration() {
     if (!selectedFile) {
@@ -924,7 +927,7 @@ export function FaqOutputPage() {
                             type="button"
                             disabled={deletingThisJob}
                             title="删除尚未开始执行的 FAQ 输出任务"
-                            onClick={() => void deleteQueuedJob(item)}
+                            onClick={() => setPendingDeleteJob({ id: item.id, uploader: item.uploader, note: item.note })}
                           >
                             {deletingThisJob ? "删除中..." : "删除"}
                           </button>
@@ -986,6 +989,52 @@ export function FaqOutputPage() {
           </div>
         </div>
       </div>
+
+      {pendingDeleteJob ? (
+        <div className="history-detail-overlay" role="dialog" aria-modal="true" aria-labelledby="faq-delete-confirm-title" onClick={() => !deletingJobId && setPendingDeleteJob(null)}>
+          <div className="history-detail-card faq-delete-confirm-card" onClick={(event) => event.stopPropagation()}>
+            <div className="history-detail-head faq-delete-confirm-head">
+              <div>
+                <p className="faq-delete-confirm-kicker">Delete Check</p>
+                <h3 id="faq-delete-confirm-title">确认删除未开始任务？</h3>
+              </div>
+              <button className="history-detail-close" type="button" aria-label="关闭删除确认" onClick={() => setPendingDeleteJob(null)} disabled={Boolean(deletingJobId)}>
+                ×
+              </button>
+            </div>
+
+            <div className="faq-delete-confirm-body">
+              <p className="faq-delete-confirm-copy">
+                这个 FAQ 输出任务还没有开始执行。删除后会从队列移除，且无法恢复。
+              </p>
+
+              <div className="faq-delete-confirm-meta">
+                <div className="faq-delete-confirm-meta-item">
+                  <span>任务 ID</span>
+                  <strong>{pendingDeleteJob.id}</strong>
+                </div>
+                <div className="faq-delete-confirm-meta-item">
+                  <span>输出人</span>
+                  <strong>{pendingDeleteJob.uploader || "-"}</strong>
+                </div>
+                <div className="faq-delete-confirm-meta-item faq-delete-confirm-meta-item-wide">
+                  <span>批次备注</span>
+                  <strong>{pendingDeleteJob.note || "-"}</strong>
+                </div>
+              </div>
+
+              <div className="faq-delete-confirm-actions">
+                <button className="btn-ghost faq-poster-btn faq-delete-confirm-cancel" type="button" onClick={() => setPendingDeleteJob(null)} disabled={Boolean(deletingJobId)}>
+                  取消
+                </button>
+                <button className="btn-primary faq-poster-btn faq-delete-confirm-submit" type="button" onClick={() => void confirmDeleteQueuedJob()} disabled={Boolean(deletingJobId)}>
+                  {deletingJobId ? "删除中..." : "确认删除"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
