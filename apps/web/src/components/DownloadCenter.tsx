@@ -228,14 +228,16 @@ export function DownloadCenterProvider({ children }: { children: ReactNode }) {
   const activeCount = tasks.filter((task) => task.status === "queued" || task.status === "preparing").length;
   const readyCount = tasks.filter((task) => task.status === "ready").length;
   const failedCount = tasks.filter((task) => task.status === "failed" || task.status === "expired").length;
+  const collapsedCount = activeCount || readyCount || tasks.length;
+  const collapsedCountLabel = collapsedCount > 99 ? "99+" : String(collapsedCount);
 
   return (
     <DownloadCenterContext.Provider value={value}>
       {children}
       <aside className={`download-drawer ${open ? "open" : ""}`} aria-label="全局下载中心">
         <button className="download-drawer-tab" type="button" onClick={() => setOpen(!open)}>
-          <span>下载</span>
-          <strong>{activeCount || readyCount || tasks.length}</strong>
+          <span className="download-drawer-tab-label">下载</span>
+          <strong className="download-drawer-tab-badge">{collapsedCountLabel}</strong>
         </button>
         <div className="download-drawer-panel">
           <div className="download-drawer-head">

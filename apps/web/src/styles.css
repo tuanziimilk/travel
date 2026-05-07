@@ -6550,8 +6550,8 @@ pre {
   align-items: center;
   justify-content: center;
   gap: 5px;
-  width: 52px;
-  min-width: 52px;
+  width: 60px;
+  min-width: 60px;
   height: 142px;
   border: 3px solid var(--black);
   border-radius: 0;
@@ -6561,12 +6561,13 @@ pre {
   cursor: pointer;
   font-weight: 900;
   letter-spacing: 0.12em;
-  padding: 10px 8px;
+  padding: 14px 8px 10px;
   pointer-events: auto;
   writing-mode: vertical-rl;
   transition:
     transform 120ms ease,
     box-shadow 120ms ease;
+  overflow: visible;
 }
 
 .download-drawer-tab:hover {
@@ -6574,18 +6575,29 @@ pre {
   box-shadow: 7px 7px 0 var(--blue);
 }
 
-.download-drawer-tab strong {
-  display: inline-grid;
-  min-width: 20px;
-  height: 20px;
-  place-items: center;
+.download-drawer-tab-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.download-drawer-tab-badge {
+  position: absolute;
+  top: 10px;
+  left: -8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 22px;
   border: 2px solid var(--black);
   border-radius: 0;
   background: var(--yellow);
   color: var(--black);
   font-size: 11px;
   line-height: 1;
-  padding: 0 4px;
+  padding: 0 6px;
+  white-space: nowrap;
   writing-mode: horizontal-tb;
 }
 
@@ -6822,5 +6834,9 @@ pre {
   .download-drawer-tab {
     top: 18px;
     right: 8px;
+  }
+
+  .download-drawer-tab-badge {
+    left: -6px;
   }
 }
