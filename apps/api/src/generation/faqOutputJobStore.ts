@@ -760,6 +760,8 @@ function parseGenerationInputWorkbook(fileName: string, fileBase64: string) {
       columns: true,
       skip_empty_lines: true,
       trim: true,
+      relax_quotes: true,
+      bom: true,
     }) as Record<string, unknown>[]).map(mapRow);
   }
 

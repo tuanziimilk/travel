@@ -6,6 +6,7 @@ import {
   buildPassthroughValidationLog,
   finalizeGenerationItem,
   normalizeCountryCode,
+  parseFaqOutputFileBuffer,
   validateGenerationCandidate,
 } from "./faqOutputGenerator";
 import { skillRegistry } from "../skills/skillRegistry";
@@ -41,6 +42,20 @@ describe("faq output routing", () => {
       expect(route.status, subclass).toBe("active");
       expect(route.skillKey, subclass).toContain(`faq-output-${toFaqOutputSkillSlug(subclass)}`);
     }
+  });
+});
+
+describe("faq output upload parsing", () => {
+  it("accepts CSV text with unescaped quotes inside a field", () => {
+    const csv = [
+      "term_id,country,domain,term_name,fact_type,supported,status,discount_type,discount_value,currency,discount_details,url",
+      '1,DE,example.de,Example,student_discount,yes,active,percent,10,,Sparen Sie ordentlich mit den tollen Angeboten von {Mer.}. Sie erhalten bis zu 50% Rabatt auf Zugtickets für Reisen an bestimmten Tagen. Dieser großzügige Rabatt gilt für verschiedene Zugstrecken und ist ganz einfach im Bereich "Angebote" verfügbar.,https://example.de',
+    ].join("\n");
+
+    const rows = parseFaqOutputFileBuffer("faq-output.csv", Buffer.from(csv, "utf8"));
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].discount_details).toContain('Bereich "Angebote" verfügbar');
   });
 });
 

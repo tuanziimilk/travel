@@ -163,12 +163,14 @@ function mapOutputRow(row: Record<string, unknown>) {
   });
 }
 
-function parseFaqOutputFileBuffer(fileName: string, buffer: Buffer) {
+export function parseFaqOutputFileBuffer(fileName: string, buffer: Buffer) {
   if (fileName.toLowerCase().endsWith(".csv")) {
     const records = parse(buffer.toString("utf8"), {
       columns: true,
       skip_empty_lines: true,
       trim: true,
+      relax_quotes: true,
+      bom: true,
     }) as Record<string, unknown>[];
     return records.map(mapOutputRow);
   }
