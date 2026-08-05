@@ -182,6 +182,9 @@ systemctl reload nginx
 echo "nginx config reloaded"
 REMOTE
 
+log "Cleaning up docker build cache and dangling images"
+ssh_run "docker builder prune -af >/dev/null 2>&1 || true; docker image prune -f >/dev/null 2>&1 || true"
+
 log "Deploy finished"
 log "Web:    http://${SERVER_HOST}:5173"
 log "Health: http://${SERVER_HOST}:3001/health"
