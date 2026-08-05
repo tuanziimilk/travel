@@ -12,6 +12,7 @@ export const uploaderOptions = [
   "Dorothy",
   "Howard",
   "Mia",
+  "Sophie",
 ] as const;
 
 export const countryOptions = [
