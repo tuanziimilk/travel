@@ -1,4 +1,4 @@
-﻿import * as Select from "@radix-ui/react-select";
+import * as Select from "@radix-ui/react-select";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { capabilityOptions, uploaderOptions, type Capability, type ModuleId, type ScType } from "@about-demo/trpc";
 import { trpc } from "../lib/trpc";
@@ -372,7 +372,7 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
       subclass: selectedRoute.subclass,
       versionId,
       editor: editorName,
-      changeNote,
+      changeNote: changeNote.trim() || `回退至版本 V${versionNo}`,
     });
   }
 
@@ -702,7 +702,7 @@ export function SkillConfigPage({ moduleId }: { moduleId: ModuleId }) {
               </div>
               <div className="skill-version-list">
                 {(historyQuery.data || []).map((item, index) => {
-                  const rollbackDisabled = !editorName.trim() || !changeNote.trim() || rollbackMutation.isPending;
+                  const rollbackDisabled = !editorName.trim() || rollbackMutation.isPending;
                   const displayChangeNote = formatHistoryChangeNote(item.changeNote, item.actionType);
                   return (
                     <div className="skill-version-card" key={item.id}>
