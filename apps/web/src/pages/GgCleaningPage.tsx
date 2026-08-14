@@ -260,8 +260,10 @@ export function GgCleaningPage() {
       setError("");
     } else if (task.status === "failed") {
       setError(task.errorMessage || "GG 预览生成失败。");
+      setNotice("");
     } else if (task.status === "expired") {
       setError("GG 预览已过期，请重新上传文件。");
+      setNotice("");
     } else {
       setNotice(task.statusText || "正在后台准备预览...");
     }

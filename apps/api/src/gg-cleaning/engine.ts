@@ -2454,9 +2454,15 @@ async function* iterateRawRowsFromFile(filePath: string, fileName: string): Asyn
 }
 
 function detectInputMode(columns: string[]): GgCleaningInputMode {
-  const hasRequiredColumns = GG_COLLECTED_REQUIRED_COLUMNS.every((column) => columns.includes(column));
-  if (!hasRequiredColumns) {
-    throw new Error(`Uploaded file must contain collected-table columns: ${GG_COLLECTED_REQUIRED_COLUMNS.join(", ")}`);
+  const missingColumns = GG_COLLECTED_REQUIRED_COLUMNS.filter((column) => !columns.includes(column));
+  if (missingColumns.length > 0) {
+    const detected = columns.length > 0 ? columns.join(", ") : "（未识别到任何表头）";
+    throw new Error(
+      `文件缺少必填列：${missingColumns.join("、")}。` +
+        `\n必填列共 ${GG_COLLECTED_REQUIRED_COLUMNS.length} 个：${GG_COLLECTED_REQUIRED_COLUMNS.join("、")}。` +
+        `\n当前文件识别到的列：${detected}。` +
+        `\n请检查采集导出模板是否选错，补齐上述缺失列后重新上传。`,
+    );
   }
   return "raw";
 }
